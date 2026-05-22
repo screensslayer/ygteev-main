@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+build/
+DerivedData/
+
+# Supabase CLI cache
+supabase/.temp/
+supabase/.branches/
+
+# Python
+__pycache__/
+*.pyc
