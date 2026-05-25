@@ -11,6 +11,9 @@ DerivedData/
 supabase/.temp/
 supabase/.branches/
 
+# Claude Code per-project memory
+.claude/
+
 # Python
 __pycache__/
 *.pyc

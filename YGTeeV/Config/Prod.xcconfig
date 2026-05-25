@@ -1,0 +1,16 @@
+// Prod.xcconfig — production Supabase project + production bundle id.
+//
+// xcconfig gotcha: `//` is the comment start, including inside values.
+// To embed a literal `//` (e.g. an `https://` URL) we have to break up the
+// pair so the parser never sees two consecutive slashes — wedge an empty
+// `$()` expansion between them: `https:/$()/host`.
+
+PRODUCT_BUNDLE_IDENTIFIER = storybutton.YGTeeV
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+
+// Values injected into Info.plist via $(VAR_NAME) substitution.
+SUPABASE_URL = https:/$()/tkesywmshaicjmywbovn.supabase.co
+SUPABASE_ANON_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRrZXN5d21zaGFpY2pteXdib3ZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNTYyNzQsImV4cCI6MjA5MzgzMjI3NH0.fp3kWDVnqOeJ--UpBiXArWf6zuinxeBYE3Y6YL12RAk
+
+// RevenueCat — prod iOS SDK key. Drives PurchasesManager.isAvailable.
+REVENUECAT_API_KEY = appl_JzypuNoAMgwdbtEzdWgWaycyusJ

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>LilitaOne-Regular.ttf</string>
+	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We show youth groups within 25 miles of you on the map.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>We use the camera to scan family-invite QR codes and to record video for Bible plan blocks.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>The microphone is used so audio is captured when you record a video for a Bible plan.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>We save QR codes and shared images to your Photo Library so you can post them anywhere.</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIImageName</key>
+		<string>LaunchSplash</string>
+		<key>UIImageRespectsSafeAreaInsets</key>
+		<false/>
+	</dict>
+	<key>SUPABASE_URL</key>
+	<string>$(SUPABASE_URL)</string>
+	<key>SUPABASE_ANON_KEY</key>
+	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>REVENUECAT_API_KEY</key>
+	<string>$(REVENUECAT_API_KEY)</string>
+</dict>
+</plist>

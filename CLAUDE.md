@@ -25,7 +25,7 @@ You will not be writing Swift or the CMS UI. You write SQL migrations, Edge Func
 | Maps | Apple MapKit (client-side); PostGIS for server-side geo queries |
 | iOS in-app payments | Apple StoreKit 2 → server-side receipt validation |
 | Web payments (pastors) | Stripe |
-| Bible text | Bible API (api.bible / scripture.api.bible) |
+| Bible text | Bible API (api.bible / rest.api.bible) |
 | Chat moderation | OpenAI Moderation API (free tier) |
 | Email | Resend |
 | Push | APNS direct |

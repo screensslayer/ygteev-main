@@ -1,0 +1,106 @@
+/* YGTeeV — youthful, vibrant, electric purple/blue
+   Mixed-tone system: gamified for plans (saturated, playful),
+   grounded for scripture (deep ink, generous space). */
+
+:root {
+  /* Core electric palette */
+  --yg-violet: #6B2BFF;
+  --yg-violet-deep: #3D0FB8;
+  --yg-violet-soft: #B79FFF;
+  --yg-blue: #0066FF;
+  --yg-blue-electric: #2D7BFF;
+  --yg-cyan: #00E0FF;
+  --yg-pink: #FF3DA5;
+  --yg-yellow: #FFD60A;
+  --yg-lime: #B4FF3C;
+  --yg-orange: #FF6B35;
+
+  /* Garden / pixel palette */
+  --pix-sky: #A0E5FF;
+  --pix-sky-dusk: #C8B5FF;
+  --pix-grass: #4CC65A;
+  --pix-grass-dark: #2B8A3E;
+  --pix-soil: #6B3F1A;
+  --pix-water: #3DAEFF;
+  --pix-tree: #1F7A2B;
+
+  /* Neutrals */
+  --ink: #0A0712;
+  --ink-2: #1A1428;
+  --ink-3: #2D2542;
+  --paper: #FAF8FF;
+  --paper-2: #F0EDF8;
+  --line: rgba(20, 14, 40, 0.08);
+
+  /* Semantic */
+  --xp: #FFD60A;
+  --water: #3DAEFF;
+  --streak: #FF6B35;
+
+  /* Type */
+  --font-display: 'Bricolage Grotesque', 'SF Pro Display', -apple-system, system-ui, sans-serif;
+  --font-body: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-serif: 'Fraunces', 'New York', Georgia, serif;
+  --font-pixel: 'Press Start 2P', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+/* Pixel rendering for garden */
+.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+/* Liquid glass utility */
+.glass {
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  background: rgba(255, 255, 255, 0.55);
+  border: 0.5px solid rgba(255, 255, 255, 0.6);
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.7), 0 4px 16px rgba(0,0,0,0.06);
+}
+.glass-dark {
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  background: rgba(20, 14, 40, 0.45);
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.1), 0 4px 16px rgba(0,0,0,0.3);
+}
+
+/* Buttons */
+.btn-primary {
+  background: linear-gradient(180deg, var(--yg-violet) 0%, var(--yg-violet-deep) 100%);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  border: none;
+  border-radius: 999px;
+  padding: 14px 28px;
+  font-size: 17px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.3) inset, 0 -2px 0 rgba(0,0,0,0.2) inset, 0 8px 20px rgba(107,43,255,0.35);
+  cursor: pointer;
+  transition: transform 0.08s cubic-bezier(.2,.7,.3,1.4), box-shadow 0.15s;
+}
+.btn-primary:active { transform: translateY(1px) scale(0.98); }
+
+/* Pixel border (for garden / gamified UI) */
+.pixel-card {
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 4px;
+  box-shadow: 4px 4px 0 var(--ink);
+  font-family: var(--font-display);
+}
+
+/* Body sets */
+html, body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* No-scrollbar */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

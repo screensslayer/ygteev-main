@@ -1,0 +1,18 @@
+// Staging.xcconfig — staging Supabase project + staging bundle id.
+//
+// xcconfig gotcha: `//` is the comment start, including inside values.
+// To embed a literal `//` (e.g. an `https://` URL) we have to break up the
+// pair so the parser never sees two consecutive slashes — wedge an empty
+// `$()` expansion between them: `https:/$()/host`.
+
+PRODUCT_BUNDLE_IDENTIFIER = storybutton.YGTeeV.staging
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon-Staging
+
+// Values injected into Info.plist via $(VAR_NAME) substitution.
+SUPABASE_URL = https:/$()/nmdfmlcmhauqbbairkjw.supabase.co
+SUPABASE_ANON_KEY = sb_publishable_JssYrpMXrFKuZSdZ_KZKQg_6kb52u7D
+
+// RevenueCat — staging RC app has no products configured. An empty key
+// makes PurchasesManager skip Purchases.configure() and surface a
+// "Purchases unavailable in staging" placeholder in the paywalls.
+REVENUECAT_API_KEY =
