@@ -67,11 +67,19 @@ jobs:
       - name: Deploy changed edge functions
         if: steps.changed.outputs.fns != ''
         run: |
+          failed_fns=""
           for fn in ${{ steps.changed.outputs.fns }}; do
             echo "::group::Deploying $fn to staging"
-            supabase functions deploy "$fn" --project-ref "$STAGING_REF"
+            if ! supabase functions deploy "$fn" --project-ref "$STAGING_REF"; then
+              echo "::error::Failed to deploy $fn"
+              failed_fns="$failed_fns $fn"
+            fi
             echo "::endgroup::"
           done
+          if [ -n "$failed_fns" ]; then
+            echo "::error::These functions failed to deploy:$failed_fns"
+            exit 1
+          fi
 
       - name: Summarize
         if: always()
