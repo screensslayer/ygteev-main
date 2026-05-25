@@ -403,9 +403,6 @@ verify_jwt = false
 [functions.apify-scrape-webhook]
 verify_jwt = false
 
-[functions.apple-server-notifications]
-verify_jwt = false
-
 [functions.public-rsvp-event]
 verify_jwt = false
 

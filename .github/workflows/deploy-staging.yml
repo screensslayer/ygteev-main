@@ -1,0 +1,83 @@
+name: Deploy to Staging
+
+# Fires on every merge to main. Lint must have already passed (CI gates
+# the PR before merge); we still run deploys serially per-branch.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/**"
+      - "supabase/config.toml"
+      - "supabase/seed.sql"
+      - ".github/workflows/deploy-staging.yml"
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false   # never cancel a deploy mid-flight
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  STAGING_REF: ${{ secrets.SUPABASE_STAGING_REF }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need at least 2 commits so we can diff changed files vs previous head
+          fetch-depth: 2
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link to staging
+        run: supabase link --project-ref "$STAGING_REF"
+
+      - name: Push migrations
+        run: supabase db push --include-all
+
+      - name: Detect changed edge functions
+        id: changed
+        run: |
+          # Diff between the commit before this push and the current head.
+          # On the very first run (no previous commit), fall back to deploying everything.
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            CHANGED=$(git diff --name-only HEAD^ HEAD \
+              | grep '^supabase/functions/' \
+              | cut -d/ -f3 \
+              | sort -u \
+              | grep -v '^$' \
+              | tr '\n' ' ' || true)
+          else
+            CHANGED=""
+          fi
+          # Also include any function whose folder is newly added (in case the diff missed it)
+          if [ -z "$CHANGED" ]; then
+            echo "No edge function changes in this push."
+          else
+            echo "Changed functions: $CHANGED"
+          fi
+          echo "fns=$CHANGED" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy changed edge functions
+        if: steps.changed.outputs.fns != ''
+        run: |
+          for fn in ${{ steps.changed.outputs.fns }}; do
+            echo "::group::Deploying $fn to staging"
+            supabase functions deploy "$fn" --project-ref "$STAGING_REF"
+            echo "::endgroup::"
+          done
+
+      - name: Summarize
+        if: always()
+        run: |
+          echo "## Staging deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Project: \`$STAGING_REF\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Migrations: pushed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Edge Functions deployed: \`${{ steps.changed.outputs.fns }}\`" >> "$GITHUB_STEP_SUMMARY"

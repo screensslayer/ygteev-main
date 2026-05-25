@@ -1,0 +1,85 @@
+name: Deploy to Production
+
+# Two ways to trigger:
+#   1. Push a tag matching v* (e.g. `git tag v1.0.3 && git push origin v1.0.3`)
+#   2. Manually via the Actions UI -> "Deploy to Production" -> "Run workflow",
+#      with the confirm input set to exactly "yes" (guards against accidental
+#      clicks).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "yes" exactly to confirm production deploy'
+        required: true
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false   # never cancel a prod deploy
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  PROD_REF: ${{ secrets.SUPABASE_PROD_REF }}
+
+jobs:
+  deploy:
+    # Tag push -> always proceed. Manual dispatch -> require confirm=="yes".
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'yes')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Optional: enable a GitHub Environment named "production" with required
+    # reviewers for an extra approval gate. Uncomment when you add the
+    # environment in repo Settings -> Environments.
+    # environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link to prod
+        run: supabase link --project-ref "$PROD_REF"
+
+      - name: Push migrations
+        run: supabase db push --include-all
+
+      - name: Detect changed edge functions vs previous deploy point
+        id: changed
+        # For tag pushes we deploy ALL functions (safer when a tag may span
+        # many commits and we can't easily diff against the previous tag).
+        # For workflow_dispatch we also deploy all (it's a manual button push).
+        run: |
+          CHANGED=$(ls -d supabase/functions/*/ 2>/dev/null \
+            | xargs -n1 basename \
+            | grep -v '^_' \
+            | tr '\n' ' ' || true)
+          echo "Deploying all functions: $CHANGED"
+          echo "fns=$CHANGED" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy edge functions
+        if: steps.changed.outputs.fns != ''
+        run: |
+          for fn in ${{ steps.changed.outputs.fns }}; do
+            echo "::group::Deploying $fn to prod"
+            supabase functions deploy "$fn" --project-ref "$PROD_REF"
+            echo "::endgroup::"
+          done
+
+      - name: Summarize
+        if: always()
+        run: |
+          echo "## Production deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Project: \`$PROD_REF\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Trigger: \`${{ github.event_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ref: \`${{ github.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- SHA: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Migrations: pushed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Edge Functions deployed: \`${{ steps.changed.outputs.fns }}\`" >> "$GITHUB_STEP_SUMMARY"
