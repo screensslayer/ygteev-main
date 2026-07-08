@@ -11,6 +11,8 @@ import * as THREE from "three";
    • Ornate wood-and-gold fantasy UI
    ============================================================ */
 
+const REGROW_SECS = 180; // home plants regrow after each harvest instead of disappearing
+
 const SEEDS = {
   strawberry: { name: "Strawberry", cost: 50,  currency: "xp",   sell: 8,   grow: 20, color: 0xe8384f, glow: false },
   blueberry:  { name: "Blueberry",  cost: 120, currency: "xp",   sell: 18,  grow: 30, color: 0x4f6de8, glow: false },
@@ -1977,13 +1979,63 @@ export default function DragonGardenQuest() {
         } else {
           const elapsed = G.time - p.plantedAt;
           const total = SEEDS[p.seed].grow;
-          const stage = elapsed >= total ? 2 : elapsed >= total * 0.5 ? 1 : 0;
+          const stage = p.regrowAt != null ? (G.time >= p.regrowAt ? 2 : 1)
+            : elapsed >= total ? 2 : elapsed >= total * 0.5 ? 1 : 0;
           node.stage = stage;
           node.plant = buildPlantMesh(p.seed, stage, false);
           node.plant.position.y = 0.2;
         }
         node.plotMesh.add(node.plant);
       } else node.stage = -1;
+    }
+
+    // floating "next fruit in M:SS" pill over home plants that are regrowing after a harvest
+    function updateRegrowBadge(node, p, stage) {
+      const active = p.seed && p.regrowAt != null && stage !== 2;
+      if (!active) {
+        if (node.regrowSprite) {
+          node.plotMesh.remove(node.regrowSprite);
+          node.regrowSprite.material.map.dispose();
+          node.regrowSprite.material.dispose();
+          node.regrowSprite = null;
+        }
+        return;
+      }
+      if (!node.regrowSprite) {
+        const cv = document.createElement("canvas");
+        cv.width = 200; cv.height = 68;
+        const tex = new THREE.CanvasTexture(cv);
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+        sp.scale.set(1.45, 0.49, 1);
+        sp.position.set(0, 1.5, 0);
+        sp.userData = { cv, tex, lastSec: -1 };
+        node.plotMesh.add(sp);
+        node.regrowSprite = sp;
+      }
+      const sec = Math.max(0, Math.ceil(p.regrowAt - G.time));
+      const ud = node.regrowSprite.userData;
+      if (sec !== ud.lastSec) {
+        ud.lastSec = sec;
+        const c = ud.cv.getContext("2d");
+        c.clearRect(0, 0, 200, 68);
+        const rr = (x, y, w, h, r) => {
+          c.beginPath();
+          c.moveTo(x + r, y);
+          c.arcTo(x + w, y, x + w, y + h, r);
+          c.arcTo(x + w, y + h, x, y + h, r);
+          c.arcTo(x, y + h, x, y, r);
+          c.arcTo(x, y, x + w, y, r);
+          c.closePath();
+        };
+        rr(6, 8, 188, 52, 24);
+        c.fillStyle = "rgba(26,16,6,0.82)"; c.fill();
+        c.strokeStyle = "#ffb845"; c.lineWidth = 4; c.stroke();
+        c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillStyle = "#ffb845"; c.font = "bold 32px Georgia";
+        c.fillText(`⏳ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`, 100, 36);
+        ud.tex.needsUpdate = true;
+      }
+      node.regrowSprite.position.y = 1.5 + Math.sin(G.time * 1.6 + node.idx) * 0.05;
     }
 
     function addPlots(arr, positions, special) {
@@ -3214,7 +3266,7 @@ export default function DragonGardenQuest() {
         if (node.special && !SEEDS[key].glow) { toast("These sacred plots are reserved for Glowberries ✨", "warn"); return; }
         if (node.special) { G.startQuiz(node.idx); return; }
         G.inv.seeds[key]--;
-        const p = node.data(); p.seed = key; p.plantedAt = G.time;
+        const p = node.data(); p.seed = key; p.plantedAt = G.time; p.regrowAt = null;
         refreshPlotVisual(node);
         toast(`Planted ${SEEDS[key].name}!`);
         SFX.plant();
@@ -3225,12 +3277,12 @@ export default function DragonGardenQuest() {
         const p = node.data();
         const s = SEEDS[p.seed];
         G.inv.fruit[p.seed] += 3;
-        toast(`Harvested 3× ${s.name}!`, "gold");
+        toast(`Harvested 3× ${s.name}! 🌱 Regrowing…`, "gold");
         SFX.harvest();
         spawnBurst(node.x, node.z, s.color, 6, { glow: s.glow, vy: 2.4, y0: 0.6 });
         G.playerHopT = 0.32;
         if (G.onIntroEvent) G.onIntroEvent("harvest");
-        p.seed = null;
+        p.regrowAt = G.time + REGROW_SECS;
         refreshPlotVisual(node);
       } else if (type === "dragon") {
         const order = ["strawberry", "blueberry", "sunfruit", "glowberry"];
@@ -3690,7 +3742,7 @@ export default function DragonGardenQuest() {
 
       for (const node of plotNodes) {
         const p = node.data();
-        if (!p.seed) continue;
+        if (!p.seed) { if (node.regrowSprite) updateRegrowBadge(node, p, -1); continue; }
         if (node.special) {
           const age = G.time - p.plantedAt;
           const st = age >= 300 ? 3 : age >= 150 ? 2 : age >= 60 ? 1 : 0;
@@ -3704,9 +3756,11 @@ export default function DragonGardenQuest() {
         } else {
           const elapsed = G.time - p.plantedAt;
           const total = SEEDS[p.seed].grow;
-          const stage = elapsed >= total ? 2 : elapsed >= total * 0.5 ? 1 : 0;
+          const stage = p.regrowAt != null ? (G.time >= p.regrowAt ? 2 : 1)
+            : elapsed >= total ? 2 : elapsed >= total * 0.5 ? 1 : 0;
           if (stage !== node.stage) refreshPlotVisual(node);
           if (node.plant && stage === 2) node.plant.rotation.y = Math.sin(G.time * 1.5 + node.idx) * 0.08;
+          updateRegrowBadge(node, p, stage);
         }
       }
 
@@ -3913,6 +3967,10 @@ export default function DragonGardenQuest() {
             currentPrompt = { type: "harvest", node };
             promptText = `Harvest ${SEEDS[p.seed].name}!`;
             ringTarget = node;
+          } else if (p.regrowAt != null) {
+            const left = Math.max(0, Math.ceil(p.regrowAt - G.time));
+            promptText = `${SEEDS[p.seed].name} regrowing… next fruit in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+            ringTarget = null;
           } else {
             promptText = `${SEEDS[p.seed].name} growing… ${Math.max(0, Math.ceil(SEEDS[p.seed].grow - (G.time - p.plantedAt)))}s`;
             ringTarget = null;
