@@ -2,10 +2,17 @@
 //  ChildPairingDisplaySheet.swift
 //  YGTeeV
 //
-//  Parent-side display surface after `create-child-account` succeeds.
-//  Renders the one-time pairing QR + 8-digit numeric fallback, with a
-//  live countdown to `expires_at`. The kid scans (or types) on their
-//  fresh device to redeem.
+//  Parent-side display surface for the one-time pairing QR + 8-digit
+//  numeric fallback. Presented:
+//    1. Immediately after the parent submits the create-child form
+//       (loading state shows a shimmer placeholder until the network
+//       returns).
+//    2. From "View QR" on an already-created child's row in My Family
+//       (re-uses the existing token via the
+//       `get_or_create_child_pairing_token` RPC, or mints a fresh one).
+//
+//  The sheet itself doesn't run any network calls — callers pass in the
+//  result once it lands, or leave it nil while the request is in flight.
 //
 
 import SwiftUI
@@ -13,27 +20,45 @@ import CoreImage.CIFilterBuiltins
 import Combine
 
 struct ChildPairingDisplaySheet: View {
-    let result: CreateChildResult
+    /// `nil` = waiting on the network. Once populated, the QR + numeric
+    /// code + countdown fade in and the shimmer placeholder retires.
+    let result: CreateChildResult?
+    /// Header copy while we're still loading. Falls back to a generic
+    /// "Setting up account…" if the host didn't have a name to show yet.
+    let pendingDisplayName: String?
+
     @Environment(\.dismiss) private var dismiss
 
     @State private var now = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     /// Encoded payload the kid's scanner extracts back into the token.
-    private var qrPayload: String {
-        "ygteev://child-signin?token=\(result.pairingToken)"
+    private var qrPayload: String? {
+        result.map { "ygteev://child-signin?token=\($0.pairingToken)" }
     }
 
     private var remainingSeconds: Int {
-        max(0, Int(result.expiresAt.timeIntervalSince(now)))
+        guard let result else { return 0 }
+        return max(0, Int(result.expiresAt.timeIntervalSince(now)))
     }
 
-    private var isExpired: Bool { remainingSeconds == 0 }
+    private var isExpired: Bool { result != nil && remainingSeconds == 0 }
+    private var isLoading: Bool { result == nil }
+
+    private var headerText: String {
+        if let result {
+            return "Sign in \(result.displayName) on their device"
+        }
+        if let name = pendingDisplayName, !name.isEmpty {
+            return "Setting up \(name)…"
+        }
+        return "Setting up account…"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Sign in \(result.displayName) on their device")
+                Text(headerText)
                     .font(.system(size: 17, weight: .black, design: .rounded))
                     .foregroundStyle(YGColors.ink)
                     .lineLimit(2)
@@ -53,10 +78,14 @@ struct ChildPairingDisplaySheet: View {
 
             ScrollView {
                 VStack(spacing: 20) {
-                    qrCard
-                    orDivider
-                    codeCard
-                    countdown
+                    if isLoading {
+                        loadingPlaceholder
+                    } else {
+                        qrCard
+                        orDivider
+                        codeCard
+                        countdown
+                    }
                     instructions
                 }
                 .padding(.horizontal, 18)
@@ -82,10 +111,31 @@ struct ChildPairingDisplaySheet: View {
         .onReceive(timer) { now = $0 }
     }
 
+    // MARK: - Loading
+
+    /// Shimmer placeholders sized to match the real QR + code cards so
+    /// the layout doesn't reflow when the result lands.
+    private var loadingPlaceholder: some View {
+        VStack(spacing: 20) {
+            shimmerRect(width: 252, height: 252, cornerRadius: 22)
+            orDivider
+            shimmerRect(width: nil, height: 88, cornerRadius: 18)
+            Text("This usually takes about 2 seconds.")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(YGColors.ink.opacity(0.5))
+        }
+    }
+
+    private func shimmerRect(width: CGFloat?, height: CGFloat, cornerRadius: CGFloat) -> some View {
+        ShimmerBlock(cornerRadius: cornerRadius)
+            .frame(maxWidth: width ?? .infinity)
+            .frame(height: height)
+    }
+
     // MARK: - Sections
 
     private var qrCard: some View {
-        Image(uiImage: Self.generateQR(payload: qrPayload))
+        Image(uiImage: Self.generateQR(payload: qrPayload ?? ""))
             .interpolation(.none)
             .resizable()
             .scaledToFit()
@@ -118,7 +168,7 @@ struct ChildPairingDisplaySheet: View {
             Text("Enter this code on their device")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(YGColors.ink.opacity(0.6))
-            Text(Self.spacedCode(result.numericCode))
+            Text(Self.spacedCode(result?.numericCode ?? ""))
                 .font(.system(size: 36, weight: .black, design: .rounded))
                 .tracking(3)
                 .monospacedDigit()
@@ -192,5 +242,40 @@ struct ChildPairingDisplaySheet: View {
             return UIImage()
         }
         return UIImage(cgImage: cg)
+    }
+}
+
+// MARK: - ShimmerBlock
+//
+// Small subtle shimmer used as a placeholder while the pairing network
+// call is in flight. Same pattern as iOS Mail's loading rows — a
+// gradient sweep across a rounded fill.
+
+private struct ShimmerBlock: View {
+    let cornerRadius: CGFloat
+    @State private var phase: CGFloat = -1
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(YGColors.ink.opacity(0.08))
+                .overlay {
+                    LinearGradient(
+                        colors: [.clear, .white.opacity(0.55), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: width * 0.5)
+                    .offset(x: phase * width)
+                    .blendMode(.plusLighter)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
+                phase = 1.5
+            }
+        }
     }
 }
