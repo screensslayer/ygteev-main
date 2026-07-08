@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
+import { SNORE_B64, EAT_B64 } from "./dragon-sfx.js";
 
 /* ============================================================
    DRAGON GARDEN QUEST — v3 "Painted Meadow"
@@ -367,7 +368,7 @@ export default function DragonGardenQuest() {
     sizeRT();
 
     // ================= AUDIO: generative ambient score + synthesized SFX =================
-    let AC = null, audioOut = null, musicBus = null, sfxBus = null, fountainGain = null;
+    let AC = null, audioOut = null, musicBus = null, sfxBus = null, fountainGain = null, snoreGain = null, eatBuf = null;
     let voiceBufs = [], voiceSrc = null, voiceGain = null, voiceDuckOrig = null;
     let musicTimer = null, padTimer = null, padIdx = 0;
     const AUDIO = { muted: false };
@@ -425,6 +426,15 @@ export default function DragonGardenQuest() {
       VOICES.forEach((b64, vi) => {
         AC.decodeAudioData(b64ToBuf(b64)).then((buf) => { voiceBufs[vi] = buf; }).catch(() => {});
       });
+      // dragon ambience: snore loops behind a proximity gain (like the
+      // fountain); the eating clip is decoded once and played on steals
+      snoreGain = AC.createGain(); snoreGain.gain.value = 0;
+      snoreGain.connect(audioOut);
+      AC.decodeAudioData(b64ToBuf(SNORE_B64)).then((buf) => {
+        const src = AC.createBufferSource(); src.buffer = buf; src.loop = true;
+        src.connect(snoreGain); src.start();
+      }).catch(() => {});
+      AC.decodeAudioData(b64ToBuf(EAT_B64)).then((buf) => { eatBuf = buf; }).catch(() => {});
       startMusic();
     }
     function tone(freq, t, dur, vol, type = "triangle", slideTo = null, lp = null) {
@@ -3669,6 +3679,18 @@ export default function DragonGardenQuest() {
     }
 
     // ================= DRAGON =================
+    // Chomping one-shot at the dragon's position, volume by distance —
+    // audible only if you're close enough on the home map to witness it.
+    function playEatSound() {
+      if (!AC || !eatBuf || !dragon || G.map !== "HOME") return;
+      const d = Math.hypot(playerPos.x - dragon.position.x, playerPos.z - dragon.position.z);
+      const vol = Math.max(0, 1 - d / 22) * 0.9;
+      if (vol < 0.02) return;
+      const src = AC.createBufferSource(); src.buffer = eatBuf;
+      const g = AC.createGain(); g.gain.value = vol;
+      src.connect(g); g.connect(audioOut);
+      src.start();
+    }
     function triggerRampage() {
       const planted = G.homePlots.map((p, i) => (p.seed ? i : -1)).filter((i) => i >= 0);
       G.hunger = 55;
@@ -3759,7 +3781,7 @@ export default function DragonGardenQuest() {
               refreshPlotVisual(targetNode);
               toast(`🐉 Ember gobbled your ${lost} plant, roots and all!`, "danger");
               G.shakeT = 0.6;
-              SFX.feed();
+              playEatSound();
               spawnBurst(targetNode.x, targetNode.z, 0x6b4a2f, 8, { vy: 2, spread: 0.7 });
             }
             G.dragonState = "rampage_back";
@@ -4020,6 +4042,15 @@ export default function DragonGardenQuest() {
       if (G.hungerAlertT > 0) G.hungerAlertT -= dt;
       if (G.hunger <= 0 && G.dragonState === "idle") triggerRampage();
       updateDragon(dt);
+      // snoring fades in as you approach a sleeping Ember (like the fountain)
+      if (snoreGain) {
+        let st = 0;
+        if (dragon && G.map === "HOME" && G.dragonState === "idle") {
+          const sd = Math.hypot(playerPos.x - dragon.position.x, playerPos.z - dragon.position.z);
+          st = G.sleepBlend * Math.max(0, 1 - sd / 13) * 0.55;
+        }
+        snoreGain.gain.value += (st - snoreGain.gain.value) * Math.min(1, dt * 4);
+      }
 
       windT.value = G.time;
       for (const swn of swayers) {
