@@ -4310,16 +4310,6 @@ export default function DragonGardenQuest() {
     return (
       <div style={{ ...S.wrap, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, textAlign: "center", padding: 20, background: "linear-gradient(180deg, #7ec6ef 0%, #b8e2f8 45%, #eef9ff 100%)" }}>
         <img src={LOGO} alt="YGTeeV Backyard" style={{ width: "min(80vw, 460px)", filter: "drop-shadow(0 10px 24px rgba(23,73,126,0.35))" }} />
-        <div style={{ color: "#17497e", fontSize: 15, fontWeight: 700, letterSpacing: 0.4, marginTop: -6 }}>
-          Grow your garden · Feed Ember the dragon · Race the Garden League
-        </div>
-        <div style={{ ...S.panel, padding: "12px 18px", fontSize: 12.5, maxWidth: 440, lineHeight: 1.6 }}>
-          Keep <b style={S.goldText}>Ember</b> the hangry cave dragon fed — or he'll steal a plant!
-          Sell fruit in town, and grow sacred <b style={{ color: "#2fae8f" }}>Glowberry trees</b> at the community garden.
-          <div style={{ fontSize: 11.5, opacity: 0.75, fontStyle: "italic", marginTop: 6 }}>
-            🎮 WASD / arrows · E to act · Q switches seeds &nbsp;·&nbsp; 📱 drag to walk, tap the big button
-          </div>
-        </div>
         <button onClick={() => setStarted(true)} style={{
           ...S.btn(goldBtnBg, "#5a3305"), marginTop: 4, fontSize: 22, padding: "13px 48px",
           borderRadius: 999, letterSpacing: 1.5, fontWeight: 800,
