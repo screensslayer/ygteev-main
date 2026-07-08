@@ -1605,6 +1605,67 @@ export default function DragonGardenQuest() {
       } catch (e) {}
     }
 
+    // ---- full game-state persistence: inventory, gold, home plots, dragon ----
+    // Plot timers are saved as wall-clock-anchored "seconds left" so plants
+    // keep growing (and regrowing) while the game is closed. Saves are
+    // change-driven (checked every 4s) plus a flush when the page hides.
+    let stateLoaded = false, lastStateSig = null, lastStateCheck = 0;
+    function serializeState() {
+      return {
+        v: 1,
+        savedAt: Date.now(),
+        gold: G.gold,
+        hunger: Math.round(G.hunger),
+        selectedSeed: G.selectedSeed,
+        inv: G.inv,
+        homePlots: G.homePlots.map((p) => p.seed ? {
+          seed: p.seed,
+          regrowLeft: p.regrowAt != null ? Math.max(0, Math.round(p.regrowAt - G.time)) : null,
+          growLeft: p.regrowAt == null ? Math.max(0, Math.round(p.plantedAt + (SEEDS[p.seed]?.grow || 20) - G.time)) : null,
+        } : null),
+      };
+    }
+    // structural signature — live countdowns deliberately excluded so idle
+    // ticking doesn't spam writes; the payload still carries exact timers
+    function stateSig() {
+      return JSON.stringify([
+        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 25),
+        G.homePlots.map((p) => p.seed ? p.seed + (p.regrowAt != null ? "r" : "g") : "-"),
+      ]);
+    }
+    function saveState() {
+      try { if (window.storage) window.storage.set("garden-state", JSON.stringify(serializeState())); } catch (e) {}
+    }
+    function applyState(d) {
+      if (!d || d.v !== 1) return;
+      const off = Math.max(0, (Date.now() - (d.savedAt || Date.now())) / 1000); // seconds spent offline
+      if (typeof d.gold === "number") G.gold = d.gold;
+      if (d.inv) { Object.assign(G.inv.seeds, d.inv.seeds || {}); Object.assign(G.inv.fruit, d.inv.fruit || {}); }
+      if (d.selectedSeed && SEEDS[d.selectedSeed]) G.selectedSeed = d.selectedSeed;
+      if (typeof d.hunger === "number") G.hunger = Math.min(100, Math.max(30, d.hunger)); // never rampage at the door
+      if (Array.isArray(d.homePlots)) {
+        d.homePlots.forEach((sp, i) => {
+          if (i >= G.homePlots.length) return;
+          const p = G.homePlots[i];
+          if (!sp || !SEEDS[sp.seed]) { p.seed = null; p.regrowAt = null; return; }
+          p.seed = sp.seed;
+          const grow = SEEDS[sp.seed].grow;
+          if (sp.regrowLeft != null) {
+            p.plantedAt = G.time - grow; // fully-grown baseline
+            p.regrowAt = G.time + Math.max(0, sp.regrowLeft - off);
+          } else {
+            const left = Math.max(0, (sp.growLeft || 0) - off);
+            p.plantedAt = G.time - (grow - left);
+            p.regrowAt = null;
+          }
+        });
+      }
+    }
+    const flushState = () => { if (stateLoaded) saveState(); };
+    const onVisFlush = () => { if (document.visibilityState === "hidden") flushState(); };
+    document.addEventListener("visibilitychange", onVisFlush);
+    window.addEventListener("pagehide", flushState);
+
     // ---- YGTeeV backend: XP spend sync (optimistic local, server reconciles) ----
     function syncXpSpend(amount, itemKey) {
       const api = window.YGTEEV_API;
@@ -1800,14 +1861,17 @@ export default function DragonGardenQuest() {
     }
     (async () => {
       try {
-        if (!window.storage) return;
-        const r = await window.storage.get("garden-build");
+        if (!window.storage) { stateLoaded = true; return; }
+        const r = await window.storage.get("garden-build").catch(() => null);
         if (r && r.value) {
           Object.assign(G.build, JSON.parse(r.value));
-          syncHomePlotCount();
-          if (G.map === "HOME") loadMap("HOME");
+          syncHomePlotCount(); // extra plots exist before state restores into them
         }
+        const s = await window.storage.get("garden-state").catch(() => null);
+        if (s && s.value) applyState(JSON.parse(s.value));
+        if ((r && r.value) || (s && s.value)) { if (G.map === "HOME") loadMap("HOME"); }
       } catch (e) { /* fresh save */ }
+      stateLoaded = true;
     })();
     G.startCounter = (kind) => {
       if (G.counterActive) return;
@@ -4183,6 +4247,11 @@ export default function DragonGardenQuest() {
         saveWeek();
       }
       if (G.saveT > 0) { G.saveT -= dt; if (G.saveT <= 0) saveWeek(); }
+      if (stateLoaded && G.time - lastStateCheck > 4) {
+        lastStateCheck = G.time;
+        const sig = stateSig();
+        if (sig !== lastStateSig) { lastStateSig = sig; saveState(); }
+      }
 
       hudTick += dt;
       if (hudTick > 0.15) { hudTick = 0; syncHud(); }
@@ -4217,6 +4286,9 @@ export default function DragonGardenQuest() {
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("pointerup", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
+      document.removeEventListener("visibilitychange", onVisFlush);
+      window.removeEventListener("pagehide", flushState);
+      flushState();
       if (window.__BY_KEEPER) window.__BY_KEEPER.pause();
       clearTimeout(musicTimer); clearTimeout(padTimer);
       if (AC) { try { AC.close(); } catch (e) {} }
