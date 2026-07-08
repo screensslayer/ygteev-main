@@ -17,3 +17,7 @@ supabase/.branches/
 # Python
 __pycache__/
 *.pyc
+
+# Node / web games
+node_modules/
+games/*/dist/
