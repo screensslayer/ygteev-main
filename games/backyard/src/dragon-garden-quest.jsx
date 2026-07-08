@@ -1404,8 +1404,11 @@ export default function DragonGardenQuest() {
       snout.position.set(0, 0.4, 0.78); snout.scale.set(1, 0.7, 1);
       const eyeGeo = new THREE.SphereGeometry(0.1, 8, 8);
       const eyeMat = new THREE.MeshStandardMaterial({ color: SRGB(0xfff06a), emissive: SRGB(0xffd83a), emissiveIntensity: 0.9 });
-      const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-0.26, 0.65, 0.65);
-      const eyeR = eyeL.clone(); eyeR.position.x = 0.26;
+      // Eyes sit proud of the faceted head sphere — at the old offsets they
+      // were inside the mathematical radius and low-poly facets swallowed
+      // them when the head turned.
+      const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-0.32, 0.69, 0.76);
+      const eyeR = eyeL.clone(); eyeR.position.x = 0.32;
       const hornGeo = new THREE.ConeGeometry(0.12, 0.42, 5);
       const hornMat = flat(0xffe9b0);
       const hornL = new THREE.Mesh(hornGeo, hornMat); hornL.position.set(-0.3, 1.07, 0.05); hornL.rotation.x = -0.25;
@@ -1625,7 +1628,10 @@ export default function DragonGardenQuest() {
     };
     G.reqTransition = (label) => reqTransitionRef.current(label);
     G.reqGardenPick = (opts, ex) => reqGardenPickRef.current(opts, ex);
-    if (import.meta.env && import.meta.env.DEV) window.__BY_G = G; // dev-only test hook
+    if (import.meta.env && import.meta.env.DEV) {
+      window.__BY_G = G; // dev-only test hook
+      G.__dev = () => ({ px: playerPos.x, pz: playerPos.z, prompt: currentPrompt ? currentPrompt.type : null });
+    }
     G.reqCounter = (kind) => reqCounterRef.current(kind);
     G.reqItemGet = (gift) => reqItemGetRef.current(gift);
     G.reqBridge = () => reqBridgeRef.current();
@@ -3121,6 +3127,41 @@ export default function DragonGardenQuest() {
     mount.addEventListener("touchmove", onTouchMove, { passive: true });
     mount.addEventListener("touchend", onTouchEnd, { passive: true });
 
+    // Tap-to-act: a short tap on the 3D view (not a joystick drag, not a UI
+    // button) that lands on/near the highlighted target triggers the same
+    // action as the big button. doAction() already no-ops when nothing is
+    // in range.
+    const tap = { t: 0, x: 0, y: 0, moved: true };
+    const onTapDown = (e) => {
+      tap.t = performance.now(); tap.x = e.clientX; tap.y = e.clientY;
+      tap.moved = false;
+    };
+    const onTapMove = (e) => {
+      if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 12) tap.moved = true;
+    };
+    const onTapUp = (e) => {
+      if (tap.moved || performance.now() - tap.t > 350) return;
+      if (!(e.target && e.target.tagName === "CANVAS")) return; // UI buttons handle themselves
+      if (!currentPrompt || G.quizActive) return;
+      // Unproject the tap to the ground plane and require it to land near
+      // the prompt's target so taps on empty grass do nothing.
+      const ndc = new THREE.Vector2((e.clientX / W()) * 2 - 1, -(e.clientY / H()) * 2 + 1);
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(ndc, camera);
+      if (Math.abs(ray.ray.direction.y) < 1e-4) return;
+      const tHit = -ray.ray.origin.y / ray.ray.direction.y;
+      if (tHit <= 0) return;
+      const px = ray.ray.origin.x + ray.ray.direction.x * tHit;
+      const pz = ray.ray.origin.z + ray.ray.direction.z * tHit;
+      const node = currentPrompt.node;
+      const tx = node && typeof node.x === "number" ? node.x : playerPos.x;
+      const tz = node && typeof node.z === "number" ? node.z : playerPos.z;
+      if (Math.hypot(px - tx, pz - tz) < 2.6) doAction();
+    };
+    mount.addEventListener("pointerdown", onTapDown);
+    mount.addEventListener("pointermove", onTapMove);
+    mount.addEventListener("pointerup", onTapUp);
+
     // ================= ACTIONS =================
     let promptText = "";
     let currentPrompt = null;
@@ -3921,7 +3962,10 @@ export default function DragonGardenQuest() {
         camTarget = new THREE.Vector3(playerPos.x + 0.4, groundY + 1.55, playerPos.z + 2.9);
         lookX = playerPos.x; lookZ = playerPos.z; lookY = groundY + 0.95;
       } else {
-        camTarget = new THREE.Vector3(playerPos.x, 8.2 + groundY * 0.55, playerPos.z + 9.4);
+        // Portrait (mobile) pulls the camera back ~22% — the default framing
+        // reads too tight on phones.
+        const zoomK = H() > W() ? 1.22 : 1.0;
+        camTarget = new THREE.Vector3(playerPos.x, (8.2 + groundY * 0.55) * zoomK, playerPos.z + 9.4 * zoomK);
         lookX = playerPos.x; lookZ = playerPos.z; lookY = groundY + 1.2;
       }
       camera.position.lerp(camTarget, G.quizActive || G.styleActive || G.counterActive || G.introFocus ? 0.06 : 0.08);
@@ -4073,6 +4117,9 @@ export default function DragonGardenQuest() {
       mount.removeEventListener("touchstart", onTouchStart);
       mount.removeEventListener("touchmove", onTouchMove);
       mount.removeEventListener("touchend", onTouchEnd);
+      mount.removeEventListener("pointerdown", onTapDown);
+      mount.removeEventListener("pointermove", onTapMove);
+      mount.removeEventListener("pointerup", onTapUp);
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
       clearTimeout(musicTimer); clearTimeout(padTimer);
