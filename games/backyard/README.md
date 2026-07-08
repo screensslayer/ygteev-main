@@ -82,6 +82,7 @@ For a staging build, swap both values to the ygteev-staging project.
 | Eli's quiz | 3 questions from Bible-plan content the player has completed ("second exposure"), fallback to the basic pool. Served without answers; graded server-side one answer at a time. Early pass/fail auto-submits filler answers so the server attempt always completes |
 | Rare planting | Requires a passed, unconsumed, <15-min-old quiz attempt (`by_plant_rare`). Seed refunds if the plot was taken |
 | Community plots | Shared per youth group — loaded via `by_get_plots`, realtime-synced; groupmates' plants appear live |
+| Live groupmates | Community garden only: presence + ~8 Hz position broadcasts on the private channel `by:garden:{group_id}` (membership-gated RLS on `realtime.messages`); groupmates appear with their real outfit + name tag and animate as they walk |
 | Garden League | Real weekly standings via `by_get_league` (60s poll). Berries are computed **server-side from plant timestamps** — clients never report berry counts (cheat-proof by construction) |
 | Multi-group | Users in 2+ youth groups pick their garden at the bridge (parchment picker); single-group users auto-assigned. Map label, bridge label, and chapel sign all show the real group name |
 

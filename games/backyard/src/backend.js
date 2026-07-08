@@ -61,6 +61,29 @@ export function createApi() {
       return data ?? []; // [{ group_id, group_name, berries, fund, rank }]
     },
 
+    // Live players: presence + position broadcasts on the private per-group
+    // channel by:garden:{gid}. RLS policies on realtime.messages gate both
+    // reading and sending to members of that youth group.
+    joinGarden(groupId, { me, onSync, onPos, onAct }) {
+      const gid = groupId || window.YGTEEV?.profile?.groupId;
+      if (!gid || !me?.id) return null;
+      supabase.realtime.setAuth(); // private channel needs the user JWT on the socket
+      const ch = supabase.channel("by:garden:" + gid, {
+        config: { private: true, broadcast: { self: false }, presence: { key: me.id } },
+      });
+      ch.on("presence", { event: "sync" }, () => { if (onSync) onSync(ch.presenceState()); });
+      ch.on("broadcast", { event: "pos" }, ({ payload }) => { if (onPos) onPos(payload); });
+      ch.on("broadcast", { event: "act" }, ({ payload }) => { if (onAct) onAct(payload); });
+      ch.subscribe((status) => {
+        if (status === "SUBSCRIBED") ch.track(me);
+      });
+      return {
+        sendPos: (p) => ch.send({ type: "broadcast", event: "pos", payload: p }),
+        sendAct: (p) => ch.send({ type: "broadcast", event: "act", payload: p }),
+        leave: () => supabase.removeChannel(ch),
+      };
+    },
+
     // Realtime: fire onChange whenever the given group's plots change.
     // Returns the channel so the caller can unsubscribe when switching gardens.
     subscribePlots(groupId, onChange) {

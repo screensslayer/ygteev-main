@@ -1729,7 +1729,7 @@ export default function DragonGardenQuest() {
     G.reqGardenPick = (opts, ex) => reqGardenPickRef.current(opts, ex);
     if (import.meta.env && import.meta.env.DEV) {
       window.__BY_G = G; // dev-only test hook
-      G.__dev = () => ({ px: playerPos.x, pz: playerPos.z, prompt: currentPrompt ? currentPrompt.type : null, ac: AC ? AC.state : null, keeper: window.__BY_KEEPER ? !window.__BY_KEEPER.paused : false });
+      G.__dev = () => ({ px: playerPos.x, pz: playerPos.z, prompt: currentPrompt ? currentPrompt.type : null, ac: AC ? AC.state : null, keeper: window.__BY_KEEPER ? !window.__BY_KEEPER.paused : false, live: liveCh ? Object.keys(livePlayers).length : null });
     }
     G.reqCounter = (kind) => reqCounterRef.current(kind);
     G.reqItemGet = (gift) => reqItemGetRef.current(gift);
@@ -1812,18 +1812,19 @@ export default function DragonGardenQuest() {
 
     const player = makePlayer();
     scene.add(player);
-    function applyOutfit() {
-      const o = G.outfit, u = player.userData;
-      u.skinMat.color.copy(asLinear(o.skin));
-      u.hairMat.color.copy(asLinear(o.hair));
-      u.shirtMat.color.copy(asLinear(o.shirt));
-      u.collarMat.color.copy(asLinear(o.shirt)).offsetHSL(0, 0, -0.08);
-      u.hoodMat.color.copy(asLinear(o.shirt)).offsetHSL(0, 0.02, -0.06);
-      u.bootMat.color.copy(asLinear(o.boots));
+    function applyOutfitTo(mesh, o) {
+      const u = mesh.userData;
+      u.skinMat.color.copy(asLinear(o.skin ?? 0xf2c49b));
+      u.hairMat.color.copy(asLinear(o.hair ?? 0x5a3a22));
+      u.shirtMat.color.copy(asLinear(o.shirt ?? 0x3a72c9));
+      u.collarMat.color.copy(asLinear(o.shirt ?? 0x3a72c9)).offsetHSL(0, 0, -0.08);
+      u.hoodMat.color.copy(asLinear(o.shirt ?? 0x3a72c9)).offsetHSL(0, 0.02, -0.06);
+      u.bootMat.color.copy(asLinear(o.boots ?? 0x3f2f20));
       Object.keys(u.hatVariants).forEach((k) => { u.hatVariants[k].visible = o.hat === k; });
       u.hairMesh.visible = o.hat === "none" || o.hat === "crown";
       Object.keys(u.acc).forEach((k) => { u.acc[k].visible = o.accessory === k; });
     }
+    function applyOutfit() { applyOutfitTo(player, G.outfit); }
     applyOutfit();
     function saveOutfit() {
       try { if (window.storage) window.storage.set("garden-outfit", JSON.stringify(G.outfit)); } catch (e) {}
@@ -1837,6 +1838,100 @@ export default function DragonGardenQuest() {
     })();
     G.setOutfit = (patch) => { Object.assign(G.outfit, patch); applyOutfit(); saveOutfit(); SFX.click(); };
     G.styleActive = false;
+
+    // ---- Live groupmates in the community garden (presence + broadcast) ----
+    // Joined only while on the CHURCH map; every member of the active garden
+    // sees each other walk around in realtime, wearing their real outfits.
+    let liveCh = null, livePlayers = {}, liveSendGate = 0;
+    const lastSent = { x: 0, z: 0, a: 0, m: false, t: -9 };
+    const MY_LIVE_ID = window.YGTEEV?.profile?.id || null;
+    function makeNameTag(name) {
+      const cv = document.createElement("canvas");
+      cv.width = 256; cv.height = 64;
+      const c = cv.getContext("2d");
+      c.textAlign = "center"; c.textBaseline = "middle";
+      c.font = "bold 30px 'Trebuchet MS', sans-serif";
+      const tw = Math.min(240, c.measureText(name).width + 36);
+      const x0 = 128 - tw / 2, r = 17;
+      c.beginPath();
+      c.moveTo(x0 + r, 6);
+      c.arcTo(x0 + tw, 6, x0 + tw, 58, r);
+      c.arcTo(x0 + tw, 58, x0, 58, r);
+      c.arcTo(x0, 58, x0, 6, r);
+      c.arcTo(x0, 6, x0 + tw, 6, r);
+      c.closePath();
+      c.fillStyle = "rgba(18,34,54,0.62)"; c.fill();
+      c.fillStyle = "#eaf6ff";
+      c.fillText(name, 128, 33, 224);
+      const tex = new THREE.CanvasTexture(cv);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+      sp.scale.set(1.7, 0.42, 1);
+      sp.position.y = 1.82;
+      return sp;
+    }
+    function ensureLivePlayer(id, meta) {
+      let lp = livePlayers[id];
+      if (!lp) {
+        const mesh = makePlayer();
+        applyOutfitTo(mesh, (meta && meta.outfit) || {});
+        mesh.position.set(0, -60, 0); // parked underground until the first position arrives
+        mesh.add(makeNameTag((meta && meta.name) || "Gardener"));
+        scene.add(mesh);
+        lp = livePlayers[id] = { mesh, tgt: null, lastMsg: G.time, hopT: 0, dressed: !!(meta && meta.outfit) };
+      } else if (meta && meta.outfit && !lp.dressed) {
+        applyOutfitTo(lp.mesh, meta.outfit);
+        lp.dressed = true;
+      }
+      return lp;
+    }
+    function removeLivePlayer(id) {
+      const lp = livePlayers[id];
+      if (!lp) return;
+      scene.remove(lp.mesh);
+      delete livePlayers[id];
+    }
+    function joinLiveGarden() {
+      leaveLiveGarden();
+      const api = window.YGTEEV_API;
+      if (!api || !api.joinGarden || !MY_LIVE_ID) return;
+      const gid = G.activeGarden?.id || window.YGTEEV?.profile?.groupId;
+      if (!gid) return;
+      liveCh = api.joinGarden(gid, {
+        me: { id: MY_LIVE_ID, name: window.YGTEEV?.profile?.name || "Gardener", outfit: { ...G.outfit } },
+        onSync: (state) => {
+          const seen = {};
+          for (const key in state) {
+            if (key === MY_LIVE_ID) continue;
+            seen[key] = true;
+            ensureLivePlayer(key, state[key][0]);
+          }
+          for (const id in livePlayers) if (!seen[id]) removeLivePlayer(id);
+        },
+        onPos: (p) => {
+          if (!p || p.i === MY_LIVE_ID) return;
+          const lp = ensureLivePlayer(p.i, null);
+          lp.tgt = p;
+          lp.lastMsg = G.time;
+        },
+        onAct: (p) => {
+          if (!p || p.i === MY_LIVE_ID) return;
+          const lp = livePlayers[p.i];
+          if (lp) {
+            lp.hopT = 0.32;
+            spawnBurst(lp.mesh.position.x, lp.mesh.position.z, 0x7dfcd0, 6, { glow: true, vy: 2, y0: 0.5 });
+          }
+        },
+      });
+    }
+    function leaveLiveGarden() {
+      if (liveCh) { try { liveCh.leave(); } catch (e) {} liveCh = null; }
+      for (const id in livePlayers) scene.remove(livePlayers[id].mesh);
+      livePlayers = {};
+      lastSent.t = -9;
+    }
+    if (import.meta.env && import.meta.env.DEV) {
+      window.__BY_LIVE = () => ({ ch: !!liveCh, players: Object.keys(livePlayers).map((id) => ({ id, pos: livePlayers[id].mesh.position.toArray(), tgt: livePlayers[id].tgt })) });
+    }
 
     // floating quest marker for Eli's tasks
     const questMarker = new THREE.Group();
@@ -3238,6 +3333,7 @@ export default function DragonGardenQuest() {
       else if (name === "TOWN") buildTown();
       else if (name === "CHURCH") buildChurch();
       else buildShopInterior(name);
+      if (window.YGTEEV_API) { if (name === "CHURCH") joinLiveGarden(); else leaveLiveGarden(); }
       if (spawn) playerPos.set(spawn[0], 0, spawn[1]);
       camera.position.set(playerPos.x, 8.5, playerPos.z + 9.6);
       G.exitLatch = true; // don't re-trigger a doorway we just spawned beside
@@ -3462,6 +3558,7 @@ export default function DragonGardenQuest() {
             localPlant(G.time + secsUntilMature - 300);
             toast("🌱 'Well studied, child!' Eli lets you plant the Glowberry.");
             SFX.pass();
+            try { if (liveCh) liveCh.sendAct({ i: MY_LIVE_ID }); } catch (e) {}
           })
           .catch(() => {
             G.inv.seeds[seedKey]++; // server refused (plot taken / attempt expired) — refund
@@ -3759,6 +3856,50 @@ export default function DragonGardenQuest() {
       }
       player.scale.set(1 + hop * 0.12, 1 - hop * 0.2, 1 + hop * 0.12);
       player.position.y = groundY + hop * 0.3 + (moving ? Math.abs(Math.sin(G.time * 11)) * 0.05 : 0);
+
+      // ---- live groupmates: broadcast my position, animate theirs ----
+      if (liveCh && G.map === "CHURCH") {
+        liveSendGate -= dt;
+        if (liveSendGate <= 0) {
+          const dxy = Math.abs(playerPos.x - lastSent.x) + Math.abs(playerPos.z - lastSent.z);
+          let dAng = playerAngle - lastSent.a;
+          dAng = Math.atan2(Math.sin(dAng), Math.cos(dAng));
+          if (dxy > 0.06 || Math.abs(dAng) > 0.1 || moving !== lastSent.m || G.time - lastSent.t > 2.5) {
+            lastSent.x = playerPos.x; lastSent.z = playerPos.z; lastSent.a = playerAngle; lastSent.m = moving; lastSent.t = G.time;
+            liveSendGate = 0.12; // ~8 Hz max while actually moving
+            try { liveCh.sendPos({ i: MY_LIVE_ID, x: +playerPos.x.toFixed(2), z: +playerPos.z.toFixed(2), a: +playerAngle.toFixed(2), m: moving }); } catch (e) {}
+          } else liveSendGate = 0.05;
+        }
+      }
+      for (const id in livePlayers) {
+        const lp = livePlayers[id];
+        if (!lp.tgt) continue;
+        if (G.time - lp.lastMsg > 30) { removeLivePlayer(id); continue; }
+        const m = lp.mesh, ru = m.userData;
+        if (m.position.y < -30) m.position.set(lp.tgt.x, 0, lp.tgt.z); // first packet: snap into place
+        m.position.x += (lp.tgt.x - m.position.x) * Math.min(1, dt * 9);
+        m.position.z += (lp.tgt.z - m.position.z) * Math.min(1, dt * 9);
+        let rda = lp.tgt.a - m.rotation.y;
+        rda = Math.atan2(Math.sin(rda), Math.cos(rda));
+        m.rotation.y += rda * Math.min(1, dt * 10);
+        const drifting = Math.hypot(lp.tgt.x - m.position.x, lp.tgt.z - m.position.z) > 0.06;
+        const walking = lp.tgt.m || drifting;
+        if (walking) {
+          const sw = Math.sin(G.time * 11 + m.position.x);
+          ru.legL.rotation.x = sw * 0.7; ru.legR.rotation.x = -sw * 0.7;
+          ru.armL.rotation.x = -sw * 0.6; ru.armR.rotation.x = sw * 0.6;
+          ru.hatG.position.y = ru.hatBaseY + Math.abs(sw) * 0.035;
+        } else {
+          ru.legL.rotation.x *= 0.75; ru.legR.rotation.x *= 0.75;
+          ru.armL.rotation.x *= 0.75; ru.armR.rotation.x *= 0.75;
+          ru.hatG.position.y = ru.hatBaseY;
+          ru.body.scale.y = 1 + Math.sin(G.time * 2.1 + m.position.z) * 0.015;
+        }
+        let rHop = 0;
+        if (lp.hopT > 0) { lp.hopT -= dt; rHop = Math.sin((1 - lp.hopT / 0.32) * Math.PI); }
+        m.scale.set(1 + rHop * 0.12, 1 - rHop * 0.2, 1 + rHop * 0.12);
+        m.position.y = terrainY(m.position.x, m.position.z) + rHop * 0.3 + (walking ? Math.abs(Math.sin(G.time * 11 + m.position.x)) * 0.05 : 0);
+      }
 
       if (G.introTask && G.introTaskDone === G.introTask) {
         const INTRO_TASK_IDX = { plant: 2, harvest: 3, feed: 4 };
@@ -4289,6 +4430,7 @@ export default function DragonGardenQuest() {
       document.removeEventListener("visibilitychange", onVisFlush);
       window.removeEventListener("pagehide", flushState);
       flushState();
+      leaveLiveGarden();
       if (window.__BY_KEEPER) window.__BY_KEEPER.pause();
       clearTimeout(musicTimer); clearTimeout(padTimer);
       if (AC) { try { AC.close(); } catch (e) {} }
