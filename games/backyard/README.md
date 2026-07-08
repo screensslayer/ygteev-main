@@ -58,3 +58,5 @@ ygteev-staging project and rebuild.
 - Multi-group users get a garden picker at the bridge; single-group users
   are auto-assigned. Berries are computed server-side from plant
   timestamps (cheat-proof by construction).
+
+<!-- Deployed via GitHub Pages: pushes touching games/backyard/** auto-deploy -->
