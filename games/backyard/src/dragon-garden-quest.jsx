@@ -4169,6 +4169,9 @@ export default function DragonGardenQuest() {
   const GOLD = "#2f7fc1";
   const GOLD_BRIGHT = "#ffb845";
   const PARCH = "#17497e";
+  // True when running inside the iOS app's WKWebView (container adds ?ios=1).
+  // The top-left HUD pills shift right to clear the app's close button.
+  const EMBEDDED_IOS = (() => { try { return new URLSearchParams(window.location.search).has("ios"); } catch (e) { return false; } })();
   const S = {
     wrap: { position: "fixed", inset: 0, background: "#8fc9ec", fontFamily: "'Trebuchet MS', 'Segoe UI', sans-serif", overflow: "hidden", userSelect: "none", WebkitUserSelect: "none" },
     canvas: { position: "absolute", inset: 0 },
@@ -4252,14 +4255,14 @@ export default function DragonGardenQuest() {
       <style>{`@keyframes pulse { from { opacity: 0.5 } to { opacity: 1 } } @keyframes slideIn { from { transform: translateY(-8px); opacity: 0 } to { transform: none; opacity: 1 } } @keyframes mapIn { from { opacity: 0 } to { opacity: 1 } } @keyframes mapOut { from { opacity: 1 } to { opacity: 0 } } @keyframes coinfly { 55% { opacity: 1 } to { transform: translate(var(--tx), var(--ty)) scale(0.35); opacity: 0 } } @keyframes btnPulse { 0%,100% { box-shadow: 0 6px 16px rgba(0,0,0,0.5), 0 0 0 0 rgba(255,184,69,0.55) } 50% { box-shadow: 0 6px 16px rgba(0,0,0,0.5), 0 0 0 12px rgba(255,184,69,0) } } @keyframes taskIn { 0% { transform: translate(-50%, -50%) scale(0.55); opacity: 0 } 14% { transform: translate(-50%, -50%) scale(1.1); opacity: 1 } 24% { transform: translate(-50%, -50%) scale(1) } 80% { transform: translate(-50%, -50%) scale(1); opacity: 1 } 100% { transform: translate(-50%, -56%) scale(0.94); opacity: 0 } } @keyframes itemIn { 0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0 } 55% { transform: translate(-50%, -50%) scale(1.09); opacity: 1 } 100% { transform: translate(-50%, -50%) scale(1) } } @keyframes itemFly { to { transform: translate(calc(-50% + var(--ix)), calc(-50% + var(--iy))) scale(0.22); opacity: 0 } } @keyframes rayspin { to { transform: rotate(360deg) } }`}</style>
 
       {/* stats */}
-      <div style={{ position: "absolute", top: 10, left: 10, display: "flex", gap: 7 }}>
+      <div style={{ position: "absolute", top: "calc(10px + env(safe-area-inset-top, 0px))", left: EMBEDDED_IOS ? 56 : 10, display: "flex", gap: 7 }}>
         <div style={{ ...S.panel, padding: "7px 13px", fontSize: 14, fontWeight: 700, ...S.goldText, display: "flex", alignItems: "center", gap: 6 }}><GoldCoin size={15} /> {hud.gold}</div>
         <div style={{ ...S.panel, padding: "7px 13px", fontSize: 14, fontWeight: 700 }}>✨ {hud.xp}</div>
       </div>
 
       {/* dragon fullness — slide-in alert, only when it matters */}
       {hud.showHunger && (
-        <div style={{ ...S.panel, position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)", padding: "8px 18px", textAlign: "center", animation: "slideIn 0.3s" }}>
+        <div style={{ ...S.panel, position: "absolute", top: "calc(10px + env(safe-area-inset-top, 0px))", left: "50%", transform: "translateX(-50%)", padding: "8px 18px", textAlign: "center", animation: "slideIn 0.3s" }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1.5, ...S.goldText }}>
             🐉 EMBER {hungerPct < 25 ? <span style={{ color: "#ff8a7a" }}>IS HANGRY!</span> : hungerPct < 45 ? "IS GETTING PECKISH" : "IS CONTENT"}
           </div>
@@ -4273,11 +4276,11 @@ export default function DragonGardenQuest() {
       )}
       <button
         onClick={() => setShop("profile")}
-        style={{ ...S.panel, position: "absolute", top: 10, right: 10, width: 46, height: 46, borderRadius: "50%", fontSize: 22, cursor: "pointer", padding: 0 }}
+        style={{ ...S.panel, position: "absolute", top: "calc(10px + env(safe-area-inset-top, 0px))", right: 10, width: 46, height: 46, borderRadius: "50%", fontSize: 22, cursor: "pointer", padding: 0 }}
       >🧑‍🌾</button>
 
       {/* toasts */}
-      <div style={{ position: "absolute", top: 64, left: "50%", transform: "translateX(-50%)", display: "flex", flexDirection: "column", gap: 6, alignItems: "center", pointerEvents: "none", width: "92%", maxWidth: 430 }}>
+      <div style={{ position: "absolute", top: "calc(64px + env(safe-area-inset-top, 0px))", left: "50%", transform: "translateX(-50%)", display: "flex", flexDirection: "column", gap: 6, alignItems: "center", pointerEvents: "none", width: "92%", maxWidth: 430 }}>
         {toasts.map((t) => (
           <div key={t.id} style={{
             ...S.panel, padding: "7px 15px", fontSize: 13, animation: "slideIn 0.25s",
@@ -4319,7 +4322,7 @@ export default function DragonGardenQuest() {
         </div>
       )}
       {hud.prompt && !shop && !quiz && !buildMode && !counterTalk && !introDlg && !bridgeTalk && (
-        <div style={{ ...S.panel, position: "absolute", bottom: 96, left: "50%", transform: "translateX(-50%)", padding: "8px 18px", fontSize: 14, fontWeight: 700, ...S.goldText, whiteSpace: "nowrap" }}>
+        <div style={{ ...S.panel, position: "absolute", bottom: "calc(96px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", padding: "8px 18px", fontSize: 14, fontWeight: 700, ...S.goldText, whiteSpace: "nowrap" }}>
           ❧ {hud.prompt} ❧
         </div>
       )}
@@ -4329,7 +4332,7 @@ export default function DragonGardenQuest() {
         <div onClick={() => setTray(false)} style={{ position: "absolute", inset: 0, zIndex: 19 }} />
       )}
       {!quiz && shop !== "style" && !buildMode && !introDlg && (
-        <div onClick={() => setTray((t) => !t)} style={{ ...S.panel, position: "absolute", left: 12, bottom: 14, padding: "8px 12px", display: "flex", alignItems: "center", gap: 9, cursor: "pointer", zIndex: 21 }}>
+        <div onClick={() => setTray((t) => !t)} style={{ ...S.panel, position: "absolute", left: 12, bottom: "calc(14px + env(safe-area-inset-bottom, 0px))", padding: "8px 12px", display: "flex", alignItems: "center", gap: 9, cursor: "pointer", zIndex: 21 }}>
           <span style={{ fontSize: 20 }}>🌱</span>
           <div>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: SEEDS[hud.selectedSeed].glow ? "#7dfcd0" : PARCH }}>
@@ -4340,7 +4343,7 @@ export default function DragonGardenQuest() {
         </div>
       )}
       {tray && !quiz && shop !== "style" && !buildMode && (
-        <div style={{ ...S.panel, position: "absolute", left: 12, bottom: 78, padding: "10px 11px", animation: "slideIn 0.2s", maxWidth: "min(94vw, 430px)", zIndex: 21 }}>
+        <div style={{ ...S.panel, position: "absolute", left: 12, bottom: "calc(78px + env(safe-area-inset-bottom, 0px))", padding: "10px 11px", animation: "slideIn 0.2s", maxWidth: "min(94vw, 430px)", zIndex: 21 }}>
           <div style={{ fontSize: 10, opacity: 0.7, letterSpacing: 1, marginBottom: 5 }}>SEEDS · tap to equip</div>
           <div style={{ display: "flex", gap: 6, marginBottom: 9 }}>
             {seedKeys.map((k) => (
@@ -4369,7 +4372,7 @@ export default function DragonGardenQuest() {
         <button
           onClick={() => G?.doAction()}
           style={{
-            position: "absolute", right: 14, bottom: 14, width: 70, height: 70, borderRadius: 22,
+            position: "absolute", right: 14, bottom: "calc(14px + env(safe-area-inset-bottom, 0px))", width: 70, height: 70, borderRadius: 22,
             border: `2px solid ${actionAvailable ? GOLD_BRIGHT : "#8fc0e4"}`,
             background: actionAvailable ? "linear-gradient(180deg, #6cd47a, #2f7a3c)" : WOOD,
             fontSize: 30, cursor: actionAvailable ? "pointer" : "default",
@@ -4592,14 +4595,14 @@ export default function DragonGardenQuest() {
       {/* build mode entry (needs the hoe) */}
       {!quiz && !shop && !buildMode && hud.map === "HOME" && hud.build.hoe && (
         <button onClick={() => setBuildMode(true)} style={{
-          ...S.panel, position: "absolute", right: 14, bottom: 96, width: 54, height: 54,
+          ...S.panel, position: "absolute", right: 14, bottom: "calc(96px + env(safe-area-inset-bottom, 0px))", width: 54, height: 54,
           borderRadius: 16, fontSize: 24, cursor: "pointer", padding: 0,
         }}>🔨</button>
       )}
 
       {/* build mode control bar */}
       {buildMode && (
-        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: 14, width: "min(520px, 95vw)", zIndex: 24 }}>
+        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: "calc(14px + env(safe-area-inset-bottom, 0px))", width: "min(520px, 95vw)", zIndex: 24 }}>
           <div style={{ ...S.panel, background: WOOD_TEX, position: "relative", padding: "11px 13px" }}>
             <Corners />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
@@ -4639,7 +4642,7 @@ export default function DragonGardenQuest() {
 
       {/* wardrobe: live character customization */}
       {shop === "style" && (
-        <div onClick={() => setShop(null)} style={{ position: "absolute", inset: 0, zIndex: 26, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 10 }}>
+        <div onClick={() => setShop(null)} style={{ position: "absolute", inset: 0, zIndex: 26, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: "calc(10px + env(safe-area-inset-bottom, 0px))" }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, 96vw)" }}>
           <div style={{ ...S.panel, background: WOOD_TEX, padding: "12px 14px", maxHeight: "45vh", overflowY: "auto", position: "relative" }}>
             <Corners />
