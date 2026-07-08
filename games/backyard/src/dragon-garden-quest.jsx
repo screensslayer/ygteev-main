@@ -47,6 +47,8 @@ function ensureAudioKeeper() {
 }
 
 const REGROW_SECS = 180; // fallback; home plants regrow after each harvest instead of disappearing
+const MAX_HARVESTS = 3;  // a home plant yields this many harvests, then the plot frees up
+const FRUIT_PER_HARVEST = 2;
 
 const SEEDS = {
   strawberry: { name: "Strawberry", cost: 50,  currency: "xp",   sell: 8,   grow: 20, regrow: 180, color: 0xe8384f, glow: false },
@@ -1620,6 +1622,7 @@ export default function DragonGardenQuest() {
         inv: G.inv,
         homePlots: G.homePlots.map((p) => p.seed ? {
           seed: p.seed,
+          h: p.harvests || 0,
           regrowLeft: p.regrowAt != null ? Math.max(0, Math.round(p.regrowAt - G.time)) : null,
           growLeft: p.regrowAt == null ? Math.max(0, Math.round(p.plantedAt + (SEEDS[p.seed]?.grow || 20) - G.time)) : null,
         } : null),
@@ -1647,8 +1650,9 @@ export default function DragonGardenQuest() {
         d.homePlots.forEach((sp, i) => {
           if (i >= G.homePlots.length) return;
           const p = G.homePlots[i];
-          if (!sp || !SEEDS[sp.seed]) { p.seed = null; p.regrowAt = null; return; }
+          if (!sp || !SEEDS[sp.seed]) { p.seed = null; p.regrowAt = null; p.harvests = 0; return; }
           p.seed = sp.seed;
+          p.harvests = sp.h || 0;
           const grow = SEEDS[sp.seed].grow;
           if (sp.regrowLeft != null) {
             p.plantedAt = G.time - grow; // fully-grown baseline
@@ -3462,7 +3466,7 @@ export default function DragonGardenQuest() {
         if (node.special && !SEEDS[key].glow) { toast("These sacred plots are reserved for Glowberries ✨", "warn"); return; }
         if (node.special) { G.startQuiz(node.idx); return; }
         G.inv.seeds[key]--;
-        const p = node.data(); p.seed = key; p.plantedAt = G.time; p.regrowAt = null;
+        const p = node.data(); p.seed = key; p.plantedAt = G.time; p.regrowAt = null; p.harvests = 0;
         refreshPlotVisual(node);
         toast(`Planted ${SEEDS[key].name}!`);
         SFX.plant();
@@ -3472,13 +3476,20 @@ export default function DragonGardenQuest() {
       } else if (type === "harvest") {
         const p = node.data();
         const s = SEEDS[p.seed];
-        G.inv.fruit[p.seed] += 3;
-        toast(`Harvested 3× ${s.name}! 🌱 Regrowing…`, "gold");
+        G.inv.fruit[p.seed] += FRUIT_PER_HARVEST;
         SFX.harvest();
         spawnBurst(node.x, node.z, s.color, 6, { glow: s.glow, vy: 2.4, y0: 0.6 });
         G.playerHopT = 0.32;
         if (G.onIntroEvent) G.onIntroEvent("harvest");
-        p.regrowAt = G.time + (s.regrow || REGROW_SECS);
+        p.harvests = (p.harvests || 0) + 1;
+        if (p.harvests >= MAX_HARVESTS) {
+          toast(`Harvested ${FRUIT_PER_HARVEST}× ${s.name}! 🥀 The plant is spent — the plot is free.`, "gold");
+          p.seed = null; p.regrowAt = null; p.harvests = 0;
+          spawnBurst(node.x, node.z, 0x9a8a6c, 5, { vy: 1.2, spread: 0.5, y0: 0.3 });
+        } else {
+          toast(`Harvested ${FRUIT_PER_HARVEST}× ${s.name}! 🌱 Regrowing… (${MAX_HARVESTS - p.harvests} harvest${MAX_HARVESTS - p.harvests > 1 ? "s" : ""} left)`, "gold");
+          p.regrowAt = G.time + (s.regrow || REGROW_SECS);
+        }
         refreshPlotVisual(node);
       } else if (type === "dragon") {
         const order = ["strawberry", "blueberry", "sunfruit", "glowberry"];
