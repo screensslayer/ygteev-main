@@ -11,6 +11,41 @@ import * as THREE from "three";
    • Ornate wood-and-gold fantasy UI
    ============================================================ */
 
+// iOS silent-switch workaround: in WKWebView/Safari, pure Web Audio is treated
+// as ambient sound and muted by the ringer switch — but a playing <audio>
+// ELEMENT flips the page's audio session to "media playback", which ignores
+// the switch. We keep a looping silent element alive; started from the PLAY
+// button tap (and re-kicked on every in-game tap via unlockAudio).
+function makeSilentWav() {
+  const rate = 8000, n = rate / 2; // 0.5s of 16-bit mono silence
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const wstr = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  wstr(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); wstr(8, "WAVEfmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  wstr(36, "data"); v.setUint32(40, n * 2, true);
+  let b = ""; const u8 = new Uint8Array(buf);
+  for (let i = 0; i < u8.length; i += 8192) b += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
+  return "data:audio/wav;base64," + btoa(b);
+}
+function ensureAudioKeeper() {
+  let el = window.__BY_KEEPER;
+  if (!el) {
+    el = document.createElement("audio");
+    el.src = makeSilentWav();
+    el.loop = true;
+    el.setAttribute("playsinline", "");
+    el.preload = "auto";
+    window.__BY_KEEPER = el;
+  }
+  if (el.paused) {
+    const pr = el.play();
+    if (pr && pr.catch) pr.catch(() => {});
+  }
+}
+
 const REGROW_SECS = 180; // fallback; home plants regrow after each harvest instead of disappearing
 
 const SEEDS = {
@@ -525,8 +560,9 @@ export default function DragonGardenQuest() {
         tone(2093, t + 0.38, 0.4, 0.07, "sine");
       }),
     };
-    const unlockAudio = () => { initAudio(); if (AC && AC.state === "suspended") AC.resume(); };
+    const unlockAudio = () => { initAudio(); if (AC && AC.state === "suspended") AC.resume(); ensureAudioKeeper(); };
     window.addEventListener("pointerdown", unlockAudio);
+    window.addEventListener("pointerup", unlockAudio); // iOS user-activation for media .play() is strictest here
     window.addEventListener("keydown", unlockAudio);
 
     const scene = new THREE.Scene();
@@ -1632,7 +1668,7 @@ export default function DragonGardenQuest() {
     G.reqGardenPick = (opts, ex) => reqGardenPickRef.current(opts, ex);
     if (import.meta.env && import.meta.env.DEV) {
       window.__BY_G = G; // dev-only test hook
-      G.__dev = () => ({ px: playerPos.x, pz: playerPos.z, prompt: currentPrompt ? currentPrompt.type : null });
+      G.__dev = () => ({ px: playerPos.x, pz: playerPos.z, prompt: currentPrompt ? currentPrompt.type : null, ac: AC ? AC.state : null, keeper: window.__BY_KEEPER ? !window.__BY_KEEPER.paused : false });
     }
     G.reqCounter = (kind) => reqCounterRef.current(kind);
     G.reqItemGet = (gift) => reqItemGetRef.current(gift);
@@ -4179,7 +4215,9 @@ export default function DragonGardenQuest() {
       mount.removeEventListener("pointermove", onTapMove);
       mount.removeEventListener("pointerup", onTapUp);
       window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("pointerup", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
+      if (window.__BY_KEEPER) window.__BY_KEEPER.pause();
       clearTimeout(musicTimer); clearTimeout(padTimer);
       if (AC) { try { AC.close(); } catch (e) {} }
       renderer.dispose();
@@ -4310,7 +4348,7 @@ export default function DragonGardenQuest() {
     return (
       <div style={{ ...S.wrap, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, textAlign: "center", padding: 20, background: "linear-gradient(180deg, #7ec6ef 0%, #b8e2f8 45%, #eef9ff 100%)" }}>
         <img src={LOGO} alt="YGTeeV Backyard" style={{ width: "min(80vw, 460px)", filter: "drop-shadow(0 10px 24px rgba(23,73,126,0.35))" }} />
-        <button onClick={() => setStarted(true)} style={{
+        <button onClick={() => { ensureAudioKeeper(); setStarted(true); }} style={{
           ...S.btn(goldBtnBg, "#5a3305"), marginTop: 4, fontSize: 22, padding: "13px 48px",
           borderRadius: 999, letterSpacing: 1.5, fontWeight: 800,
           boxShadow: "0 6px 0 #c97d12, 0 14px 24px rgba(23,73,126,0.35)",
