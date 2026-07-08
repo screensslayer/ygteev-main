@@ -3437,13 +3437,13 @@ export default function DragonGardenQuest() {
       const u = dragon.userData;
       const t = G.time;
 
-      // mood with hysteresis: naps when full, wakes when peckish
+      // mood with hysteresis: naps when full, wakes when hungry
       const prevMood = G.dragonMood;
       if (G.dragonState !== "idle") G.dragonMood = "awake";
       else if (G.hunger >= 72) G.dragonMood = "sleep";
       else if (G.hunger < 62) G.dragonMood = "awake";
       if (prevMood !== G.dragonMood) {
-        if (G.dragonMood === "awake") { G.wakeT = 0.9; G.hungerAlertT = 4.5; toast("🐉 Ember stirs awake — he's getting peckish!", "warn"); SFX.wake(); }
+        if (G.dragonMood === "awake") { G.wakeT = 0.9; G.hungerAlertT = 4.5; toast("🐉 Ember stirs awake — he's getting hungry!", "warn"); SFX.wake(); }
         else { G.hungerAlertT = 3; toast("💤 Ember is full and curls up for a nap."); SFX.sleep(); }
       }
       G.sleepBlend += ((G.dragonMood === "sleep" ? 1 : 0) - G.sleepBlend) * Math.min(1, dt * 2.2);
@@ -4311,7 +4311,7 @@ export default function DragonGardenQuest() {
       {hud.showHunger && (
         <div style={{ ...S.panel, position: "absolute", top: "calc(10px + env(safe-area-inset-top, 0px))", left: "50%", transform: "translateX(-50%)", padding: "8px 18px", textAlign: "center", animation: "slideIn 0.3s" }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1.5, ...S.goldText }}>
-            🐉 EMBER {hungerPct < 25 ? <span style={{ color: "#ff8a7a" }}>IS HANGRY!</span> : hungerPct < 45 ? "IS GETTING PECKISH" : "IS CONTENT"}
+            🐉 EMBER {hungerPct < 25 ? <span style={{ color: "#ff8a7a" }}>IS HANGRY!</span> : hungerPct < 45 ? "IS GETTING HUNGRY" : "IS CONTENT"}
           </div>
           <div style={{ width: 176, height: 13, background: "#dceffa", borderRadius: 8, marginTop: 5, overflow: "hidden", border: "1px solid #a8cfe8", boxShadow: "inset 0 2px 4px rgba(0,0,0,0.7)" }}>
             <div style={{
