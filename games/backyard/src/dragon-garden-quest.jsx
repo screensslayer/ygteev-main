@@ -5055,7 +5055,7 @@ export default function DragonGardenQuest() {
                       const revealed = quiz.phase === "reveal";
                       const bg = revealed && isA ? "linear-gradient(180deg,#8ee07a,#3fa04f)"
                         : revealed && quiz.picked === i ? "linear-gradient(180deg,#f08a6a,#c94a34)"
-                        : "linear-gradient(180deg, #dff0fb, #241708)";
+                        : "linear-gradient(180deg, #ffffff, #d8edfb)";
                       return (
                         <button key={i} onClick={() => answerQuiz(i)} style={{
                           padding: "8px 10px", borderRadius: 8, border: `1px solid ${GOLD}`, cursor: "pointer",
