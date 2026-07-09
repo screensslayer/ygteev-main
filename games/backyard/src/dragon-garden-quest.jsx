@@ -52,8 +52,8 @@ const MAX_HARVESTS = 3;  // a home plant yields this many harvests, then the plo
 const FRUIT_PER_HARVEST = 2;
 
 const SEEDS = {
-  strawberry: { name: "Strawberry", cost: 50,  currency: "xp",   sell: 8,   grow: 20, regrow: 180, color: 0xe8384f, glow: false },
-  blueberry:  { name: "Blueberry",  cost: 120, currency: "xp",   sell: 18,  grow: 30, regrow: 300, color: 0x4f6de8, glow: false },
+  strawberry: { name: "Strawberry", cost: 50,  currency: "xp",   sell: 6,   grow: 20, regrow: 180, color: 0xe8384f, glow: false },
+  blueberry:  { name: "Blueberry",  cost: 120, currency: "xp",   sell: 15,  grow: 30, regrow: 300, color: 0x4f6de8, glow: false },
   sunfruit:   { name: "Sunfruit",   cost: 300, currency: "xp",   sell: 45,  grow: 45, regrow: 480, color: 0xffb020, glow: false },
   glowberry:  { name: "Glowberry",  cost: 120, currency: "gold", sell: 100, grow: 300, color: 0x7dfcd0, glow: true },
 };
