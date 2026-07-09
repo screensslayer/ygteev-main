@@ -1655,6 +1655,7 @@ export default function DragonGardenQuest() {
       if (typeof d.gold === "number") G.gold = d.gold;
       if (d.inv) { Object.assign(G.inv.seeds, d.inv.seeds || {}); Object.assign(G.inv.fruit, d.inv.fruit || {}); }
       if (d.selectedSeed && SEEDS[d.selectedSeed]) G.selectedSeed = d.selectedSeed;
+      if (G.selectedSeed === "glowberry" && G.map !== "CHURCH") G.selectedSeed = "strawberry"; // glow seeds are church-only
       if (typeof d.hunger === "number") G.hunger = Math.min(100, Math.max(30, d.hunger)); // never rampage at the door
       if (Array.isArray(d.homePlots)) {
         d.homePlots.forEach((sp, i) => {
@@ -3348,6 +3349,12 @@ export default function DragonGardenQuest() {
       else if (name === "CHURCH") buildChurch();
       else buildShopInterior(name);
       if (window.YGTEEV_API) { if (name === "CHURCH") joinLiveGarden(); else leaveLiveGarden(); }
+      // the community garden's sacred plots only take glowberries — preselect
+      // them on entry (even at ×0), and drop back to a seed you own on exit
+      if (name === "CHURCH") G.selectedSeed = "glowberry";
+      else if (G.selectedSeed === "glowberry") {
+        G.selectedSeed = ["strawberry", "blueberry", "sunfruit"].find((k) => G.inv.seeds[k] > 0) || "strawberry";
+      }
       if (spawn) playerPos.set(spawn[0], 0, spawn[1]);
       camera.position.set(playerPos.x, 8.5, playerPos.z + 9.6);
       G.exitLatch = true; // don't re-trigger a doorway we just spawned beside
