@@ -2501,7 +2501,7 @@ export default function DragonGardenQuest() {
       addBoxCol(-14, 22.4, 2.6, 18.0, 0);
       addFlagstonePath([[0, 7.0], [0, 1], [0, -4]]);
       addFlagstonePath([[0, 3], [14, 3], [24, 3]]);
-      addFlagstonePath([[0, 3], [-10.6, 3]]);
+      addFlagstonePath([[0, 3], [-9.0, 3]]); // stops short of the bridge deck (planks reach x≈-10)
       addFlagstonePath([[-17.2, 3], [-24, 3]]);
 
       // ---- Cottage: one clean solid body (extruded gable profile) + roof slabs ----
@@ -2748,14 +2748,14 @@ export default function DragonGardenQuest() {
         [{ x1: -22, z1: -1.7, x2: 18, z2: 1.7, f: 3 }, { x1: -1.5, z1: -11, x2: 1.5, z2: 1, f: 3 },
          { c: 1, x: -6, z: -8, r: 4.2, f: 3 }, { c: 1, x: 6, z: -8, r: 4, f: 3 }, { c: 1, x: -12.3, z: -3.6, r: 4, f: 3 },
          { x1: -8.6, z1: 2.4, x2: 8.6, z2: 9.8, f: 3 }, { c: 1, x: 0, z: -5, r: 3.6, f: 3 },
-         { x1: -15, z1: -11.5, x2: 10.5, z2: 12.9, f: 3 }]
+         { x1: -16.1, z1: -11.5, x2: 11.9, z2: 12.9, f: 3 }]
       );
       worldGroup.add(makeGround(66, 0x72ad4a, (x, z, c) => {
-        if (x > -15 && x < 10.5 && z > -11.5 && z < 12.9) c.lerp(MORTAR, 0.85);
+        if (x > -16.1 && x < 11.9 && z > -11.5 && z < 12.9) c.lerp(MORTAR, 0.85);
       }));
-      addPavedPlaza(-14.5, -11, 10, 12.4);
-      addFlagstonePath([[-20, 0], [-14.8, 0]], 2.2);
-      addFlagstonePath([[10.2, 0], [16, 0]], 2.2);
+      addPavedPlaza(-15.6, -11, 11.4, 12.4); // wide enough that no building overhangs the edge
+      addFlagstonePath([[-20, 0], [-15.9, 0]], 2.2);
+      addFlagstonePath([[11.6, 0], [16, 0]], 2.2);
 
       function makeBuilding(x, z, w, d, h, wallC, roofC, rotY = 0) {
         const b = new THREE.Group();
@@ -3025,10 +3025,6 @@ export default function DragonGardenQuest() {
             worldGroup.add(fr);
           }
         });
-        const board = makeTextPlate("WE BUY YOUR HARVEST", { w: 3.4, h: 0.8, bg: "#2f3a30", fg: "#e8f4d8" });
-        board.position.set(4.2, 1.9, -5.74);
-        board.rotation.z = -0.04;
-        worldGroup.add(board);
         const beam = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.07, 0.07), flat(0x8a6238));
         beam.position.set(-2.9, 2.4, -3.4);
         const pan = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.06, 8), flat(0xc9963c));
