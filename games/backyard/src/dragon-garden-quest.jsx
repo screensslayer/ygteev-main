@@ -4657,9 +4657,9 @@ export default function DragonGardenQuest() {
         <div style={{ ...S.panel, padding: "7px 13px", fontSize: 14, fontWeight: 700 }}>✨ {hud.xp}</div>
       </div>
 
-      {/* dragon fullness — slide-in alert, only when it matters */}
+      {/* dragon fullness — slide-in alert, below the gold/xp row so it never covers it */}
       {hud.showHunger && (
-        <div style={{ ...S.panel, position: "absolute", top: "calc(10px + env(safe-area-inset-top, 0px))", left: "50%", transform: "translateX(-50%)", padding: "8px 18px", textAlign: "center", animation: "slideIn 0.3s" }}>
+        <div style={{ ...S.panel, position: "absolute", top: "calc(58px + env(safe-area-inset-top, 0px))", left: "50%", transform: "translateX(-50%)", padding: "8px 18px", textAlign: "center", animation: "slideIn 0.3s" }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1.5, ...S.goldText }}>
             🐉 EMBER {hungerPct < 25 ? <span style={{ color: "#ff8a7a" }}>IS HANGRY!</span> : hungerPct < 45 ? "IS GETTING HUNGRY" : "IS CONTENT"}
           </div>
