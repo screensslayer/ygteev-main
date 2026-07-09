@@ -1,23 +1,26 @@
-// generate-verse-audio — builds pre-recorded narration for a daily-plan
-// Read passage and stores it in the verse-audio bucket + verse_audio table.
+// generate-verse-audio — builds pre-recorded narration for daily-plan
+// passages, ONE FILE PER VERSE, stored in the verse-audio bucket and
+// indexed in verse_audio. The app queues a passage's verse files in
+// order; the currently-playing queue item drives the verse highlight.
+// Per-verse files also dedupe overlapping passages (John 17:1-5 and
+// 17:1-8 share recordings).
 //
-//   POST { reference: "John 1:1-18", force?: boolean }
+//   POST { reference: "John 14:1-7", maxVerses?: 8, force?: boolean }
+//     → generates up to maxVerses MISSING verse files in the range and
+//       returns { generated: [...], remaining } — call again until
+//       remaining is 0. (Capped per call to fit edge-function limits.)
+//
+//   POST { op: "purge-bulk" }
+//     → one-time cleanup of the old passage-level MP3s that lived flat
+//       under {bible}/{voice}/ before the per-verse redesign.
+//
 //   Headers:
 //     x-elevenlabs-key  (required — passed per call, never stored)
-//     x-bible-key       (required — api.bible key, passed per call)
-//     x-voice-id        (optional — defaults to the YGTeeV narrator voice)
+//     x-bible-key       (required for generation — api.bible key)
+//     x-voice-id        (optional — defaults to the YGTeeV narrator)
 //
-// Guards:
-//   • The reference must appear in some bible_plan_days read part —
-//     callers can only generate audio we actually want to exist.
-//   • Existing rows are immutable unless force=true.
-//
-// Text pipeline mirrors the iOS app exactly (BibleAPIService +
-// DailyPlanView.currentPassage): fetch the NLT chapter with verse-number
-// markers, split on [n], trim, join verses with a single space, and track
-// each verse's character range. ElevenLabs' character alignment then maps
-// those ranges to start/end seconds so the client can highlight the verse
-// being spoken.
+// Guards: the reference must appear in some bible_plan_days read part,
+// and existing verse rows are skipped unless force=true.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -67,7 +70,7 @@ function parseReference(reference: string) {
   return { bookName, chapter, startVerse: start, endVerse: end };
 }
 
-// Same cleanup the iOS app applies before speaking (cleanVerseText).
+// Same cleanup the iOS app applies before display/speech (cleanVerseText).
 function cleanVerse(raw: string): string {
   let s = raw.trim();
   if (s.startsWith("[")) {
@@ -91,21 +94,42 @@ Deno.serve(async (req) => {
     return Response.json({ error: "POST only" }, { status: 405 });
   }
   const elevenKey = req.headers.get("x-elevenlabs-key");
-  const bibleKey = req.headers.get("x-bible-key");
-  if (!elevenKey || !bibleKey) {
-    return Response.json({ error: "missing x-elevenlabs-key / x-bible-key" }, { status: 401 });
+  if (!elevenKey) {
+    return Response.json({ error: "missing x-elevenlabs-key" }, { status: 401 });
   }
   const voiceId = req.headers.get("x-voice-id") || DEFAULT_VOICE;
 
-  let body: { reference?: string; force?: boolean };
+  let body: { reference?: string; maxVerses?: number; force?: boolean; op?: string };
   try { body = await req.json(); } catch { return Response.json({ error: "bad json" }, { status: 400 }); }
-  const reference = (body.reference || "").trim();
-  if (!reference) return Response.json({ error: "missing reference" }, { status: 400 });
 
   const service = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  // ---- One-time cleanup of the old passage-level (bulk) MP3s ----
+  if (body.op === "purge-bulk") {
+    const { data: files, error } = await service.storage
+      .from("verse-audio")
+      .list(`${BIBLE_ID}/${voiceId}`, { limit: 1000 });
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+    const flatMp3s = (files ?? [])
+      .filter((f) => f.name.endsWith(".mp3"))
+      .map((f) => `${BIBLE_ID}/${voiceId}/${f.name}`);
+    if (flatMp3s.length) {
+      const { error: delErr } = await service.storage.from("verse-audio").remove(flatMp3s);
+      if (delErr) return Response.json({ error: delErr.message }, { status: 500 });
+    }
+    return Response.json({ ok: true, purged: flatMp3s.length });
+  }
+
+  // ---- Per-verse generation ----
+  const bibleKey = req.headers.get("x-bible-key");
+  if (!bibleKey) return Response.json({ error: "missing x-bible-key" }, { status: 401 });
+
+  const reference = (body.reference || "").trim();
+  if (!reference) return Response.json({ error: "missing reference" }, { status: 400 });
+  const maxVerses = Math.max(1, Math.min(10, body.maxVerses ?? 8));
 
   // Guard: only references that actually appear in a plan's read parts.
   const { data: days, error: daysErr } = await service
@@ -121,22 +145,12 @@ Deno.serve(async (req) => {
     return Response.json({ error: "reference not used by any plan" }, { status: 403 });
   }
 
-  // Skip work if already generated (idempotent batch runs).
-  const { data: existing } = await service
-    .from("verse_audio")
-    .select("id, storage_path, duration_seconds")
-    .eq("reference", reference).eq("bible_id", BIBLE_ID).eq("voice_id", voiceId)
-    .maybeSingle();
-  if (existing && !body.force) {
-    return Response.json({ skipped: true, reference, ...existing });
-  }
-
-  // ---- 1. Fetch + parse the passage text (mirrors BibleAPIService) ----
   const parsed = parseReference(reference);
   if (!parsed) return Response.json({ error: "unparseable reference" }, { status: 400 });
   const bookId = BOOK_IDS[parsed.bookName.toLowerCase()];
   if (!bookId) return Response.json({ error: "unknown book" }, { status: 400 });
 
+  // Fetch + parse the chapter once (mirrors iOS BibleAPIService).
   const chapterUrl = `https://rest.api.bible/v1/bibles/${BIBLE_ID}/chapters/${bookId}.${parsed.chapter}?content-type=text&include-verse-numbers=true`;
   const chapterRes = await fetch(chapterUrl, { headers: { "api-key": bibleKey, "Accept": "application/json" } });
   if (!chapterRes.ok) {
@@ -156,74 +170,77 @@ Deno.serve(async (req) => {
   }
   if (!verses.length) return Response.json({ error: "no verses parsed" }, { status: 422 });
 
-  // Join exactly like the iOS passage builder: verse text + single space.
-  let fullText = "";
-  const ranges: { v: number; start: number; end: number }[] = [];
-  for (const v of verses) {
-    const start = fullText.length;
-    fullText += v.text;
-    ranges.push({ v: v.n, start, end: fullText.length });
-    fullText += " ";
-  }
-  fullText = fullText.trimEnd();
-
-  // ---- 2. ElevenLabs synthesis with character alignment ----
-  const ttsRes = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps?output_format=mp3_44100_128`,
-    {
-      method: "POST",
-      headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: fullText,
-        model_id: ELEVEN_MODEL,
-        voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-      }),
-    },
-  );
-  if (!ttsRes.ok) {
-    const detail = await ttsRes.text().catch(() => "");
-    return Response.json({ error: `elevenlabs ${ttsRes.status}`, detail: detail.slice(0, 500) }, { status: 502 });
-  }
-  const tts = await ttsRes.json();
-  const audioB64: string = tts.audio_base64;
-  const starts: number[] = tts.alignment?.character_start_times_seconds ?? [];
-  const ends: number[] = tts.alignment?.character_end_times_seconds ?? [];
-  if (!audioB64) return Response.json({ error: "no audio in elevenlabs response" }, { status: 502 });
-
-  const timings = ranges.map((r) => ({
-    v: r.v,
-    s: starts[Math.min(r.start, starts.length - 1)] ?? 0,
-    e: ends[Math.min(r.end - 1, ends.length - 1)] ?? 0,
-  }));
-  const duration = ends.length ? ends[ends.length - 1] : null;
-
-  // ---- 3. Upload + record ----
-  const bin = Uint8Array.from(atob(audioB64), (c) => c.charCodeAt(0));
-  const slug = reference.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const path = `${BIBLE_ID}/${voiceId}/${slug}.mp3`;
-
-  const { error: upErr } = await service.storage
-    .from("verse-audio")
-    .upload(path, bin, { contentType: "audio/mpeg", upsert: !!body.force || !!existing });
-  if (upErr) return Response.json({ error: `upload: ${upErr.message}` }, { status: 500 });
-
-  const row = {
-    reference,
-    bible_id: BIBLE_ID,
-    voice_id: voiceId,
-    storage_path: path,
-    duration_seconds: duration,
-    verse_timings: timings,
-    char_count: fullText.length,
-    text_sha256: await sha256Hex(fullText),
-  };
-  const { error: rowErr } = await service
+  // Which verses in the range already exist?
+  const { data: existingRows, error: exErr } = await service
     .from("verse_audio")
-    .upsert(row, { onConflict: "reference,bible_id,voice_id" });
-  if (rowErr) return Response.json({ error: `db: ${rowErr.message}` }, { status: 500 });
+    .select("verse")
+    .eq("bible_id", BIBLE_ID).eq("voice_id", voiceId)
+    .eq("book_id", bookId).eq("chapter", parsed.chapter)
+    .gte("verse", verses[0].n).lte("verse", verses[verses.length - 1].n);
+  if (exErr) return Response.json({ error: exErr.message }, { status: 500 });
+  const have = new Set((existingRows ?? []).map((r) => r.verse));
+
+  const todo = verses.filter((v) => body.force || !have.has(v.n));
+  const batch = todo.slice(0, maxVerses);
+  const generated: { verse: number; duration: number }[] = [];
+
+  for (const v of batch) {
+    const ttsRes = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps?output_format=mp3_44100_128`,
+      {
+        method: "POST",
+        headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: v.text,
+          model_id: ELEVEN_MODEL,
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+        }),
+      },
+    );
+    if (!ttsRes.ok) {
+      const detail = await ttsRes.text().catch(() => "");
+      return Response.json(
+        { error: `elevenlabs ${ttsRes.status} on verse ${v.n}`, detail: detail.slice(0, 400), generated },
+        { status: 502 },
+      );
+    }
+    const tts = await ttsRes.json();
+    const audioB64: string = tts.audio_base64;
+    const ends: number[] = tts.alignment?.character_end_times_seconds ?? [];
+    const duration = ends.length ? ends[ends.length - 1] : null;
+    if (!audioB64) {
+      return Response.json({ error: `no audio for verse ${v.n}`, generated }, { status: 502 });
+    }
+
+    const bin = Uint8Array.from(atob(audioB64), (c) => c.charCodeAt(0));
+    const path = `${BIBLE_ID}/${voiceId}/${bookId}/${parsed.chapter}/${v.n}.mp3`;
+    const { error: upErr } = await service.storage
+      .from("verse-audio")
+      .upload(path, bin, { contentType: "audio/mpeg", upsert: true });
+    if (upErr) return Response.json({ error: `upload v${v.n}: ${upErr.message}`, generated }, { status: 500 });
+
+    const { error: rowErr } = await service.from("verse_audio").upsert({
+      bible_id: BIBLE_ID,
+      voice_id: voiceId,
+      book_id: bookId,
+      chapter: parsed.chapter,
+      verse: v.n,
+      storage_path: path,
+      duration_seconds: duration,
+      char_count: v.text.length,
+      text_sha256: await sha256Hex(v.text),
+    }, { onConflict: "bible_id,voice_id,book_id,chapter,verse" });
+    if (rowErr) return Response.json({ error: `db v${v.n}: ${rowErr.message}`, generated }, { status: 500 });
+
+    generated.push({ verse: v.n, duration: duration ?? 0 });
+  }
 
   return Response.json({
-    ok: true, reference, storage_path: path,
-    duration_seconds: duration, verses: verses.length, chars: fullText.length,
+    ok: true,
+    reference,
+    book_id: bookId,
+    chapter: parsed.chapter,
+    generated,
+    remaining: todo.length - batch.length,
   });
 });
