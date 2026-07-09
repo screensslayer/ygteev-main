@@ -4965,13 +4965,6 @@ export default function DragonGardenQuest() {
                       <b style={r.mine ? S.goldText : {}}>✨ {r.berries}</b>
                     </div>
                   ))}
-                <div style={{ fontSize: 11, marginTop: 6, opacity: 0.75 }}>
-                  ⛪ Garden fund {hud.league.fund}g · {(() => {
-                    const ms = Math.max(0, hud.league.endMs - Date.now());
-                    const d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5);
-                    return `resets Sun night · ${d}d ${h}h left`;
-                  })()}
-                </div>
                 <button onClick={() => { const g = gameRef.current; if (g?.toggleMute) setMuted(g.toggleMute()); }}
                   style={{ ...S.btn(WOOD, PARCH), width: "100%", marginTop: 12, border: `1px solid ${GOLD}` }}>
                   {muted ? "🔇 Sound off — tap to unmute" : "🔊 Sound on — tap to mute"}
