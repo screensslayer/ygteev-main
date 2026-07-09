@@ -3653,18 +3653,19 @@ export default function DragonGardenQuest() {
 
     // ---- Community garden auto-harvest → weekly league ----
     function yieldGlowBerry(i) {
+      // Berries only count toward the youth group's garden — no personal
+      // gold. (The server cron independently credits the authoritative
+      // league total; these local counters keep the UI live between polls.)
       G.week.mine += 1;
       G.week.fund += 35;
-      G.gold += 50;
       if (G.time - G.lastCollectToast > 2) {
         G.lastCollectToast = G.time;
-        toast("✨ A Glowberry ripened on the tree! (+50g share)", "gold");
+        toast(`✨ A Glowberry ripened — +1 berry for ${G.week.myName || "the garden"}!`, "gold");
+        SFX.sparkle();
+        const node = plotNodes.find((n) => n.special && n.idx === i);
+        if (node) spawnBurst(node.x, node.z, 0x59c8ff, 4, { glow: true, vy: 2.4, y0: 1.4, spread: 0.5 });
       }
       G.saveT = 0.2;
-      SFX.sparkle();
-      if (G.flyCoins) G.flyCoins(1);
-      const node = plotNodes.find((n) => n.special && n.idx === i);
-      if (node) spawnBurst(node.x, node.z, 0x59c8ff, 4, { glow: true, vy: 2.4, y0: 1.4, spread: 0.5 });
     }
     function expireGlowTree(i) {
       const p = G.churchPlots[i];
