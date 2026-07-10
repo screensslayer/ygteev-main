@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>Ember Lab — dragon design test</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: "Trebuchet MS", "Segoe UI", sans-serif; }
+  body { background: linear-gradient(180deg, #2a1e4f 0%, #4a3580 45%, #7a5aa8 100%); }
+  #app { position: fixed; inset: 0; }
+  .hud { position: fixed; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;
+         bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 5; padding: 0 10px; }
+  .hud button {
+    font-family: inherit; font-weight: 800; font-size: 13px; letter-spacing: .3px;
+    padding: 10px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.25); cursor: pointer;
+    background: rgba(20, 12, 40, .55); color: #efe6ff; backdrop-filter: blur(6px);
+    transition: transform .12s, background .12s;
+  }
+  .hud button:hover { transform: translateY(-2px); }
+  .hud button.on { background: #ffb845; color: #4a2c05; border-color: #ffd88a; }
+  .tag { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 16px; z-index: 5;
+         color: #efe6ff; opacity: .85; user-select: none; }
+  .tag b { font-size: 15px; letter-spacing: 1px; }
+  .tag div { font-size: 11px; opacity: .75; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="tag"><b>🐉 EMBER LAB</b><div>design test v2 — drag to orbit · pinch/scroll to zoom</div></div>
+<div class="hud" id="hud"></div>
+
+<script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+/* =====================================================================
+   EMBER LAB — AAA-ish low-poly dragon character test
+   Personality target: scary / cute / crazy / funny for a teen audience.
+   Same three.js r128 as the game, so parts port straight into Backyard.
+   ===================================================================== */
+
+const COL = {
+  purple:   0x9b57b0,   // main hide
+  purpleD:  0x7d4194,   // limbs / shading panels
+  orange:   0xf08c34,   // belly band + crest + wing membrane
+  orangeD:  0xd97722,
+  green:    0x93c153,   // belly band + snout patch + spots
+  greenD:   0x53883c,   // tail spikes
+  cream:    0xefe3c3,   // teeth
+  tongue:   0xe87f93,
+  mouth:    0x5c1f2a,
+  white:    0xf4f2ee,
+  irisG:    0xb9cf59,
+  pupil:    0x1c1420,
+};
+
+const M = (c, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .82, metalness: 0, flatShading: true }, o));
+
+// ---------- scene ----------
+const app = document.getElementById("app");
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, .1, 100);
+camera.position.set(3.4, 2.6, 5.2);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.55, 0);
+controls.enableDamping = true;
+controls.dampingFactor = .08;
+controls.minDistance = 2.5; controls.maxDistance = 12;
+controls.maxPolarAngle = Math.PI * .55;
+
+scene.add(new THREE.HemisphereLight(0xcdb8ff, 0x3c2f57, .75));
+const key = new THREE.DirectionalLight(0xfff1d6, 1.15);
+key.position.set(4, 7, 5);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = -5; key.shadow.camera.right = 5;
+key.shadow.camera.top = 6;  key.shadow.camera.bottom = -2;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x8f6cff, .5);
+rim.position.set(-5, 3, -4);
+scene.add(rim);
+
+// ground disc
+const ground = new THREE.Mesh(new THREE.CircleGeometry(7, 36), M(0x5d4a8c, { roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+const groundRim = new THREE.Mesh(new THREE.RingGeometry(7, 7.4, 36), M(0x46356e, { roughness: 1 }));
+groundRim.rotation.x = -Math.PI / 2;
+groundRim.position.y = .001;
+scene.add(groundRim);
+
+// ---------- helpers ----------
+const P = {};                       // named animatable parts
+const BASE = {};                    // their rest transforms
+function reg(name, obj) {
+  P[name] = obj;
+  BASE[name] = {
+    p: obj.position.clone(),
+    r: obj.rotation.clone(),
+    s: obj.scale.clone(),
+  };
+}
+const sph = (r, w = 9, h = 7) => new THREE.SphereGeometry(r, w, h);
+const mesh = (geo, mat, cast = true) => {
+  const m = new THREE.Mesh(geo, mat);
+  m.castShadow = cast;
+  return m;
+};
+
+// hexagonal hide spot, lying on a surface
+function hexSpot(r, color) {
+  const h = mesh(new THREE.CylinderGeometry(r, r, .035, 6), M(color));
+  h.castShadow = false;
+  return h;
+}
+
+// ---------- the dragon ----------
+const dragon = new THREE.Group();
+scene.add(dragon);
+
+// -- torso: stacked banded slices tracing an egg profile (9 facets) --
+const RAD = 9;
+const torso = new THREE.Group();
+dragon.add(torso);
+const profile = [           // [yBottom, yTop, rBottom, rTop, color]
+  [ .34,  .62, .72,  .98, COL.purpleD],
+  [ .62, 1.02, .98, 1.10, COL.orange ],
+  [1.02, 1.42, 1.10, 1.04, COL.green  ],
+  [1.42, 1.72, 1.04, .88,  COL.orange ],
+  [1.72, 2.10, .88,  .58,  COL.purple ],
+];
+for (const [y0, y1, r0, r1, c] of profile) {
+  const s = mesh(new THREE.CylinderGeometry(r1, r0, y1 - y0, RAD), M(c));
+  s.position.y = (y0 + y1) / 2;
+  s.rotation.y = Math.PI / RAD;
+  torso.add(s);
+}
+// bottom rump + top shoulder caps
+const rump = mesh(sph(.83, RAD, 6), M(COL.purpleD));
+rump.position.y = .46; rump.scale.set(1, .62, 1); rump.rotation.y = Math.PI / RAD;
+torso.add(rump);
+const shoulders = mesh(sph(.60, RAD, 6), M(COL.purple));
+shoulders.position.y = 2.08; shoulders.scale.set(1, .72, 1); shoulders.rotation.y = Math.PI / RAD;
+torso.add(shoulders);
+reg("torso", torso);
+
+// hide spots on the torso
+[[ .78,  1.62,  .42, .16, COL.green ], [-.84, 1.28,  .30, .12, COL.orangeD],
+ [ .70,  .78,  -.55, .13, COL.orangeD], [-.66,  .68,  .52, .18, COL.green ]].forEach(([x, y, z, r, c]) => {
+  const s = hexSpot(r, c);
+  s.position.set(x, y, z);
+  s.lookAt(x * 3, y + .35, z * 3);
+  s.rotateX(Math.PI / 2);
+  torso.add(s);
+});
+
+// -- head --
+const headG = new THREE.Group();
+headG.position.set(0, 2.68, .3);
+dragon.add(headG);
+reg("head", headG);
+
+const cranium = mesh(sph(.86, 10, 8), M(COL.purple));
+cranium.scale.set(1.06, .92, .96);
+cranium.position.y = .28;
+headG.add(cranium);
+
+// snout (upper) — flat croc muzzle
+const snout = mesh(sph(.62, 8, 6), M(COL.purple));
+snout.scale.set(1.12, .52, 1.5);
+snout.position.set(0, .02, .62);
+headG.add(snout);
+// green patch on the snout bridge
+const patch = mesh(new THREE.CylinderGeometry(.24, .3, .05, 6), M(COL.green));
+patch.castShadow = false;
+patch.position.set(0, .3, .74);
+patch.rotation.set(.28, 0, 0);
+headG.add(patch);
+// nostrils
+const nostrilL = mesh(sph(.075, 6, 5), M(COL.purpleD));
+nostrilL.position.set(-.2, .2, 1.42);
+const nostrilR = nostrilL.clone(); nostrilR.position.x = .2;
+headG.add(nostrilL, nostrilR);
+
+// upper teeth — uneven snaggle row hanging from the lip
+const upperTeeth = [[-.48, .55, .16], [-.26, .82, .2], [.05, .62, .15], [.3, .9, .21], [.5, .5, .14]];
+for (const [x, z, s] of upperTeeth) {
+  const t = mesh(new THREE.ConeGeometry(s * .62, s * 1.7, 5), M(COL.cream, { roughness: .55 }));
+  t.rotation.x = Math.PI;                      // point down
+  t.rotation.z = (Math.random() - .5) * .3;
+  t.position.set(x, -.2, .62 + z * .55);
+  headG.add(t);
+}
+
+// mouth interior (visible when jaw opens)
+const throat = mesh(new THREE.BoxGeometry(.9, .34, 1.05), M(COL.mouth, { roughness: 1 }), false);
+throat.position.set(0, -.3, .55);
+headG.add(throat);
+
+// -- jaw (articulated) --
+const jaw = new THREE.Group();
+jaw.position.set(0, -.28, .1);                  // hinge near the back of the mouth
+headG.add(jaw);
+reg("jaw", jaw);
+const jawMesh = mesh(sph(.56, 8, 6), M(COL.orange));
+jawMesh.scale.set(.94, .42, 1.42);
+jawMesh.position.set(0, -.08, .52);
+jaw.add(jawMesh);
+const chin = mesh(sph(.3, 7, 5), M(COL.orangeD));
+chin.scale.set(1, .5, .8);
+chin.position.set(0, -.14, 1.05);
+jaw.add(chin);
+// lower snaggle teeth pointing up
+const lowerTeeth = [[-.4, .9, .17], [-.12, .6, .13], [.2, .95, .2], [.44, .62, .13]];
+for (const [x, z, s] of lowerTeeth) {
+  const t = mesh(new THREE.ConeGeometry(s * .6, s * 1.6, 5), M(COL.cream, { roughness: .55 }));
+  t.rotation.z = (Math.random() - .5) * .34;
+  t.position.set(x, .06, .35 + z * .6);
+  jaw.add(t);
+}
+
+// -- tongue: 3 chained pink slabs, retracts fully into the mouth --
+const tongueRoot = new THREE.Group();
+tongueRoot.position.set(.1, .02, .8);
+jaw.add(tongueRoot);
+reg("tongue", tongueRoot);
+const tSegs = [];
+let tParent = tongueRoot;
+for (let i = 0; i < 3; i++) {
+  const g = new THREE.Group();
+  g.position.z = i === 0 ? 0 : .34;
+  const slab = mesh(new THREE.BoxGeometry(.34 - i * .06, .08, .4), M(COL.tongue, { roughness: .6 }));
+  slab.position.z = .18;
+  g.add(slab);
+  tParent.add(g);
+  tParent = g;
+  tSegs.push(g);
+}
+const tongueTip = mesh(new THREE.ConeGeometry(.12, .22, 4), M(COL.tongue, { roughness: .6 }));
+tongueTip.rotation.x = Math.PI / 2;
+tongueTip.position.z = .44;
+tParent.add(tongueTip);
+
+// -- eyes: mismatched googly pair --
+function makeEye(x, r, irisColor, pupilR) {
+  const g = new THREE.Group();
+  g.position.set(x, .52, .78);
+  headG.add(g);
+  const ball = mesh(sph(r, 10, 8), M(irisColor, { roughness: .35 }));
+  g.add(ball);
+  const pupil = mesh(sph(pupilR, 8, 6), M(COL.pupil, { roughness: .25 }));
+  pupil.position.z = r * .78;
+  g.add(pupil);
+  const glint = mesh(sph(pupilR * .28, 6, 5), M(0xffffff, { roughness: .1, emissive: 0xffffff, emissiveIntensity: .35 }), false);
+  glint.position.set(pupilR * .4, pupilR * .45, r * .92);
+  g.add(glint);
+  // eyelid: purple shell that rotates down over the ball
+  const lid = mesh(new THREE.SphereGeometry(r * 1.12, 10, 6, 0, Math.PI * 2, 0, Math.PI * .55), M(COL.purpleD));
+  lid.rotation.x = -1.45;                       // rest: tucked back, eye open
+  g.add(lid);
+  return { g, ball, pupil, glint, lid, r };
+}
+const eyeL = makeEye(-.44, .34, COL.white, .13);   // big bulging white eye
+const eyeR = makeEye(.42, .26, COL.irisG, .15);    // smaller green eye, huge pupil
+eyeL.g.rotation.y = -.12;
+eyeR.g.rotation.y = .1;
+reg("eyeL", eyeL.g); reg("eyeR", eyeR.g);
+
+// brows — angry slabs
+const browL = mesh(new THREE.BoxGeometry(.4, .12, .18), M(COL.purpleD));
+browL.position.set(-.44, .88, .82);
+browL.rotation.z = -.15;
+const browR = browL.clone();
+browR.position.x = .42; browR.rotation.z = .15;
+headG.add(browL, browR);
+reg("browL", browL); reg("browR", browR);
+
+// head crest — three orange spikes
+[[0, .95, -.15, .5], [0, .82, -.5, .4], [0, .62, -.78, .3]].forEach(([x, y, z, s], i) => {
+  const c = mesh(new THREE.ConeGeometry(.16 * s + .06, .55 * s + .12, 5), M(COL.orange));
+  c.position.set(x, y, z);
+  c.rotation.x = -.5 - i * .22;
+  headG.add(c);
+});
+
+// stubby ear-horns
+const hornL = mesh(new THREE.ConeGeometry(.1, .3, 5), M(COL.orangeD));
+hornL.position.set(-.68, .72, .1); hornL.rotation.z = .5;
+const hornR = hornL.clone(); hornR.position.x = .68; hornR.rotation.z = -.5;
+headG.add(hornL, hornR);
+
+// -- wings --
+function makeWing(side) {                        // side: -1 left, +1 right
+  const g = new THREE.Group();
+  g.position.set(.46 * side, 2.08, -.5);
+  g.rotation.z = -.12 * side;         // raised so both wings peek over the shoulders
+  g.rotation.y = .5 * side;           // angle the membrane outward so it reads from the front
+  dragon.add(g);
+  const arm = mesh(new THREE.CylinderGeometry(.04, .06, .85, 6), M(COL.purpleD));
+  arm.rotation.z = Math.PI / 2 * side * -1;
+  arm.position.x = .42 * side;
+  g.add(arm);
+  // scalloped membrane
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.lineTo(.85, .32);
+  shape.lineTo(1.05, -.1);
+  shape.quadraticCurveTo(.86, -.28, .72, -.42);
+  shape.quadraticCurveTo(.62, -.24, .48, -.5);
+  shape.quadraticCurveTo(.36, -.3, .2, -.48);
+  shape.quadraticCurveTo(.08, -.26, 0, -.36);
+  shape.lineTo(0, 0);
+  const mem = mesh(new THREE.ShapeGeometry(shape), M(COL.orange, { side: THREE.DoubleSide, roughness: .7 }));
+  mem.scale.set(side, 1, 1);
+  mem.position.set(.06 * side, .04, 0);
+  g.add(mem);
+  // finger ridge
+  const fing = mesh(new THREE.CylinderGeometry(.04, .05, .5, 5), M(COL.purpleD));
+  fing.rotation.z = (Math.PI / 2 - .35) * side * -1;
+  fing.position.set(.9 * side, .18, 0);
+  g.add(fing);
+  return g;
+}
+reg("wingL", makeWing(-1));
+reg("wingR", makeWing(1));
+
+// -- arms: stubby with 3 claw spikes --
+function makeArm(side) {
+  const g = new THREE.Group();
+  g.position.set(.94 * side, 1.56, .46);
+  g.rotation.y = -.25 * side;
+  dragon.add(g);
+  const upper = mesh(sph(.22, 7, 5), M(COL.purple));
+  upper.scale.set(.8, 1.35, .8);
+  upper.rotation.x = .5;
+  upper.position.set(.04 * side, -.25, .12);
+  g.add(upper);
+  const paw = mesh(sph(.19, 7, 5), M(COL.purpleD));
+  paw.position.set(.06 * side, -.52, .3);
+  g.add(paw);
+  for (let i = -1; i <= 1; i++) {
+    const claw = mesh(new THREE.ConeGeometry(.05, .16, 4), M(COL.cream, { roughness: .5 }));
+    claw.rotation.x = Math.PI / 2;
+    claw.position.set(.06 * side + i * .09, -.55, .48);
+    g.add(claw);
+  }
+  return g;
+}
+reg("armL", makeArm(-1));
+reg("armR", makeArm(1));
+
+// -- legs: thick and short with big toes --
+function makeLeg(side) {
+  const g = new THREE.Group();
+  g.position.set(.5 * side, .62, .05);
+  dragon.add(g);
+  const thigh = mesh(sph(.34, 8, 6), M(COL.purpleD));
+  thigh.scale.set(.9, 1.05, .95);
+  thigh.position.y = -.18;
+  g.add(thigh);
+  const foot = mesh(sph(.3, 8, 5), M(COL.purple));
+  foot.scale.set(1.06, .5, 1.35);
+  foot.position.set(.04 * side, -.52, .16);
+  g.add(foot);
+  for (let i = -1; i <= 1; i++) {
+    const toe = mesh(new THREE.ConeGeometry(.08, .22, 4), M(COL.cream, { roughness: .5 }));
+    toe.rotation.x = Math.PI / 2;
+    toe.position.set(.04 * side + i * .15, -.58, .48);
+    g.add(toe);
+  }
+  const spot = hexSpot(.12, side < 0 ? COL.orangeD : COL.green);
+  spot.position.set(.3 * side, -.15, .18);
+  spot.rotation.z = Math.PI / 2 * side;
+  g.add(spot);
+  return g;
+}
+reg("legL", makeLeg(-1));
+reg("legR", makeLeg(1));
+
+// -- tail: 3 shrinking segments + spikes --
+const tail0 = new THREE.Group();
+tail0.position.set(0, .62, -.82);
+dragon.add(tail0);
+const t0m = mesh(sph(.34, 8, 6), M(COL.purple));
+t0m.scale.set(1, .9, 1.25); t0m.position.z = -.2;
+tail0.add(t0m);
+const tail1 = new THREE.Group();
+tail1.position.set(0, .06, -.5);
+tail0.add(tail1);
+const t1m = mesh(sph(.24, 7, 5), M(COL.purpleD));
+t1m.scale.set(1, .9, 1.3); t1m.position.z = -.18;
+tail1.add(t1m);
+const tail2 = new THREE.Group();
+tail2.position.set(0, .05, -.44);
+tail1.add(tail2);
+const t2m = mesh(sph(.16, 7, 5), M(COL.purple));
+t2m.scale.set(1, .9, 1.4); t2m.position.z = -.14;
+tail2.add(t2m);
+[[tail1, .16], [tail2, .13], [tail2, .1]].forEach(([seg, s], i) => {
+  const spike = mesh(new THREE.ConeGeometry(s * .8, s * 2.4, 4), M(i === 1 ? COL.green : COL.greenD));
+  spike.position.set(0, .18, -.12 - i * .14);
+  spike.rotation.x = -.5;
+  seg.add(spike);
+});
+const tailSpot = hexSpot(.11, COL.orange);
+tailSpot.position.set(.2, .12, -.3);
+tailSpot.rotation.z = Math.PI / 2;
+tail0.add(tailSpot);
+reg("tail0", tail0); reg("tail1", tail1); reg("tail2", tail2);
+
+reg("root", dragon);
+
+// ---------- particles (embers / dust / zzz) ----------
+const pool = [];
+function makeZTexture() {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 64;
+  const c = cv.getContext("2d");
+  c.font = "bold 44px Trebuchet MS";
+  c.textAlign = "center"; c.textBaseline = "middle";
+  c.fillStyle = "#dcd0ff";
+  c.fillText("z", 32, 34);
+  return new THREE.CanvasTexture(cv);
+}
+const zTex = makeZTexture();
+function spawn(kind, x, y, z) {
+  let p = pool.find((q) => !q.live);
+  if (!p) {
+    if (pool.length > 40) return;
+    p = { mesh: null, sprite: null, live: false };
+    pool.push(p);
+  }
+  if (p.mesh) { scene.remove(p.mesh); p.mesh = null; }
+  if (kind === "zzz") {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: zTex, transparent: true, depthWrite: false }));
+    sp.scale.set(.4, .4, 1);
+    p.mesh = sp;
+  } else {
+    const col = kind === "ember" ? 0xff9430 : 0xb9a9d8;
+    const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true });
+    p.mesh = new THREE.Mesh(new THREE.TetrahedronGeometry(kind === "ember" ? .07 : .1), mat);
+  }
+  p.kind = kind; p.live = true; p.age = 0;
+  p.vx = (Math.random() - .5) * (kind === "dust" ? 1.2 : .3);
+  p.vy = kind === "dust" ? .5 + Math.random() * .5 : .8 + Math.random() * .6;
+  p.vz = (Math.random() - .5) * (kind === "dust" ? .8 : .3);
+  p.mesh.position.set(x, y, z);
+  scene.add(p.mesh);
+}
+function updateParticles(dt) {
+  for (const p of pool) {
+    if (!p.live) continue;
+    p.age += dt;
+    const ttl = p.kind === "zzz" ? 1.8 : .8;
+    if (p.age > ttl) { p.live = false; scene.remove(p.mesh); continue; }
+    p.mesh.position.x += p.vx * dt;
+    p.mesh.position.y += p.vy * dt;
+    p.mesh.position.z += p.vz * dt;
+    const k = 1 - p.age / ttl;
+    if (p.mesh.material) p.mesh.material.opacity = k;
+    if (p.kind !== "zzz") p.mesh.rotation.x += dt * 6;
+  }
+}
+
+// ---------- animation engine ----------
+// A state is a function (t) -> { partName: {p:[dx,dy,dz], r:[rx,ry,rz], s:[sx,sy,sz]} }.
+// On switch we crossfade the previous state's offsets into the new one's.
+const osc = (t, f, a, ph = 0) => Math.sin(t * f * Math.PI * 2 + ph) * a;
+
+const ctl = {
+  blink: 0,          // 0 open .. 1 closed (both lids)
+  winkR: 0,          // extra closure on the right eye only
+  tongue: 0,         // 0 hidden .. 1 fully out
+  jaw: 0,            // 0 closed .. 1 wide open
+  rage: 0,           // 0 calm .. 1 furious (drives brows + eye glow)
+  nextBlink: 1.5,
+  nextTongue: 5,
+  nextFlap: 4,
+  flapT: 99,         // time since a courtesy flap started
+  snoreT: 0,
+};
+
+const states = {
+  standing(t) {
+    return {
+      torso: { s: [1, 1 + osc(t, .28, .018), 1] },
+      head:  { r: [osc(t, .2, .05, 1), osc(t, .13, .16), osc(t, .17, .03)] },
+      tail0: { r: [0, osc(t, .3, .3), 0] },
+      tail1: { r: [0, osc(t, .3, .35, .8), 0] },
+      tail2: { r: [0, osc(t, .3, .4, 1.6), 0] },
+      armL:  { r: [osc(t, .28, .07), 0, .1] },
+      armR:  { r: [osc(t, .28, .07, 2), 0, -.1] },
+    };
+  },
+  sleeping(t) {
+    const breathe = osc(t, .16, .05);
+    return {
+      root:  { p: [0, -.12, 0], r: [.1, 0, 0] },
+      torso: { s: [1 + breathe * .4, .9 + breathe, 1 + breathe * .4] },
+      head:  { p: [0, -.26, .1], r: [.42, .12, .06] },
+      jawX:  .16,
+      tongueX: .35,
+      blinkX: 1,
+      wingL: { r: [0, 0, .5] }, wingR: { r: [0, 0, -.5] },
+      armL:  { r: [.4, 0, .28] }, armR: { r: [.4, 0, -.28] },
+      tail0: { r: [0, osc(t, .1, .1), 0] },
+    };
+  },
+  running(t) {
+    const f = 2.6;                       // stride frequency
+    const bob = Math.abs(Math.sin(t * f * Math.PI * 2)) * .1;
+    return {
+      root:  { p: [0, bob, 0], r: [-.22, 0, osc(t, f, .04)] },
+      legL:  { r: [osc(t, f, .95), 0, 0] },
+      legR:  { r: [osc(t, f, .95, Math.PI), 0, 0] },
+      armL:  { r: [osc(t, f, .8, Math.PI), 0, .2] },
+      armR:  { r: [osc(t, f, .8), 0, -.2] },
+      head:  { r: [.15 + osc(t, f, .06), 0, osc(t, f * .5, .07)] },
+      wingL: { r: [0, 0, .35 + osc(t, f, .5)] },
+      wingR: { r: [0, 0, -.35 - osc(t, f, .5)] },
+      tail0: { r: [.25, osc(t, f * .5, .25), 0] },
+      tail1: { r: [0, osc(t, f * .5, .35, 1), 0] },
+      jawX:  .45,
+      tongueX: 1,
+    };
+  },
+  angry(t) {
+    const stomp = Math.max(0, Math.sin(t * 1.6 * Math.PI * 2));
+    const roar = (Math.sin(t * .55 * Math.PI * 2) + 1) / 2;   // slow roar cycle
+    return {
+      root:  { p: [0, -.06 + stomp * .05, 0], r: [.1, osc(t, 6, .012), 0] },
+      torso: { s: [1.05, .96, 1.05] },
+      head:  { p: [0, -.08, .08], r: [-.15 + roar * .32, osc(t, 5.5, .02), 0] },
+      jawX:  .25 + roar * .75,
+      rageX: 1,
+      blinkX: .25,
+      wingL: { r: [0, 0, .9 + osc(t, 2.6, .35)] },
+      wingR: { r: [0, 0, -.9 - osc(t, 2.6, .35)] },
+      armL:  { r: [-.5, 0, .45] }, armR: { r: [-.5, 0, -.45] },
+      legL:  { r: [stomp * .3, 0, 0] },
+      legR:  { r: [Math.max(0, Math.sin((t + .31) * 1.6 * Math.PI * 2)) * .3, 0, 0] },
+      tail0: { r: [0, osc(t, 1.4, .5), 0] },
+      tail1: { r: [0, osc(t, 1.4, .6, 1), 0] },
+      tail2: { r: [0, osc(t, 1.4, .7, 2), 0] },
+    };
+  },
+  crazy(t) {
+    const spin = (t % 5) < 1.1 ? (t % 5) / 1.1 : 0;   // a zoomie spin every 5s
+    const hop = Math.abs(Math.sin(t * 3.4 * Math.PI)) * .16;
+    return {
+      root:  { p: [0, hop, 0], r: [0, spin * Math.PI * 2, osc(t, 1.2, .1)] },
+      head:  { r: [osc(t, 1.8, .2), osc(t, 2.3, .4), osc(t, 2.9, .22)] },
+      jawX:  .4 + osc(t, 2.2, .3),
+      tongueX: 1,
+      winkX: (Math.sin(t * 1.1) > .4) ? 1 : 0,
+      wingL: { r: [0, 0, .3 + osc(t, 4.2, .55)] },
+      wingR: { r: [0, 0, -.3 - osc(t, 3.1, .55, 1)] },
+      armL:  { r: [osc(t, 3, .7), 0, .5] },
+      armR:  { r: [osc(t, 3.6, .7, 1), 0, -.5] },
+      legL:  { r: [osc(t, 3.4, .5), 0, 0] },
+      legR:  { r: [osc(t, 3.4, .5, Math.PI), 0, 0] },
+      tail0: { r: [0, osc(t, 2.4, .6), 0] },
+      tail1: { r: [0, osc(t, 2.4, .8, 1.2), 0] },
+    };
+  },
+  eating(t) {
+    const chomp = (Math.sin(t * 2.2 * Math.PI * 2) + 1) / 2;
+    const gulp = Math.max(0, Math.sin(t * .7 * Math.PI * 2));
+    return {
+      head:  { p: [0, -.12 + gulp * .06, .12], r: [.3 - chomp * .12, osc(t, .5, .07), 0] },
+      jawX:  .15 + chomp * .5,
+      blinkX: .45,
+      torso: { s: [1 + gulp * .05, 1, 1 + gulp * .05] },
+      armL:  { r: [-.9, 0, .3] }, armR: { r: [-.9, 0, -.3] },
+      tail0: { r: [0, osc(t, .8, .35), 0] },
+      tail1: { r: [0, osc(t, .8, .45, .9), 0] },
+    };
+  },
+};
+
+let stateName = "standing";
+let prevPose = null, blend = 1, stateT = 0;
+
+function setState(name) {
+  if (name === stateName) return;
+  prevPose = currentPose;      // freeze the outgoing pose for crossfade
+  blend = 0;
+  stateName = name;
+  stateT = 0;
+  document.querySelectorAll(".hud button").forEach((b) => b.classList.toggle("on", b.dataset.s === name));
+}
+
+let currentPose = {};
+function applyPose(pose) {
+  for (const name in P) {
+    const b = BASE[name], o = pose[name];
+    const obj = P[name];
+    obj.position.set(
+      b.p.x + (o?.p?.[0] || 0), b.p.y + (o?.p?.[1] || 0), b.p.z + (o?.p?.[2] || 0));
+    obj.rotation.set(
+      b.r.x + (o?.r?.[0] || 0), b.r.y + (o?.r?.[1] || 0), b.r.z + (o?.r?.[2] || 0));
+    obj.scale.set(
+      b.s.x * (o?.s?.[0] || 1), b.s.y * (o?.s?.[1] || 1), b.s.z * (o?.s?.[2] || 1));
+  }
+}
+function mixPose(a, b, k) {
+  const out = {};
+  const names = new Set([...Object.keys(a || {}), ...Object.keys(b || {})]);
+  for (const n of names) {
+    if (n.endsWith("X")) { out[n] = (a?.[n] || 0) * (1 - k) + (b?.[n] || 0) * k; continue; }
+    const pa = a?.[n] || {}, pb = b?.[n] || {};
+    out[n] = {
+      p: [0, 1, 2].map((i) => (pa.p?.[i] || 0) * (1 - k) + (pb.p?.[i] || 0) * k),
+      r: [0, 1, 2].map((i) => (pa.r?.[i] || 0) * (1 - k) + (pb.r?.[i] || 0) * k),
+      s: [0, 1, 2].map((i) => (pa.s?.[i] ?? 1) * (1 - k) + (pb.s?.[i] ?? 1) * k),
+    };
+  }
+  return out;
+}
+
+// ---------- micro-behaviors ----------
+function microUpdate(dt, t, pose) {
+  const want = {
+    blink: pose.blinkX ?? 0,
+    tongue: pose.tongueX ?? null,   // null = autonomous
+    jaw: pose.jawX ?? 0,
+    rage: pose.rageX ?? 0,
+    wink: pose.winkX ?? 0,
+  };
+
+  // blinking — autonomous double-blinks layered over the state's floor
+  ctl.nextBlink -= dt;
+  if (ctl.nextBlink <= 0) ctl.nextBlink = 1.6 + Math.random() * 3.4;
+  const blinkPulse = ctl.nextBlink < .13 ? 1 : 0;
+  const blinkTarget = Math.max(want.blink, blinkPulse);
+  ctl.blink += (blinkTarget - ctl.blink) * Math.min(1, dt * 18);
+  ctl.winkR += (want.wink - ctl.winkR) * Math.min(1, dt * 10);
+
+  // tongue — sometimes flops out on its own while idling
+  if (want.tongue === null) {
+    ctl.nextTongue -= dt;
+    if (ctl.nextTongue <= 0) ctl.nextTongue = 6 + Math.random() * 9;
+    const out = ctl.nextTongue < 2.2 ? 1 : 0;
+    ctl.tongue += (out - ctl.tongue) * Math.min(1, dt * 5);
+  } else {
+    ctl.tongue += (want.tongue - ctl.tongue) * Math.min(1, dt * 5);
+  }
+
+  ctl.jaw += (want.jaw - ctl.jaw) * Math.min(1, dt * 8);
+  ctl.rage += (want.rage - ctl.rage) * Math.min(1, dt * 4);
+
+  // courtesy wing flap every few seconds when the state isn't driving wings
+  ctl.nextFlap -= dt;
+  if (ctl.nextFlap <= 0) { ctl.nextFlap = 4 + Math.random() * 5; ctl.flapT = 0; }
+  ctl.flapT += dt;
+  const courtesy = ctl.flapT < .9 ? Math.sin(ctl.flapT / .9 * Math.PI * 3) * .5 * Math.sin(ctl.flapT / .9 * Math.PI) : 0;
+  if (!currentPose.wingL) {
+    P.wingL.rotation.z += courtesy;
+    P.wingR.rotation.z -= courtesy;
+  }
+
+  // eyelids
+  eyeL.lid.rotation.x = -1.45 + ctl.blink * 1.5;
+  eyeR.lid.rotation.x = -1.45 + Math.min(1, ctl.blink + ctl.winkR) * 1.5;
+
+  // googly pupils wander (each on its own drift — the crazy factor)
+  const wander = stateName === "crazy" ? .45 : .16;
+  eyeL.pupil.position.x = Math.sin(t * .7) * wander * eyeL.r;
+  eyeL.pupil.position.y = Math.cos(t * .9) * wander * eyeL.r * .6;
+  eyeR.pupil.position.x = Math.sin(t * 1.13 + 2) * wander * eyeR.r;
+  eyeR.pupil.position.y = Math.cos(t * .77 + 1) * wander * eyeR.r * .6;
+
+  // rage styling: brows slam down + eyes glow hot
+  P.browL.position.y = BASE.browL.p.y - ctl.rage * .14;
+  P.browR.position.y = BASE.browR.p.y - ctl.rage * .14;
+  P.browL.rotation.z = BASE.browL.r.z - ctl.rage * .5;
+  P.browR.rotation.z = BASE.browR.r.z + ctl.rage * .5;
+  eyeL.ball.material.emissive.setHex(0xff3010);
+  eyeR.ball.material.emissive.setHex(0xff3010);
+  eyeL.ball.material.emissiveIntensity = ctl.rage * .55;
+  eyeR.ball.material.emissiveIntensity = ctl.rage * .45;
+
+  // jaw + tongue
+  P.jaw.rotation.x = BASE.jaw.r.x + ctl.jaw * .55;
+  const tg = P.tongue;
+  const out = ctl.tongue;
+  tg.visible = out > .04;
+  tg.scale.setScalar(Math.max(.01, out));
+  tg.rotation.x = .25 + (1 - out) * -.6 + osc(t, 1.7, .16 * out);
+  tSegs[1].rotation.x = osc(t, 2.1, .35 * out, 1);
+  tSegs[2].rotation.x = osc(t, 2.5, .5 * out, 2);
+  tSegs[1].rotation.y = osc(t, 1.3, .2 * out);
+
+  // state particles
+  if (stateName === "sleeping") {
+    ctl.snoreT -= dt;
+    if (ctl.snoreT <= 0) {
+      ctl.snoreT = 1.4;
+      const hp = new THREE.Vector3(.3, .4, 1).applyMatrix4(P.head.matrixWorld);
+      spawn("zzz", hp.x, hp.y, hp.z);
+    }
+  } else if (stateName === "angry" && Math.random() < dt * 10) {
+    const np = new THREE.Vector3((Math.random() < .5 ? -.2 : .2), .25, 1.45).applyMatrix4(P.head.matrixWorld);
+    spawn("ember", np.x, np.y, np.z);
+  } else if (stateName === "running" && Math.random() < dt * 7) {
+    spawn("dust", (Math.random() - .5) * .7, .1, (Math.random() - .5) * .5);
+  } else if (stateName === "eating" && Math.random() < dt * 3) {
+    const mp = new THREE.Vector3(0, -.5, 1).applyMatrix4(P.head.matrixWorld);
+    spawn("dust", mp.x, mp.y, mp.z);
+  }
+}
+
+// ---------- UI ----------
+const HUD = [
+  ["standing", "🧍 Standing"], ["sleeping", "😴 Sleeping"], ["running", "🏃 Running"],
+  ["angry", "😡 Angry"], ["crazy", "🤪 Crazy"], ["eating", "😋 Eating"],
+];
+const hud = document.getElementById("hud");
+for (const [s, label] of HUD) {
+  const b = document.createElement("button");
+  b.textContent = label;
+  b.dataset.s = s;
+  if (s === stateName) b.classList.add("on");
+  b.onclick = () => setState(s);
+  hud.appendChild(b);
+}
+
+// ---------- loop ----------
+const clock = new THREE.Clock();
+function loop() {
+  requestAnimationFrame(loop);
+  const dt = Math.min(.05, clock.getDelta());
+  const t = clock.elapsedTime;
+  stateT += dt;
+
+  let pose = states[stateName](stateT);
+  if (blend < 1 && prevPose) {
+    blend = Math.min(1, blend + dt / .45);
+    const k = blend * blend * (3 - 2 * blend);   // smoothstep
+    pose = mixPose(prevPose, pose, k);
+  }
+  currentPose = pose;
+  applyPose(pose);
+  microUpdate(dt, t, pose);
+  updateParticles(dt);
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+loop();
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
