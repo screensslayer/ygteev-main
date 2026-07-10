@@ -1562,8 +1562,10 @@ export default function DragonGardenQuest() {
       eyeL.g.rotation.y = -0.12; eyeR.g.rotation.y = 0.1;
 
       // purple brow ridges + swept-back horns + crest
-      const browL = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.15, 0.34), flat(DC.accent));
-      browL.position.set(-0.43, 0.82, 0.72); browL.rotation.set(-0.35, 0, -0.12);
+      // brows ride IN FRONT of the eyeballs so the rage-lower scowls over
+      // them instead of clipping through the spheres
+      const browL = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.14, 0.26), flat(DC.accent));
+      browL.position.set(-0.43, 0.9, 0.86); browL.rotation.set(-0.5, 0, -0.12);
       const browR = browL.clone(); browR.position.x = 0.41; browR.rotation.z = 0.12;
       browL.userData.by = browL.position.y; browR.userData.by = browR.position.y;
       headG.add(browL, browR);
@@ -3980,8 +3982,8 @@ export default function DragonGardenQuest() {
       u.eyeR.ball.material.emissive.copy(u.eyeWarm).lerp(u.eyeHot, c.rage);
       u.eyeL.ball.material.emissiveIntensity = 0.12 * (1 - b) + c.rage * 0.55;
       u.eyeR.ball.material.emissiveIntensity = 0.12 * (1 - b) + c.rage * 0.5;
-      u.browL.position.y = u.browL.userData.by - c.rage * 0.13;
-      u.browR.position.y = u.browR.userData.by - c.rage * 0.13;
+      u.browL.position.y = u.browL.userData.by - c.rage * 0.1;
+      u.browR.position.y = u.browR.userData.by - c.rage * 0.1;
       u.browL.rotation.z = -0.12 - c.rage * 0.45;
       u.browR.rotation.z = 0.12 + c.rage * 0.45;
 

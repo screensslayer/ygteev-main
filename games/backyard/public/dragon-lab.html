@@ -291,9 +291,9 @@ eyeR.g.rotation.y = .1;
 reg("eyeL", eyeL.g); reg("eyeR", eyeR.g);
 
 // heavy black brow ridges seated ON the orbitals
-const browL = mesh(new THREE.BoxGeometry(.46, .15, .34), M(COL.accent));
-browL.position.set(-.43, .82, .72);
-browL.rotation.set(-.35, 0, -.12);
+const browL = mesh(new THREE.BoxGeometry(.46, .14, .26), M(COL.accent));
+browL.position.set(-.43, .9, .86);
+browL.rotation.set(-.5, 0, -.12);
 const browR = browL.clone();
 browR.position.x = .41; browR.rotation.z = .12;
 headG.add(browL, browR);
@@ -744,8 +744,8 @@ function microUpdate(dt, t, pose) {
   eyeR.pupil.position.x = Math.sin(t * 1.13 + 2) * wander * eyeR.r;
   eyeR.pupil.position.y = Math.cos(t * .77 + 1) * wander * eyeR.r * .6;
 
-  P.browL.position.y = BASE.browL.p.y - ctl.rage * .13;
-  P.browR.position.y = BASE.browR.p.y - ctl.rage * .13;
+  P.browL.position.y = BASE.browL.p.y - ctl.rage * .1;
+  P.browR.position.y = BASE.browR.p.y - ctl.rage * .1;
   P.browL.rotation.z = BASE.browL.r.z - ctl.rage * .45;
   P.browR.rotation.z = BASE.browR.r.z + ctl.rage * .45;
   eyeL.ball.material.emissive.setHex(0xff2810);
