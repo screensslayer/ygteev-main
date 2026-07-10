@@ -149,7 +149,7 @@ const body = mesh(new THREE.LatheGeometry(bodyPts, 9), M(COL.purple));
 torso.add(body);
 
 // -- segmented red belly plates on the front only (lathe wedges) --
-const PLATE_ARC = 1.9;                       // ~110° across the front
+const PLATE_ARC = 1.42;                      // ~81° across the front — ends before the arms
 for (const [y0, y1] of [[.3, .62], [.66, 1.02], [1.06, 1.42], [1.46, 1.74]]) {
   const pts = [];
   const n = 4;
