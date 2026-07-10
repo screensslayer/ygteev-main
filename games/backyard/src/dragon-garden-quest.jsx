@@ -1438,44 +1438,256 @@ export default function DragonGardenQuest() {
 
     // ---- Dragon (flat-shaded, rigged for sleep/wake poses) ----
     function makeDragon() {
+      // Lab-v3 Ember (designed in /dragon-lab.html): one lathed torso
+      // silhouette, segmented red belly plates, boned wings with real
+      // membranes, articulated jaw + tongue + eyelids, googly white eyes.
+      // Palette: black hide / red belly+membrane / purple horns+brows+claws.
+      const DC = { hide: 0x332a42, hideD: 0x272033, hideXD: 0x1c1628, red: 0xb5303c, redB: 0xd0424b, accent: 0x9b59c9, cream: 0xf2ead2, mouth: 0x4a1420 };
       const g = new THREE.Group();
-      const bodyMat = flat(0x9a4dd6, { roughness: 0.6 });
-      const bellyMat = flat(0xe8c8ff, { roughness: 0.75 });
-      const body = new THREE.Mesh(new THREE.SphereGeometry(1.05, 10, 8), bodyMat);
-      body.position.y = 1.05; body.scale.set(1, 1.05, 1.25); body.castShadow = true;
-      const belly = new THREE.Mesh(new THREE.SphereGeometry(0.78, 9, 7), bellyMat);
-      belly.position.set(0, 0.9, 0.45); belly.scale.set(0.9, 0.95, 0.7);
-      // head group pivots at the neck so Ember can tuck it when sleeping
+      const V = (x, y, z) => new THREE.Vector3(x, y, z);
+      const shadowed = (m) => { m.castShadow = true; return m; };
+      const seg = (a, bp, r0, r1, mat, radial = 6) => {
+        const dir = new THREE.Vector3().subVectors(bp, a);
+        const m = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, dir.length(), radial), mat));
+        m.position.copy(a).addScaledVector(dir, 0.5);
+        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+        return m;
+      };
+
+      // -- torso: single lathed silhouette + red plate wedges + spikes --
+      const PROF = [[0.14, 0.06], [0.16, 0.52], [0.32, 0.84], [0.72, 1.02], [1.08, 1.07], [1.46, 0.99], [1.8, 0.8], [2.06, 0.56], [2.2, 0.36], [2.3, 0.05]];
+      const bodyRad = (y) => {
+        for (let i = 0; i < PROF.length - 1; i++) {
+          const [y0, r0] = PROF[i], [y1, r1] = PROF[i + 1];
+          if (y >= y0 && y <= y1) return r0 + (r1 - r0) * ((y - y0) / (y1 - y0));
+        }
+        return 0.5;
+      };
+      const torso = new THREE.Group();
+      g.add(torso);
+      torso.add(shadowed(new THREE.Mesh(new THREE.LatheGeometry(PROF.map(([y, r]) => new THREE.Vector2(r, y)), 9), flat(DC.hide))));
+      for (const [y0, y1] of [[0.3, 0.62], [0.66, 1.02], [1.06, 1.42], [1.46, 1.74]]) {
+        const pts = [];
+        for (let i = 0; i <= 4; i++) {
+          const y = y0 + (y1 - y0) * i / 4;
+          pts.push(new THREE.Vector2(bodyRad(y) * (1.02 + 0.05 * Math.sin(Math.PI * i / 4)), y));
+        }
+        torso.add(new THREE.Mesh(new THREE.LatheGeometry(pts, 5, -0.71, 1.42), flat(DC.red, { roughness: 0.7 })));
+      }
+      [[1.98, -0.48, 0.30], [1.7, -0.72, 0.26], [1.4, -0.88, 0.22], [1.05, -0.95, 0.19]].forEach(([y, z, s]) => {
+        const sp = new THREE.Mesh(new THREE.ConeGeometry(s * 0.55, s * 1.9, 4), flat(DC.accent));
+        sp.position.set(0, y, z); sp.rotation.x = -0.85;
+        torso.add(sp);
+      });
+      torso.add(seg(V(0, 2.05, 0.1), V(0, 2.5, 0.26), 0.42, 0.3, flat(DC.hide), 8)); // neck
+
+      // -- head --
       const headG = new THREE.Group();
-      headG.position.set(0, 1.55, 0.5);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.62, 9, 7), bodyMat);
-      head.position.set(0, 0.5, 0.25); head.castShadow = true;
-      const snout = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 6), bodyMat);
-      snout.position.set(0, 0.4, 0.78); snout.scale.set(1, 0.7, 1);
-      const eyeGeo = new THREE.SphereGeometry(0.1, 8, 8);
-      const eyeMat = new THREE.MeshStandardMaterial({ color: SRGB(0xfff06a), emissive: SRGB(0xffd83a), emissiveIntensity: 0.9 });
-      // Eyes sit proud of the faceted head sphere — at the old offsets they
-      // were inside the mathematical radius and low-poly facets swallowed
-      // them when the head turned.
-      const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-0.32, 0.69, 0.76);
-      const eyeR = eyeL.clone(); eyeR.position.x = 0.32;
-      const hornGeo = new THREE.ConeGeometry(0.12, 0.42, 5);
-      const hornMat = flat(0xffe9b0);
-      const hornL = new THREE.Mesh(hornGeo, hornMat); hornL.position.set(-0.3, 1.07, 0.05); hornL.rotation.x = -0.25;
-      const hornR = hornL.clone(); hornR.position.x = 0.3;
-      headG.add(head, snout, eyeL, eyeR, hornL, hornR);
-      const wingGeo = new THREE.ConeGeometry(0.55, 1.4, 4);
-      const wingMat = flat(0x7a2fbd, { side: THREE.DoubleSide });
-      const wingL = new THREE.Mesh(wingGeo, wingMat);
-      wingL.position.set(-1.0, 1.7, -0.2); wingL.castShadow = true;
-      const wingR = wingL.clone(); wingR.position.x = 1.0;
-      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.5, 6), bodyMat);
-      tail.castShadow = true;
-      const footGeo = new THREE.SphereGeometry(0.28, 7, 5);
-      const footL = new THREE.Mesh(footGeo, bodyMat);
-      const footR = footL.clone();
-      g.add(body, belly, headG, wingL, wingR, tail, footL, footR);
-      g.userData = { headG, wingL, wingR, eyeL, eyeR, body, belly, tail, footL, footR };
+      headG.position.set(0, 2.66, 0.3);
+      g.add(headG);
+      const cranium = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.82, 10, 8), flat(DC.hide)));
+      cranium.scale.set(1.04, 0.92, 1.0); cranium.position.y = 0.3;
+      const cheekL = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 6), flat(DC.hide));
+      cheekL.position.set(-0.48, 0.02, 0.42);
+      const cheekR = cheekL.clone(); cheekR.position.x = 0.48;
+      const snout = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), flat(DC.hide)));
+      snout.scale.set(1.06, 0.5, 1.42); snout.position.set(0, 0.04, 0.64);
+      const noseL = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 5), flat(DC.hideD));
+      noseL.position.set(-0.22, 0.26, 1.34);
+      const noseR = noseL.clone(); noseR.position.x = 0.22;
+      const throat = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.34, 1.0), flat(DC.mouth, { roughness: 1 }));
+      throat.position.set(0, -0.28, 0.52);
+      headG.add(cranium, cheekL, cheekR, snout, noseL, noseR, throat);
+      for (const [x, z, s] of [[-0.5, 0.5, 0.17], [-0.28, 0.8, 0.22], [0.04, 0.58, 0.15], [0.3, 0.86, 0.23], [0.5, 0.46, 0.15]]) {
+        const tooth = new THREE.Mesh(new THREE.ConeGeometry(s * 0.6, s * 1.7, 5), flat(DC.cream, { roughness: 0.5 }));
+        tooth.rotation.x = Math.PI; tooth.rotation.z = (x < 0 ? -1 : 1) * 0.18;
+        tooth.position.set(x, -0.18, 0.6 + z * 0.55);
+        headG.add(tooth);
+      }
+
+      // jaw (articulated) + lower teeth + tongue
+      const jaw = new THREE.Group();
+      jaw.position.set(0, -0.26, 0.08);
+      headG.add(jaw);
+      const jawMesh = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.54, 8, 6), flat(DC.hideD)));
+      jawMesh.scale.set(0.96, 0.42, 1.4); jawMesh.position.set(0, -0.08, 0.52);
+      const chin = new THREE.Mesh(new THREE.SphereGeometry(0.28, 7, 5), flat(DC.hideXD));
+      chin.scale.set(1, 0.55, 0.8); chin.position.set(0, -0.13, 1.02);
+      jaw.add(jawMesh, chin);
+      for (const [x, z, s] of [[-0.4, 0.9, 0.18], [-0.12, 0.58, 0.13], [0.2, 0.95, 0.21], [0.44, 0.6, 0.13]]) {
+        const tooth = new THREE.Mesh(new THREE.ConeGeometry(s * 0.58, s * 1.6, 5), flat(DC.cream, { roughness: 0.5 }));
+        tooth.rotation.z = (x < 0 ? 1 : -1) * 0.2;
+        tooth.position.set(x, 0.05, 0.34 + z * 0.6);
+        jaw.add(tooth);
+      }
+      const tongue = new THREE.Group();
+      tongue.position.set(0.08, 0.02, 0.78);
+      jaw.add(tongue);
+      const tSegs = [];
+      let tParent = tongue;
+      for (let i = 0; i < 3; i++) {
+        const tg = new THREE.Group();
+        tg.position.z = i === 0 ? 0 : 0.34;
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(0.32 - i * 0.06, 0.075, 0.4), flat(DC.redB, { roughness: 0.55 }));
+        slab.position.z = 0.18;
+        tg.add(slab);
+        tParent.add(tg);
+        tParent = tg;
+        tSegs.push(tg);
+      }
+      const tongueTip = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.2, 4), flat(DC.redB, { roughness: 0.55 }));
+      tongueTip.rotation.x = Math.PI / 2; tongueTip.position.z = 0.44;
+      tParent.add(tongueTip);
+
+      // eyes: both white, mismatched googly sizes, articulated lids
+      const eyeWarm = SRGB(0xfff2dc), eyeHot = SRGB(0xff2810);
+      const makeEye = (x, r, pupilR) => {
+        const eg = new THREE.Group();
+        eg.position.set(x, 0.5, 0.74);
+        headG.add(eg);
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8),
+          new THREE.MeshStandardMaterial({ color: SRGB(0xf6f4f0), roughness: 0.3, emissive: eyeWarm.clone(), emissiveIntensity: 0.12 }));
+        const pupil = new THREE.Mesh(new THREE.SphereGeometry(pupilR, 8, 6), flat(0x17101d, { roughness: 0.2 }));
+        pupil.position.z = r * 0.78;
+        const glint = new THREE.Mesh(new THREE.SphereGeometry(pupilR * 0.26, 6, 5),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1, emissive: 0xffffff, emissiveIntensity: 0.4 }));
+        glint.position.set(pupilR * 0.4, pupilR * 0.45, r * 0.94);
+        const lid = new THREE.Mesh(new THREE.SphereGeometry(r * 1.12, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), flat(DC.hideD));
+        lid.rotation.x = -1.45;
+        eg.add(ball, pupil, glint, lid);
+        return { g: eg, ball, pupil, lid, r };
+      };
+      const eyeL = makeEye(-0.42, 0.33, 0.13);
+      const eyeR = makeEye(0.4, 0.25, 0.14);
+      eyeL.g.rotation.y = -0.12; eyeR.g.rotation.y = 0.1;
+
+      // purple brow ridges + swept-back horns + crest
+      const browL = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.15, 0.34), flat(DC.accent));
+      browL.position.set(-0.43, 0.82, 0.72); browL.rotation.set(-0.35, 0, -0.12);
+      const browR = browL.clone(); browR.position.x = 0.41; browR.rotation.z = 0.12;
+      browL.userData.by = browL.position.y; browR.userData.by = browR.position.y;
+      headG.add(browL, browR);
+      for (const side of [-1, 1]) {
+        headG.add(seg(V(0.42 * side, 0.78, -0.05), V(0.72 * side, 1.1, -0.5), 0.12, 0.07, flat(DC.accent), 5));
+        headG.add(seg(V(0.72 * side, 1.1, -0.5), V(0.86 * side, 1.22, -0.85), 0.07, 0.015, flat(DC.accent), 5));
+      }
+      [[0.98, -0.3, 0.5], [0.8, -0.62, 0.38]].forEach(([y, z, s]) => {
+        const cs = new THREE.Mesh(new THREE.ConeGeometry(0.13 * s + 0.05, 0.5 * s + 0.1, 4), flat(DC.accent));
+        cs.position.set(0, y, z); cs.rotation.x = -0.7;
+        headG.add(cs);
+      });
+
+      // -- wings: root socket → humerus → fingers + stretched membrane --
+      const makeWing = (side) => {
+        const wg = new THREE.Group();
+        wg.position.set(0.34 * side, 1.98, -0.42);
+        g.add(wg);
+        const s = (v) => V(v.x * side, v.y, v.z);
+        wg.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 7, 5), flat(DC.hide)));
+        const elbow = s(V(0.5, 0.42, -0.12));
+        const f1 = s(V(1.35, 0.78, -0.3)), f2 = s(V(1.42, 0.22, -0.28)), f3 = s(V(1.05, -0.28, -0.2));
+        const inner = s(V(0.18, -0.5, -0.05));
+        wg.add(seg(V(0, 0, 0), elbow, 0.09, 0.07, flat(DC.hideD), 5));
+        wg.add(seg(elbow, f1, 0.06, 0.02, flat(DC.hideD), 5));
+        wg.add(seg(elbow, f2, 0.05, 0.02, flat(DC.hideD), 5));
+        wg.add(seg(elbow, f3, 0.05, 0.02, flat(DC.hideD), 5));
+        const eb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), flat(DC.hideD));
+        eb.position.copy(elbow);
+        wg.add(eb);
+        const lerpIn = (a2, b2, k, pull) => a2.clone().lerp(b2, k).multiplyScalar(1 - pull);
+        const rimPts = [elbow, f1, lerpIn(f1, f2, 0.5, 0.16), f2, lerpIn(f2, f3, 0.5, 0.14), f3, lerpIn(f3, inner, 0.5, 0.1), inner];
+        const verts = [];
+        for (let i = 0; i < rimPts.length - 1; i++) {
+          verts.push(0, 0, 0, rimPts[i].x, rimPts[i].y, rimPts[i].z, rimPts[i + 1].x, rimPts[i + 1].y, rimPts[i + 1].z);
+        }
+        const memGeo = new THREE.BufferGeometry();
+        memGeo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+        memGeo.computeVertexNormals();
+        wg.add(shadowed(new THREE.Mesh(memGeo, flat(DC.redB, { side: THREE.DoubleSide, roughness: 0.65 }))));
+        wg.rotation.set(0, 0.5 * side, -0.12 * side);
+        return wg;
+      };
+      const wingL = makeWing(-1), wingR = makeWing(1);
+
+      // -- arms + legs with purple claws --
+      const makeArm = (side) => {
+        const ag = new THREE.Group();
+        ag.position.set(0.6 * side, 1.76, 0.3);
+        g.add(ag);
+        ag.add(new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), flat(DC.hide)));
+        const elbow = V(0.24 * side, -0.36, 0.28), wrist = V(0.3 * side, -0.56, 0.46);
+        ag.add(seg(V(0, 0, 0), elbow, 0.15, 0.11, flat(DC.hideD), 6));
+        ag.add(seg(elbow, wrist, 0.11, 0.09, flat(DC.hideD), 6));
+        const paw = new THREE.Mesh(new THREE.SphereGeometry(0.15, 7, 5), flat(DC.hideXD));
+        paw.position.copy(wrist);
+        ag.add(paw);
+        for (let i = -1; i <= 1; i++) {
+          const claw = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.15, 4), flat(DC.accent, { roughness: 0.45 }));
+          claw.rotation.x = Math.PI / 2;
+          claw.position.set(wrist.x + i * 0.08, wrist.y - 0.03, wrist.z + 0.16);
+          ag.add(claw);
+        }
+        return ag;
+      };
+      const makeLeg = (side) => {
+        const lg = new THREE.Group();
+        lg.position.set(0.52 * side, 0.66, 0.04);
+        g.add(lg);
+        const haunch = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), flat(DC.hideD)));
+        haunch.scale.set(0.92, 1.0, 1.05); haunch.position.set(0.04 * side, -0.14, 0);
+        const foot = new THREE.Mesh(new THREE.SphereGeometry(0.29, 8, 5), flat(DC.hideXD));
+        foot.scale.set(1.08, 0.48, 1.4); foot.position.set(0.08 * side, -0.53, 0.18);
+        lg.add(haunch, foot);
+        for (let i = -1; i <= 1; i++) {
+          const claw = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 4), flat(DC.accent, { roughness: 0.45 }));
+          claw.rotation.x = Math.PI / 2;
+          claw.position.set(0.08 * side + i * 0.15, -0.56, 0.52);
+          lg.add(claw);
+        }
+        return lg;
+      };
+      const armL = makeArm(-1), armR = makeArm(1);
+      const legL = makeLeg(-1), legR = makeLeg(1);
+
+      // -- tail: shrinking segments, purple spikes, red fin --
+      const tail0 = new THREE.Group();
+      tail0.position.set(0, 0.6, -0.78);
+      g.add(tail0);
+      const t0m = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.36, 8, 6), flat(DC.hide)));
+      t0m.scale.set(1, 0.9, 1.3); t0m.position.z = -0.2;
+      tail0.add(t0m);
+      const tail1 = new THREE.Group();
+      tail1.position.set(0, 0.05, -0.52);
+      tail0.add(tail1);
+      const t1m = new THREE.Mesh(new THREE.SphereGeometry(0.25, 7, 5), flat(DC.hideD));
+      t1m.scale.set(1, 0.9, 1.35); t1m.position.z = -0.18;
+      tail1.add(t1m);
+      const tail2 = new THREE.Group();
+      tail2.position.set(0, 0.05, -0.46);
+      tail1.add(tail2);
+      const t2m = new THREE.Mesh(new THREE.SphereGeometry(0.16, 7, 5), flat(DC.hide));
+      t2m.scale.set(1, 0.9, 1.45); t2m.position.z = -0.15;
+      tail2.add(t2m);
+      [[tail0, 0.17, -0.28], [tail1, 0.14, -0.22], [tail2, 0.11, -0.18]].forEach(([tseg, s, z]) => {
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(s * 0.7, s * 2.2, 4), flat(DC.accent));
+        spike.position.set(0, 0.2, z); spike.rotation.x = -0.55;
+        tseg.add(spike);
+      });
+      const finShape = new THREE.Shape();
+      finShape.moveTo(0, 0); finShape.lineTo(0.02, 0.3); finShape.lineTo(0.34, 0.18);
+      finShape.lineTo(0.2, 0); finShape.lineTo(0.34, -0.18); finShape.lineTo(0.02, -0.3); finShape.lineTo(0, 0);
+      const fin = new THREE.Mesh(new THREE.ShapeGeometry(finShape), flat(DC.redB, { side: THREE.DoubleSide, roughness: 0.65 }));
+      fin.rotation.y = Math.PI / 2; fin.rotation.z = Math.PI / 2;
+      fin.position.set(0, 0.05, -0.5);
+      tail2.add(fin);
+
+      g.userData = {
+        torso, headG, jaw, tongue, tSegs, eyeL, eyeR, browL, browR,
+        wingL, wingR, wLbase: wingL.rotation.clone(), wRbase: wingR.rotation.clone(),
+        armL, armR, legL, legR, tail0, tail1, tail2,
+        eyeWarm, eyeHot,
+        ctl: { blink: 0, nextBlink: 2, tongue: 0, nextTongue: 6, jaw: 0, rage: 0 },
+      };
       return g;
     }
 
@@ -2694,7 +2906,7 @@ export default function DragonGardenQuest() {
 
       dragon = makeDragon();
       dragon.position.set(0, 0, -11.4);
-      dragon.scale.setScalar(0.85);
+      dragon.scale.setScalar(0.7); // lab rig is taller than the old model
       dragonHome.copy(dragon.position);
       worldGroup.add(dragon);
       for (let i = 0; i < 3; i++) {
@@ -3737,35 +3949,102 @@ export default function DragonGardenQuest() {
       if (G.wakeT > 0) G.wakeT -= dt;
       const L = (a, c) => a + (c - a) * b;
 
-      // pose blend: standing ↔ curled up on the ground
-      u.body.position.y = L(1.05, 0.72);
-      u.body.scale.set(L(1, 1.1), L(1.05, 0.72) * (1 + Math.sin(t * (1.6 + (1 - b) * 0.8)) * (0.012 + 0.04 * b)), L(1.25, 1.2));
-      u.belly.position.set(0, L(0.9, 0.6), L(0.45, 0.42));
-      u.headG.position.set(L(0, 0.62), L(1.55, 0.6), L(0.5, 0.72));
-      u.headG.rotation.set(L(0, 0.25), L(0, 0.85) + Math.sin(t * 0.7) * 0.3 * (1 - b), L(0, -0.45));
-      u.tail.position.set(L(0, -0.85), L(0.7, 0.3), L(-1.3, 0.8));
-      u.tail.rotation.set(L(Math.PI / 2.4, Math.PI / 2.05), 0, L(0, -1.1));
-      u.footL.position.set(L(-0.5, -0.35), L(0.2, 0.14), L(0.3, 0.42));
-      u.footR.position.set(L(0.5, 0.42), L(0.2, 0.14), L(0.3, 0.5));
-      const fs = L(1, 0.7);
-      u.footL.scale.setScalar(fs); u.footR.scale.setScalar(fs);
-      // eyelids drift shut as he falls asleep
-      const eyeScale = 1 - 0.86 * b;
-      u.eyeL.scale.y = eyeScale; u.eyeR.scale.y = eyeScale;
-      const angry = G.hunger < 30 && G.dragonState === "idle";
-      u.eyeL.material.emissive.set(angry ? 0xff3020 : 0xffd83a);
-      u.eyeL.material.emissiveIntensity = 0.9 * (1 - b) + 0.05;
+      // ---- lab-v3 rig pose (mood logic above is unchanged) ----
+      const c = u.ctl;
+      const hangry = G.hunger < 30 && G.dragonState === "idle";
+      const rampaging = G.dragonState !== "idle";
+      const wp = G.wakeT > 0 ? Math.sin(((0.9 - G.wakeT) / 0.9) * Math.PI) : 0;
+
+      // torso breathing — light awake, deep + squashy asleep
+      const breathe = Math.sin(t * (1.6 + (1 - b) * 0.8)) * (0.014 + 0.045 * b);
+      u.torso.scale.set(1 + breathe * b * 0.5, 1 + breathe, 1 + breathe * b * 0.5);
+
+      // eyelids: sleep + autonomous blinks
+      c.nextBlink -= dt;
+      if (c.nextBlink <= 0) c.nextBlink = 1.6 + Math.random() * 3.4;
+      const blinkTarget = Math.max(b, c.nextBlink < 0.13 ? 1 : 0);
+      c.blink += (blinkTarget - c.blink) * Math.min(1, dt * 18);
+      u.eyeL.lid.rotation.x = -1.45 + c.blink * 1.5;
+      u.eyeR.lid.rotation.x = -1.45 + c.blink * 1.5;
+
+      // googly pupil wander (awake only)
+      const wander = 0.16 * (1 - b);
+      u.eyeL.pupil.position.x = Math.sin(t * 0.7) * wander * u.eyeL.r;
+      u.eyeL.pupil.position.y = Math.cos(t * 0.9) * wander * u.eyeL.r * 0.6;
+      u.eyeR.pupil.position.x = Math.sin(t * 1.13 + 2) * wander * u.eyeR.r;
+      u.eyeR.pupil.position.y = Math.cos(t * 0.77 + 1) * wander * u.eyeR.r * 0.6;
+
+      // rage: brows slam + eyes run hot (hangry idle AND rampage)
+      c.rage += (((hangry || rampaging) ? 1 : 0) - c.rage) * Math.min(1, dt * 4);
+      u.eyeL.ball.material.emissive.copy(u.eyeWarm).lerp(u.eyeHot, c.rage);
+      u.eyeR.ball.material.emissive.copy(u.eyeWarm).lerp(u.eyeHot, c.rage);
+      u.eyeL.ball.material.emissiveIntensity = 0.12 * (1 - b) + c.rage * 0.55;
+      u.eyeR.ball.material.emissiveIntensity = 0.12 * (1 - b) + c.rage * 0.5;
+      u.browL.position.y = u.browL.userData.by - c.rage * 0.13;
+      u.browR.position.y = u.browR.userData.by - c.rage * 0.13;
+      u.browL.rotation.z = -0.12 - c.rage * 0.45;
+      u.browR.rotation.z = 0.12 + c.rage * 0.45;
+
+      // tongue: streams out on a rampage, tip out asleep, random lolls idle
+      let tongueTarget;
+      if (rampaging) tongueTarget = 1;
+      else if (b > 0.5) tongueTarget = 0.35;
+      else {
+        c.nextTongue -= dt;
+        if (c.nextTongue <= 0) c.nextTongue = 6 + Math.random() * 9;
+        tongueTarget = c.nextTongue < 2.2 ? 1 : 0;
+      }
+      if (wp > 0) tongueTarget = Math.max(tongueTarget, wp * 0.55); // yawn
+      c.tongue += (tongueTarget - c.tongue) * Math.min(1, dt * 5);
+      const out = c.tongue;
+      u.tongue.visible = out > 0.04;
+      u.tongue.scale.setScalar(Math.max(0.01, out));
+      u.tongue.rotation.x = 0.25 + (1 - out) * -0.6 + Math.sin(t * 10.7) * 0.16 * out;
+      u.tSegs[1].rotation.x = Math.sin(t * 13.2 + 1) * 0.35 * out;
+      u.tSegs[2].rotation.x = Math.sin(t * 15.7 + 2) * 0.5 * out;
+
+      // jaw: yawn on wake, panting chomp on rampage, slack asleep
+      let jawTarget = rampaging ? 0.55 + Math.sin(t * 15) * 0.3 : L(0, 0.16);
+      jawTarget = Math.max(jawTarget, wp * 0.9);
+      c.jaw += (jawTarget - c.jaw) * Math.min(1, dt * 8);
+      u.jaw.rotation.x = c.jaw * 0.55;
+
+      // head: idle sway ↔ sleepy droop, rear-back stretch on wake, chaos on rampage
+      u.headG.position.set(0, 2.66 - 0.26 * b + wp * 0.1, 0.3 + 0.1 * b);
+      u.headG.rotation.set(
+        L(Math.sin(t * 1.3) * 0.05, 0.42) - wp * 0.55 + (rampaging ? 0.2 + Math.sin(t * 13) * 0.12 : 0),
+        L(Math.sin(t * 0.8) * 0.16, 0.12) + (rampaging ? Math.sin(t * 17) * 0.2 : 0),
+        L(Math.sin(t * 1.1) * 0.03, 0.06));
+
+      // wings: folded asleep, slow idle flaps, agitated when hangry, unfurl on wake
+      const flap = rampaging ? Math.sin(t * 16) * 0.6
+        : hangry ? Math.sin(t * 10) * 0.35
+        : Math.sin(t * 2.2) * 0.1 * (1 - b);
+      u.wingL.rotation.set(u.wLbase.x + 0.3 * b, u.wLbase.y - 0.35 * b, u.wLbase.z + 0.25 * b + flap + wp * 0.9);
+      u.wingR.rotation.set(u.wRbase.x + 0.3 * b, u.wRbase.y + 0.35 * b, u.wRbase.z - 0.25 * b - flap - wp * 0.9);
+
+      // limbs: stride on rampage, limp-relaxed otherwise
+      if (rampaging) {
+        const st = t * 9;
+        u.legL.rotation.x = Math.sin(st) * 1.0;
+        u.legR.rotation.x = -Math.sin(st) * 1.0;
+        u.armL.rotation.set(-Math.sin(st) * 0.9, 0, 0.18);
+        u.armR.rotation.set(Math.sin(st) * 0.9, 0, -0.18);
+      } else {
+        u.legL.rotation.x *= 1 - Math.min(1, dt * 6);
+        u.legR.rotation.x *= 1 - Math.min(1, dt * 6);
+        u.armL.rotation.set(0.4 * b + Math.sin(t * 1.8) * 0.07 * (1 - b), 0, 0.06 + 0.14 * b);
+        u.armR.rotation.set(0.4 * b + Math.sin(t * 1.8 + 2) * 0.07 * (1 - b) - 0.18 * (1 - b), 0, -0.06 - 0.14 * b);
+      }
+
+      // tail sway — lazy asleep, whipping on rampage
+      const tailF = rampaging ? 4.5 : 1.9 - b;
+      u.tail0.rotation.y = Math.sin(t * tailF) * (rampaging ? 0.35 : 0.3);
+      u.tail1.rotation.y = Math.sin(t * tailF + 0.8) * (rampaging ? 0.5 : 0.35);
+      u.tail2.rotation.y = Math.sin(t * tailF + 1.6) * (rampaging ? 0.6 : 0.4);
 
       if (G.dragonState === "idle") {
-        dragon.position.y = Math.sin(t * 2) * 0.06 * (1 - b);
-        const flapAwake = (G.hunger < 30 ? Math.sin(t * 10) * 0.35 : Math.sin(t * 2.2) * 0.1) * (1 - b);
-        u.wingL.rotation.set(L(0, 0.55) + flapAwake + Math.sin(t * 1.4) * 0.03 * b, L(0.4, 0.35), L(Math.PI / 2.3, Math.PI / 1.75));
-        u.wingR.rotation.set(L(0, 0.55) + flapAwake + Math.sin(t * 1.4) * 0.03 * b, L(-0.4, -0.35), L(-Math.PI / 2.3, -Math.PI / 1.75));
-        if (G.wakeT > 0) {
-          const wp = Math.sin(((0.9 - G.wakeT) / 0.9) * Math.PI);
-          u.headG.rotation.x -= wp * 0.35; // big waking stretch
-          dragon.position.y += wp * 0.12;
-        }
+        dragon.position.y = Math.sin(t * 2) * 0.05 * (1 - b) - 0.06 * b + wp * 0.12;
         if (G.dragonHappyT > 0) {
           G.dragonHappyT -= dt;
           dragon.rotation.z = Math.sin(t * 12) * 0.08 * (1 - b);
@@ -3793,15 +4072,14 @@ export default function DragonGardenQuest() {
             G.dragonState = "idle";
             setRampage(false);
             dragon.rotation.y = 0;
+            dragon.rotation.x = 0;
           }
         } else {
           dir.normalize();
           dragon.position.addScaledVector(dir, dt * 6.5);
           dragon.rotation.y = Math.atan2(dir.x, dir.z);
           dragon.position.y = Math.abs(Math.sin(t * 9)) * 0.3;
-          const flap = Math.sin(t * 16) * 0.6;
-          u.wingL.rotation.set(flap, 0.4, Math.PI / 2.3);
-          u.wingR.rotation.set(flap, -0.4, -Math.PI / 2.3);
+          dragon.rotation.x = -0.22; // charging lean
         }
       }
     }
