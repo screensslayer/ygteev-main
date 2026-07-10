@@ -518,14 +518,39 @@ const ctl = {
 
 const states = {
   standing(t) {
+    // happy wiggle folded into idle — the fed-rock from the game,
+    // firing as a recurring flourish every ~9s
+    const w = t % 9;
+    const wigEnv = w < 1.2 ? Math.sin(w / 1.2 * Math.PI) : 0;
     return {
+      root:  { r: [0, 0, osc(t, 2, .09) * wigEnv] },
       torso: { s: [1, 1 + osc(t, .28, .018), 1] },
-      head:  { r: [osc(t, .2, .05, 1), osc(t, .13, .16), osc(t, .17, .03)] },
-      tail0: { r: [0, osc(t, .3, .3), 0] },
+      head:  { r: [osc(t, .2, .05, 1), osc(t, .13, .16), osc(t, .17, .03) + osc(t, 2, .05) * wigEnv] },
+      tail0: { r: [0, osc(t, .3, .3) + osc(t, 2.4, .3) * wigEnv, 0] },
       tail1: { r: [0, osc(t, .3, .35, .8), 0] },
       tail2: { r: [0, osc(t, .3, .4, 1.6), 0] },
       armL:  { r: [osc(t, .28, .07), 0, .06] },
       armR:  { r: [osc(t, .28, .07, 2), 0, -.06] },
+    };
+  },
+  waking(t) {
+    // the game's wake-up stretch, promoted to a full state: rear back,
+    // big yawn with a tongue curl, wings unfurl, settle, repeat
+    const p = (t % 3.6) / 3.6;
+    const env = p < .62 ? Math.sin(p / .62 * Math.PI) : 0;
+    const shake = p > .66 && p < .82 ? Math.sin((p - .66) * 60) * (1 - (p - .66) / .16) : 0;
+    return {
+      root:  { p: [0, env * .14, 0] },
+      torso: { s: [1 - env * .04, 1 + env * .1, 1 - env * .04] },
+      head:  { p: [0, env * .1, -env * .08], r: [-env * .55 + shake * .06, shake * .12, 0] },
+      jawX:  env * .9,
+      tongueX: env * .55,
+      blinkX: env * .85,
+      wingL: { r: [-env * .4, 0, env * .95] },
+      wingR: { r: [-env * .4, 0, -env * .95] },
+      armL:  { r: [-env * .7, 0, env * .4] },
+      armR:  { r: [-env * .7, 0, -env * .4] },
+      tail0: { r: [env * .3, osc(t, .4, .15), 0] },
     };
   },
   sleeping(t) {
@@ -597,6 +622,29 @@ const states = {
       legR:  { r: [osc(t, 3.4, .5, Math.PI), 0, 0] },
       tail0: { r: [0, osc(t, 2.4, .6), 0] },
       tail1: { r: [0, osc(t, 2.4, .8, 1.2), 0] },
+    };
+  },
+  rampage(t) {
+    // the in-game hangry charge: running's stride + crazy's unhinged
+    // head, hot eyes, and full-speed flapping
+    const f = 3.2;
+    const bob = Math.abs(Math.sin(t * f * Math.PI * 2)) * .14;
+    return {
+      root:  { p: [0, bob, 0], r: [-.3, 0, osc(t, f, .06)] },
+      legL:  { r: [osc(t, f, 1.05), 0, 0] },
+      legR:  { r: [osc(t, f, 1.05, Math.PI), 0, 0] },
+      armL:  { r: [osc(t, f, .9, Math.PI), 0, .18] },
+      armR:  { r: [osc(t, f, .9), 0, -.18] },
+      head:  { r: [.2 + osc(t, 2.1, .16), osc(t, 2.7, .3), osc(t, 3.3, .16)] },
+      jawX:  .55 + osc(t, 2.4, .35),
+      tongueX: 1,
+      rageX: .8,
+      winkX: (Math.sin(t * 1.3) > .5) ? 1 : 0,
+      wingL: { r: [.2 + osc(t, 5, .55), 0, .4 + osc(t, 5, .35)] },
+      wingR: { r: [.2 + osc(t, 5, .55), 0, -.4 - osc(t, 5, .35)] },
+      tail0: { r: [.3, osc(t, f * .5, .35), 0] },
+      tail1: { r: [0, osc(t, f * .5, .5, 1), 0] },
+      tail2: { r: [0, osc(t, f * .5, .6, 2), 0] },
     };
   },
   eating(t) {
@@ -721,10 +769,11 @@ function microUpdate(dt, t, pose) {
       const hp = new THREE.Vector3(.3, .4, 1).applyMatrix4(P.head.matrixWorld);
       spawn("zzz", hp.x, hp.y, hp.z);
     }
-  } else if (stateName === "angry" && Math.random() < dt * 10) {
+  } else if ((stateName === "angry" || stateName === "rampage") && Math.random() < dt * 10) {
     const np = new THREE.Vector3((Math.random() < .5 ? -.22 : .22), .3, 1.4).applyMatrix4(P.head.matrixWorld);
     spawn("ember", np.x, np.y, np.z);
-  } else if (stateName === "running" && Math.random() < dt * 7) {
+  }
+  if ((stateName === "running" || stateName === "rampage") && Math.random() < dt * 7) {
     spawn("dust", (Math.random() - .5) * .7, .1, (Math.random() - .5) * .5);
   } else if (stateName === "eating" && Math.random() < dt * 3) {
     const mp = new THREE.Vector3(0, -.5, 1).applyMatrix4(P.head.matrixWorld);
@@ -734,8 +783,9 @@ function microUpdate(dt, t, pose) {
 
 // ---------- UI ----------
 const HUD = [
-  ["standing", "🧍 Standing"], ["sleeping", "😴 Sleeping"], ["running", "🏃 Running"],
-  ["angry", "😡 Angry"], ["crazy", "🤪 Crazy"], ["eating", "😋 Eating"],
+  ["standing", "🧍 Standing"], ["sleeping", "😴 Sleeping"], ["waking", "🥱 Waking"],
+  ["running", "🏃 Running"], ["angry", "😡 Angry"], ["crazy", "🤪 Crazy"],
+  ["rampage", "💥 Rampage"], ["eating", "😋 Eating"],
 ];
 const hud = document.getElementById("hud");
 for (const [s, label] of HUD) {
