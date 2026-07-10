@@ -44,12 +44,12 @@
    ===================================================================== */
 
 const COL = {
-  purple:  0x8d4fb0,
-  purpleD: 0x6b3390,   // limbs, jaw, shading masses
-  purpleXD:0x502470,   // feet/paws
+  hide:    0x332a42,   // near-black body (a whisper of purple so facets shade)
+  hideD:   0x272033,   // limbs, jaw, shading masses
+  hideXD:  0x1c1628,   // feet/paws
   red:     0xb5303c,   // belly plates
   redB:    0xd0424b,   // membrane, tongue
-  black:   0x241a31,   // horns, claws, spikes, brows
+  accent:  0x9b59c9,   // PURPLE horns, brows, claws, spikes
   cream:   0xf2ead2,   // teeth
   mouth:   0x4a1420,
   white:   0xf6f4f0,
@@ -78,7 +78,7 @@ controls.dampingFactor = .08;
 controls.minDistance = 2.5; controls.maxDistance = 12;
 controls.maxPolarAngle = Math.PI * .55;
 
-scene.add(new THREE.HemisphereLight(0xbfa8e8, 0x241a3a, .8));
+scene.add(new THREE.HemisphereLight(0xbfa8e8, 0x241a3a, 1.05));
 const key = new THREE.DirectionalLight(0xfff0da, 1.2);
 key.position.set(4, 7, 5);
 key.castShadow = true;
@@ -86,7 +86,7 @@ key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.left = -5; key.shadow.camera.right = 5;
 key.shadow.camera.top = 6;  key.shadow.camera.bottom = -2;
 scene.add(key);
-const rim = new THREE.DirectionalLight(0xff5d55, .45);   // hot red rim from behind
+const rim = new THREE.DirectionalLight(0xff6a5d, .85);   // hot red rim from behind
 rim.position.set(-4, 3, -5);
 scene.add(rim);
 
@@ -145,7 +145,7 @@ dragon.add(torso);
 reg("torso", torso);
 
 const bodyPts = PROFILE.map(([y, r]) => new THREE.Vector2(r, y));
-const body = mesh(new THREE.LatheGeometry(bodyPts, 9), M(COL.purple));
+const body = mesh(new THREE.LatheGeometry(bodyPts, 9), M(COL.hide));
 torso.add(body);
 
 // -- segmented red belly plates on the front only (lathe wedges) --
@@ -164,7 +164,7 @@ for (const [y0, y1] of [[.3, .62], [.66, 1.02], [1.06, 1.42], [1.46, 1.74]]) {
 
 // dorsal spike line — black, shrinking down the spine
 [[1.98, -.48, .30], [1.7, -.72, .26], [1.4, -.88, .22], [1.05, -.95, .19]].forEach(([y, z, s]) => {
-  const sp = mesh(new THREE.ConeGeometry(s * .55, s * 1.9, 4), M(COL.black));
+  const sp = mesh(new THREE.ConeGeometry(s * .55, s * 1.9, 4), M(COL.accent));
   sp.position.set(0, y, z);
   sp.rotation.x = -.85;
   torso.add(sp);
@@ -172,7 +172,7 @@ for (const [y0, y1] of [[.3, .62], [.66, 1.02], [1.06, 1.42], [1.46, 1.74]]) {
 
 // two understated hide spots (dark purple) — texture without clutter
 [[-.78, 1.3, .38, .15], [.74, .82, -.5, .13]].forEach(([x, y, z, r]) => {
-  const h = mesh(new THREE.CylinderGeometry(r, r, .03, 6), M(COL.purpleD), false);
+  const h = mesh(new THREE.CylinderGeometry(r, r, .03, 6), M(COL.hideD), false);
   h.position.set(x, y, z);
   h.lookAt(x * 3, y + .3, z * 3);
   h.rotateX(Math.PI / 2);
@@ -180,7 +180,7 @@ for (const [y0, y1] of [[.3, .62], [.66, 1.02], [1.06, 1.42], [1.46, 1.74]]) {
 });
 
 // -- neck: connective mass so the head doesn't sit on the shoulders --
-const neck = bone(V3(0, 2.05, .1), V3(0, 2.5, .26), .42, .3, M(COL.purple), 8);
+const neck = bone(V3(0, 2.05, .1), V3(0, 2.5, .26), .42, .3, M(COL.hide), 8);
 torso.add(neck);
 
 // -- head --
@@ -189,22 +189,22 @@ headG.position.set(0, 2.66, .3);
 dragon.add(headG);
 reg("head", headG);
 
-const cranium = mesh(sph(.82, 10, 8), M(COL.purple));
+const cranium = mesh(sph(.82, 10, 8), M(COL.hide));
 cranium.scale.set(1.04, .92, 1.0);
 cranium.position.y = .3;
 headG.add(cranium);
 // cheek masses blend the skull into the muzzle
-const cheekL = mesh(sph(.34, 8, 6), M(COL.purple));
+const cheekL = mesh(sph(.34, 8, 6), M(COL.hide));
 cheekL.position.set(-.48, .02, .42);
 const cheekR = cheekL.clone(); cheekR.position.x = .48;
 headG.add(cheekL, cheekR);
 // muzzle
-const snout = mesh(sph(.6, 8, 6), M(COL.purple));
+const snout = mesh(sph(.6, 8, 6), M(COL.hide));
 snout.scale.set(1.06, .5, 1.42);
 snout.position.set(0, .04, .64);
 headG.add(snout);
 // nostril flares
-const noseL = mesh(sph(.11, 6, 5), M(COL.purpleD));
+const noseL = mesh(sph(.11, 6, 5), M(COL.hideD));
 noseL.position.set(-.22, .26, 1.34);
 const noseR = noseL.clone(); noseR.position.x = .22;
 headG.add(noseL, noseR);
@@ -228,11 +228,11 @@ const jaw = new THREE.Group();
 jaw.position.set(0, -.26, .08);
 headG.add(jaw);
 reg("jaw", jaw);
-const jawMesh = mesh(sph(.54, 8, 6), M(COL.purpleD));
+const jawMesh = mesh(sph(.54, 8, 6), M(COL.hideD));
 jawMesh.scale.set(.96, .42, 1.4);
 jawMesh.position.set(0, -.08, .52);
 jaw.add(jawMesh);
-const chin = mesh(sph(.28, 7, 5), M(COL.purpleXD));
+const chin = mesh(sph(.28, 7, 5), M(COL.hideXD));
 chin.scale.set(1, .55, .8);
 chin.position.set(0, -.13, 1.02);
 jaw.add(chin);
@@ -279,7 +279,7 @@ function makeEye(x, r, pupilR) {
   const glint = mesh(sph(pupilR * .26, 6, 5), M(0xffffff, { roughness: .1, emissive: 0xffffff, emissiveIntensity: .4 }), false);
   glint.position.set(pupilR * .4, pupilR * .45, r * .94);
   g.add(glint);
-  const lid = mesh(new THREE.SphereGeometry(r * 1.12, 10, 6, 0, Math.PI * 2, 0, Math.PI * .55), M(COL.purpleD));
+  const lid = mesh(new THREE.SphereGeometry(r * 1.12, 10, 6, 0, Math.PI * 2, 0, Math.PI * .55), M(COL.hideD));
   lid.rotation.x = -1.45;
   g.add(lid);
   return { g, ball, pupil, glint, lid, r };
@@ -291,7 +291,7 @@ eyeR.g.rotation.y = .1;
 reg("eyeL", eyeL.g); reg("eyeR", eyeR.g);
 
 // heavy black brow ridges seated ON the orbitals
-const browL = mesh(new THREE.BoxGeometry(.46, .15, .34), M(COL.black));
+const browL = mesh(new THREE.BoxGeometry(.46, .15, .34), M(COL.accent));
 browL.position.set(-.43, .82, .72);
 browL.rotation.set(-.35, 0, -.12);
 const browR = browL.clone();
@@ -302,12 +302,12 @@ reg("browL", browL); reg("browR", browR);
 // swept-back black horns (two-bone curve + tip)
 for (const side of [-1, 1]) {
   const a = V3(.42 * side, .78, -.05), b = V3(.72 * side, 1.1, -.5), c = V3(.86 * side, 1.22, -.85);
-  headG.add(bone(a, b, .12, .07, M(COL.black), 5));
-  headG.add(bone(b, c, .07, .015, M(COL.black), 5));
+  headG.add(bone(a, b, .12, .07, M(COL.accent), 5));
+  headG.add(bone(b, c, .07, .015, M(COL.accent), 5));
 }
 // small head crest spikes between the horns
 [[0, .98, -.3, .5], [0, .8, -.62, .38]].forEach(([x, y, z, s]) => {
-  const cSpike = mesh(new THREE.ConeGeometry(.13 * s + .05, .5 * s + .1, 4), M(COL.black));
+  const cSpike = mesh(new THREE.ConeGeometry(.13 * s + .05, .5 * s + .1, 4), M(COL.accent));
   cSpike.position.set(x, y, z);
   cSpike.rotation.x = -.7;
   headG.add(cSpike);
@@ -320,7 +320,7 @@ function makeWing(side) {
   dragon.add(g);
   const s = (v) => V3(v.x * side, v.y, v.z);
 
-  const socket = mesh(sph(.2, 7, 5), M(COL.purple));
+  const socket = mesh(sph(.2, 7, 5), M(COL.hide));
   g.add(socket);
 
   const elbow = s(V3(.5, .42, -.12));
@@ -329,14 +329,14 @@ function makeWing(side) {
   const f3 = s(V3(1.05, -.28, -.2));
   const inner = s(V3(.18, -.5, -.05));          // membrane trailing edge at the body
 
-  g.add(bone(V3(0, 0, 0), elbow, .09, .07, M(COL.purpleD), 5));
-  g.add(bone(elbow, f1, .06, .02, M(COL.purpleD), 5));
-  g.add(bone(elbow, f2, .05, .02, M(COL.purpleD), 5));
-  g.add(bone(elbow, f3, .05, .02, M(COL.purpleD), 5));
-  const elbowBall = mesh(sph(.09, 6, 5), M(COL.purpleD));
+  g.add(bone(V3(0, 0, 0), elbow, .09, .07, M(COL.hideD), 5));
+  g.add(bone(elbow, f1, .06, .02, M(COL.hideD), 5));
+  g.add(bone(elbow, f2, .05, .02, M(COL.hideD), 5));
+  g.add(bone(elbow, f3, .05, .02, M(COL.hideD), 5));
+  const elbowBall = mesh(sph(.09, 6, 5), M(COL.hideD));
   elbowBall.position.copy(elbow);
   g.add(elbowBall);
-  const thumb = mesh(new THREE.ConeGeometry(.045, .16, 4), M(COL.black));
+  const thumb = mesh(new THREE.ConeGeometry(.045, .16, 4), M(COL.accent));
   thumb.position.copy(elbow).add(s(V3(.08, .12, 0)));
   g.add(thumb);
 
@@ -369,17 +369,17 @@ function makeArm(side) {
   const g = new THREE.Group();
   g.position.set(.6 * side, 1.76, .3);          // group origin AT the shoulder
   dragon.add(g);
-  const shoulder = mesh(sph(.22, 8, 6), M(COL.purple));
+  const shoulder = mesh(sph(.22, 8, 6), M(COL.hide));
   g.add(shoulder);
   const elbow = V3(.24 * side, -.36, .28);
   const wrist = V3(.3 * side, -.56, .46);
-  g.add(bone(V3(0, 0, 0), elbow, .15, .11, M(COL.purpleD), 6));
-  g.add(bone(elbow, wrist, .11, .09, M(COL.purpleD), 6));
-  const paw = mesh(sph(.15, 7, 5), M(COL.purpleXD));
+  g.add(bone(V3(0, 0, 0), elbow, .15, .11, M(COL.hideD), 6));
+  g.add(bone(elbow, wrist, .11, .09, M(COL.hideD), 6));
+  const paw = mesh(sph(.15, 7, 5), M(COL.hideXD));
   paw.position.copy(wrist);
   g.add(paw);
   for (let i = -1; i <= 1; i++) {
-    const claw = mesh(new THREE.ConeGeometry(.045, .15, 4), M(COL.black, { roughness: .45 }));
+    const claw = mesh(new THREE.ConeGeometry(.045, .15, 4), M(COL.accent, { roughness: .45 }));
     claw.rotation.x = Math.PI / 2;
     claw.position.set(wrist.x + i * .08, wrist.y - .03, wrist.z + .16);
     g.add(claw);
@@ -394,16 +394,16 @@ function makeLeg(side) {
   const g = new THREE.Group();
   g.position.set(.52 * side, .66, .04);         // origin at the hip
   dragon.add(g);
-  const haunch = mesh(sph(.4, 8, 6), M(COL.purpleD));
+  const haunch = mesh(sph(.4, 8, 6), M(COL.hideD));
   haunch.scale.set(.92, 1.0, 1.05);
   haunch.position.set(.04 * side, -.14, 0);
   g.add(haunch);
-  const foot = mesh(sph(.29, 8, 5), M(COL.purpleXD));
+  const foot = mesh(sph(.29, 8, 5), M(COL.hideXD));
   foot.scale.set(1.08, .48, 1.4);
   foot.position.set(.08 * side, -.53, .18);
   g.add(foot);
   for (let i = -1; i <= 1; i++) {
-    const claw = mesh(new THREE.ConeGeometry(.07, .2, 4), M(COL.black, { roughness: .45 }));
+    const claw = mesh(new THREE.ConeGeometry(.07, .2, 4), M(COL.accent, { roughness: .45 }));
     claw.rotation.x = Math.PI / 2;
     claw.position.set(.08 * side + i * .15, -.56, .52);
     g.add(claw);
@@ -417,23 +417,23 @@ reg("legR", makeLeg(1));
 const tail0 = new THREE.Group();
 tail0.position.set(0, .6, -.78);
 dragon.add(tail0);
-const t0m = mesh(sph(.36, 8, 6), M(COL.purple));
+const t0m = mesh(sph(.36, 8, 6), M(COL.hide));
 t0m.scale.set(1, .9, 1.3); t0m.position.z = -.2;
 tail0.add(t0m);
 const tail1 = new THREE.Group();
 tail1.position.set(0, .05, -.52);
 tail0.add(tail1);
-const t1m = mesh(sph(.25, 7, 5), M(COL.purpleD));
+const t1m = mesh(sph(.25, 7, 5), M(COL.hideD));
 t1m.scale.set(1, .9, 1.35); t1m.position.z = -.18;
 tail1.add(t1m);
 const tail2 = new THREE.Group();
 tail2.position.set(0, .05, -.46);
 tail1.add(tail2);
-const t2m = mesh(sph(.16, 7, 5), M(COL.purple));
+const t2m = mesh(sph(.16, 7, 5), M(COL.hide));
 t2m.scale.set(1, .9, 1.45); t2m.position.z = -.15;
 tail2.add(t2m);
 [[tail0, .17, -.28], [tail1, .14, -.22], [tail2, .11, -.18]].forEach(([seg, s, z]) => {
-  const spike = mesh(new THREE.ConeGeometry(s * .7, s * 2.2, 4), M(COL.black));
+  const spike = mesh(new THREE.ConeGeometry(s * .7, s * 2.2, 4), M(COL.accent));
   spike.position.set(0, .2, z);
   spike.rotation.x = -.55;
   seg.add(spike);
