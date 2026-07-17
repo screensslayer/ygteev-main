@@ -2930,8 +2930,10 @@ export default function DragonGardenQuest() {
         worldGroup.add(sp); zzz.push(sp);
       }
 
-      worldGroup.add(makeSign(20, 1.4, -0.4));
-      worldGroup.add(makeSign(-20, 1.4, 0.4));
+      // signs face south — the follow-camera always views from the south,
+      // so the board reads face-on to the player
+      worldGroup.add(makeSign(20, 1.4, 0));
+      worldGroup.add(makeSign(-20, 1.4, 0));
       [[-9.5, -8, 1.3], [12, -10, 1.1], [-9, 15.5, 1.4], [14, 12, 1.2], [-19, 6.5, 1.0], [18, -3, 1.3], [9, 16, 1.1], [-20.5, -14, 1.4], [20, 15, 1.2], [-19, 18, 1.1], [16, 18, 1.3], [24, 6, 1.0], [-21, -4, 1.2]]
         .forEach(([x, z, s]) => { if (!inGarden(x, z, 1.3)) worldGroup.add(makeTree(x, z, s)); });
       addPetals([[12, -10], [9, 16], [20, 15], [-9, 15.5]], [0x8fbe62, 0xd8c05a], 14, 3.6);
