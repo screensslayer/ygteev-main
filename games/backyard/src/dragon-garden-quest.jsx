@@ -224,6 +224,10 @@ export default function DragonGardenQuest() {
   const [bridgeTalk, setBridgeTalk] = useState(false);
   const reqBridgeRef = useRef(() => {});
   reqBridgeRef.current = () => setBridgeTalk(true);
+  // gold-bag pickup: "found" card → Berry Market flyer → closed
+  const [goldBagStep, setGoldBagStep] = useState(null);
+  const reqGoldBagRef = useRef(() => {});
+  reqGoldBagRef.current = () => setGoldBagStep("found");
   const introInfo = hud.intro || { page: null, task: null };
   const introDlg = introInfo.page != null;
   const [taskSplash, setTaskSplash] = useState(null);
@@ -1843,6 +1847,7 @@ export default function DragonGardenQuest() {
         gold: G.gold,
         hunger: Math.round(G.hunger),
         selectedSeed: G.selectedSeed,
+        goldBag: G.goldBagFound ? 1 : 0,
         inv: G.inv,
         homePlots: G.homePlots.map((p) => p.seed ? {
           seed: p.seed,
@@ -1856,7 +1861,7 @@ export default function DragonGardenQuest() {
     // ticking doesn't spam writes; the payload still carries exact timers
     function stateSig() {
       return JSON.stringify([
-        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 25),
+        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 25), G.goldBagFound,
         G.homePlots.map((p) => p.seed ? p.seed + (p.regrowAt != null ? "r" : "g") : "-"),
       ]);
     }
@@ -1870,6 +1875,7 @@ export default function DragonGardenQuest() {
       if (d.inv) { Object.assign(G.inv.seeds, d.inv.seeds || {}); Object.assign(G.inv.fruit, d.inv.fruit || {}); }
       if (d.selectedSeed && SEEDS[d.selectedSeed]) G.selectedSeed = d.selectedSeed;
       if (G.selectedSeed === "glowberry" && G.map !== "CHURCH") G.selectedSeed = "strawberry"; // glow seeds are church-only
+      G.goldBagFound = d.goldBag === 1;
       if (typeof d.hunger === "number") G.hunger = Math.min(100, Math.max(30, d.hunger)); // never rampage at the door
       if (Array.isArray(d.homePlots)) {
         d.homePlots.forEach((sp, i) => {
@@ -1944,7 +1950,7 @@ export default function DragonGardenQuest() {
       counterActive: false, counterKind: null, counterNear: false, exitLatch: false,
       introActive: false, introFocus: null, introLock: false, introTask: null, introTaskDone: null,
       introPage: null, introGave: false,
-      youthGroup: false, bridgeNoteShown: false,
+      youthGroup: false, bridgeNoteShown: false, goldBagFound: false,
     };
     gameRef.current = G;
     loadWeekSave();
@@ -1963,6 +1969,7 @@ export default function DragonGardenQuest() {
     G.reqCounter = (kind) => reqCounterRef.current(kind);
     G.reqItemGet = (gift) => reqItemGetRef.current(gift);
     G.reqBridge = () => reqBridgeRef.current();
+    G.reqGoldBag = () => reqGoldBagRef.current();
     G.flyCoins = (n) => flyCoinsRef.current(n);
     G.doPendingMap = () => { if (G.pendingMap) { loadMap(G.pendingMap.to, G.pendingMap.spawn); G.pendingMap = null; } };
     G.endTransition = () => { G.transitioning = false; };
@@ -1992,6 +1999,7 @@ export default function DragonGardenQuest() {
     let worldGroup = null;
     let plotNodes = [], exits = [], hotspots = [];
     let dragon = null, dragonHome = new THREE.Vector3();
+    let goldBag = null; // one-time glowing pouch on the town road
     let butterflies = [], glowNodes = [], embers = [], smokes = [], caveLight = null, npcs = [], zzz = [];
     let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, water = null, foams = [], swayers = [], petals = [], fountainFx = null;
     let buildCells = [], ghostMesh = null, buildMarkers = null, counterKeeper = null;
@@ -2385,7 +2393,7 @@ export default function DragonGardenQuest() {
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
-      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; timerSprite = null; lastTimerSec = -1; water = null; foams = []; swayers = []; petals = []; fountainFx = null;
+      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; timerSprite = null; lastTimerSec = -1; water = null; foams = []; swayers = []; petals = []; fountainFx = null; goldBag = null;
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
       colliders = [];
     }
@@ -2950,6 +2958,32 @@ export default function DragonGardenQuest() {
         { x: -24, z: 3, r: 2.2, to: "CHURCH", spawn: [26, 0], label: "← " + (G.activeGarden?.name || ((window.YGTEEV?.profile?.memberships || []).length > 1 ? "Community Gardens" : "Community Garden")) },
       ];
       hotspots = [{ x: 0, z: -10.4, r: 3.4, type: "dragon", label: "Feed Ember the dragon" }];
+
+      // one-time find: a glowing pouch dropped on the road toward town
+      if (!G.goldBagFound) {
+        goldBag = new THREE.Group();
+        const sack = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32, 0), flat(0xa87848, { roughness: 0.9 }));
+        sack.scale.set(1, 0.82, 1); sack.position.y = 0.27; sack.castShadow = true;
+        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.15, 0.15, 6), flat(0x8a5f2e));
+        neck.position.y = 0.56;
+        const tie = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.028, 5, 8), flat(0x6e4a2c));
+        tie.rotation.x = Math.PI / 2; tie.position.y = 0.52;
+        goldBag.add(sack, neck, tie);
+        const coinMat = new THREE.MeshStandardMaterial({ color: SRGB(0xffd45e), emissive: SRGB(0xd8a428), emissiveIntensity: 0.5, roughness: 0.3 });
+        [[0.32, 0.03, 0.18, 0.4], [0.42, 0.02, -0.08, 1.2], [-0.3, 0.02, 0.3, 2.1]].forEach(([cx, cy, cz, rot]) => {
+          const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.028, 8), coinMat);
+          coin.position.set(cx, cy + 0.014, cz); coin.rotation.y = rot;
+          goldBag.add(coin);
+        });
+        const bagGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffd870), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+        bagGlow.scale.set(1.7, 1.7, 1);
+        bagGlow.position.y = 0.4;
+        goldBag.add(bagGlow);
+        goldBag.userData.glow = bagGlow;
+        goldBag.position.set(8.5, 0, 3.9);
+        worldGroup.add(goldBag);
+        hotspots.push({ x: 8.5, z: 3.9, r: 2.1, type: "goldbag", label: "A glowing pouch lies in the road…" });
+      }
     }
 
     // -------- TOWN --------
@@ -3737,6 +3771,20 @@ export default function DragonGardenQuest() {
       } else if (type === "toolsmith") setShop("tools");
       else if (type === "counter") G.startCounter(currentPrompt.kind);
       else if (type === "bridge") { if (G.reqBridge) G.reqBridge(); }
+      else if (type === "goldbag") {
+        G.goldBagFound = true;
+        G.gold += 5;
+        SFX.coin(2);
+        if (G.flyCoins) G.flyCoins(4);
+        if (goldBag) {
+          spawnBurst(goldBag.position.x, goldBag.position.z, 0xffd45e, 8, { glow: true, vy: 2.2, y0: 0.4 });
+          worldGroup.remove(goldBag);
+          goldBag = null;
+        }
+        hotspots = hotspots.filter((h) => h.type !== "goldbag");
+        G.playerHopT = 0.32;
+        if (G.reqGoldBag) G.reqGoldBag();
+      }
       else if (type === "seedshop") setShop("seeds");
       else if (type === "market") setShop("market");
     }
@@ -4507,6 +4555,10 @@ export default function DragonGardenQuest() {
         timerSprite.position.y = 4.2 + Math.sin(G.time * 1.4) * 0.07;
       }
       if (caveLight) caveLight.intensity = 1.0 + Math.sin(G.time * 7) * 0.2 + Math.sin(G.time * 13.7) * 0.12;
+      if (goldBag) {
+        goldBag.userData.glow.material.opacity = 0.42 + Math.sin(G.time * 2.6) * 0.2;
+        goldBag.rotation.y = Math.sin(G.time * 0.9) * 0.12;
+      }
       if (sparkles) {
         sparkles.rotation.y = G.time * 0.08;
         sparkles.position.y = Math.sin(G.time * 1.2) * 0.15;
@@ -4769,7 +4821,7 @@ export default function DragonGardenQuest() {
   }, [started]);
 
   const shopOpenRef = useRef(false);
-  useEffect(() => { shopOpenRef.current = !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk; }, [shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk]);
+  useEffect(() => { shopOpenRef.current = !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep; }, [shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep]);
   useEffect(() => { const g = gameRef.current; if (g) g.styleActive = shop === "style"; }, [shop]);
   useEffect(() => { const g = gameRef.current; if (g) g.buildActive = buildMode; }, [buildMode]);
   useEffect(() => { if (hud.map !== "HOME" && buildMode) setBuildMode(false); }, [hud.map, buildMode]);
@@ -4844,7 +4896,7 @@ export default function DragonGardenQuest() {
   const seedKeys = Object.keys(SEEDS);
   const hungerPct = Math.max(0, Math.min(100, hud.hunger));
   const FRUIT_EMOJI = { strawberry: "🍓", blueberry: "🫐", sunfruit: "🍑", glowberry: "✨" };
-  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", bridge: "🌉" };
+  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", bridge: "🌉", goldbag: "💰" };
   const marketTotal = seedKeys.reduce((t, k) => t + hud.inv.fruit[k] * SEEDS[k].sell, 0);
   const actionAvailable = !!ACTION_ICON[hud.promptType];
   const actionIcon = ACTION_ICON[hud.promptType] || "🌾";
@@ -5450,6 +5502,41 @@ export default function DragonGardenQuest() {
                 <button onClick={() => setBridgeTalk(false)} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, flex: 1 }}>OK</button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* gold-bag pickup: found card, then the Berry Market flyer */}
+      {goldBagStep === "found" && (
+        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: 12, width: "min(520px, 95vw)", zIndex: 28 }}>
+          <div style={{ ...S.panel, background: WOOD_TEX, position: "relative", padding: "13px 15px", display: "flex", gap: 12, alignItems: "flex-start", textAlign: "left" }}>
+            <Corners />
+            <div style={{ width: 52, height: 52, flex: "0 0 52px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #ffe9a8, #c9963c)", border: `1px solid ${GOLD}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>💰</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ ...S.goldText, fontWeight: 800, letterSpacing: 1.4, fontSize: 13 }}>YOU FOUND SOMETHING</div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.55, margin: "5px 0 10px" }}>
+                Found 5 gold coins, a pouch and a flyer.
+              </div>
+              <button onClick={() => setGoldBagStep("flyer")} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, width: "100%" }}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {goldBagStep === "flyer" && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 28, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(10,7,18,0.45)" }}>
+          <div style={{ width: "min(360px, 88vw)", background: "#ffedc8", border: "3px solid #7a3a10", borderRadius: 6, padding: "20px 18px", textAlign: "center", color: "#7a3a10", boxShadow: "0 14px 40px rgba(0,0,0,0.55)", transform: "rotate(-1.5deg)", fontFamily: "Georgia, serif" }}>
+            <div style={{ fontSize: 12, letterSpacing: 3, opacity: 0.75 }}>MEADOW TOWN</div>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 1, margin: "2px 0 8px" }}>🍓 BERRY MARKET</div>
+            <div style={{ borderTop: "2px solid #7a3a10", borderBottom: "2px solid #7a3a10", padding: "10px 4px", margin: "0 6px 10px" }}>
+              <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: 0.5 }}>FRUIT SUPPLY RUNNING LOW!</div>
+            </div>
+            <div style={{ fontSize: 14.5, lineHeight: 1.6, marginBottom: 12 }}>
+              Our crates are nearly empty, and hungry customers keep coming.
+              We'll pay <b>top dollar</b> for ripened fruit — bring us your
+              harvest, gardener!
+            </div>
+            <div style={{ fontSize: 12, fontStyle: "italic", opacity: 0.8, marginBottom: 14 }}>— Marta, Berry Market counter</div>
+            <button onClick={() => setGoldBagStep(null)} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 14, width: "70%", fontFamily: "inherit" }}>OK</button>
           </div>
         </div>
       )}
