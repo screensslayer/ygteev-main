@@ -175,6 +175,17 @@ const INTRO_TASK_LABEL = {
   feed: "Bring Ember a Strawberry — he's in the cave!",
 };
 
+// Eli's one-time welcome the first time a member enters the community garden.
+// Narration: public/voices/church-{1..6}.mp3. No tasks — explanation only.
+const CHURCH_INTRO_PAGES = [
+  { t: "Welcome explorer — the shared soil of your whole youth group is just over yonder. What grows here, grows for everyone." },
+  { t: "You're not alone in these rows. Your friends tend this same ground — you'll see them here, planting right alongside you." },
+  { t: "See those glowing plots? Only Glowberries take root in blessed soil like this. You'll bring the seeds from town — but the planting must be earned." },
+  { t: "Before I let you plant, I'll test you — three questions from Scripture you've already studied. Answer two of three, and the soil is yours." },
+  { t: "A Glowberry grows into a sacred tree, and every berry it bears is counted toward your youth group's harvest that week. These trees will only last 12 hours, so keep coming back to plant more." },
+  { t: "Grow the most berries together, and your garden tops the Garden League. Go on now — plant when you're ready.", end: true },
+];
+
 const hexCss = (h) => "#" + h.toString(16).padStart(6, "0");
 const Swatch = ({ c, sel, onPick }) => (
   <div onClick={onPick} style={{
@@ -228,6 +239,10 @@ export default function DragonGardenQuest() {
   const [goldBagStep, setGoldBagStep] = useState(null);
   const reqGoldBagRef = useRef(() => {});
   reqGoldBagRef.current = () => setGoldBagStep("found");
+  // Eli's community-garden welcome — current page index (0..5) or null
+  const [churchIntro, setChurchIntro] = useState(null);
+  const reqChurchIntroRef = useRef(() => {});
+  reqChurchIntroRef.current = (n) => setChurchIntro(n);
   const introInfo = hud.intro || { page: null, task: null };
   const introDlg = introInfo.page != null;
   const [taskSplash, setTaskSplash] = useState(null);
@@ -499,12 +514,29 @@ export default function DragonGardenQuest() {
         voiceDuckOrig = null;
       }
     }
-    function playVoiceClip(i, tries = 0) {
+    // Church-garden intro narration lives as static mp3s in public/voices
+    // (fetched on church entry) so it stays out of the initial bundle.
+    let churchVoiceBufs = [], churchVoicesRequested = false;
+    function loadChurchVoices() {
+      if (!AC || churchVoicesRequested) return;
+      churchVoicesRequested = true;
+      for (let i = 0; i < 6; i++) {
+        fetch(`voices/church-${i + 1}.mp3`)
+          .then((r) => r.arrayBuffer())
+          .then((ab) => AC.decodeAudioData(ab))
+          .then((buf) => { churchVoiceBufs[i] = buf; })
+          .catch(() => {});
+      }
+    }
+    // opts = { bufs, pageOf } routes home vs. church narration through one player
+    function playVoiceClip(i, tries = 0, opts = null) {
+      const bufs = opts?.bufs || voiceBufs;
+      const pageOf = opts?.pageOf || (() => G.introPage);
       if (!AC) initAudio();
       if (!AC) return;
-      if (G.introPage !== i) return;
-      if (!voiceBufs[i]) {
-        if (tries < 12) setTimeout(() => playVoiceClip(i, tries + 1), 250);
+      if (pageOf() !== i) return;
+      if (!bufs[i]) {
+        if (tries < 16) setTimeout(() => playVoiceClip(i, tries + 1, opts), 250);
         return;
       }
       stopVoiceClip();
@@ -513,7 +545,7 @@ export default function DragonGardenQuest() {
         musicBus.gain.setTargetAtTime(Math.min(voiceDuckOrig, 0.16), AC.currentTime, 0.08);
       }
       const src = AC.createBufferSource();
-      src.buffer = voiceBufs[i];
+      src.buffer = bufs[i];
       src.connect(voiceGain);
       src.onended = () => {
         if (voiceSrc === src) {
@@ -1947,6 +1979,7 @@ export default function DragonGardenQuest() {
       counterActive: false, counterKind: null, counterNear: false, exitLatch: false,
       introActive: false, introFocus: null, introLock: false, introTask: null, introTaskDone: null,
       introPage: null, introGave: false, introGiftClaimed: {},
+      churchIntroPage: null, churchIntroDone: false,
       youthGroup: false, bridgeNoteShown: false, goldBagFound: false,
     };
     gameRef.current = G;
@@ -1967,6 +2000,7 @@ export default function DragonGardenQuest() {
     G.reqSeedGift = (g) => reqSeedGiftRef.current(g);
     G.reqBridge = () => reqBridgeRef.current();
     G.reqGoldBag = () => reqGoldBagRef.current();
+    G.reqChurchIntro = (n) => reqChurchIntroRef.current(n);
     G.flyCoins = (n) => flyCoinsRef.current(n);
     G.doPendingMap = () => { if (G.pendingMap) { loadMap(G.pendingMap.to, G.pendingMap.spawn); G.pendingMap = null; } };
     G.endTransition = () => { G.transitioning = false; };
@@ -2312,6 +2346,49 @@ export default function DragonGardenQuest() {
       saveIntroDone();
       if (gardener) { worldGroup.remove(gardener); gardener = null; }
     };
+
+    // ---- Community garden welcome (first CHURCH entry, members only) ----
+    function saveChurchIntroDone() {
+      G.churchIntroDone = true;
+      try { if (window.storage) window.storage.set("garden-church-intro", "1"); } catch (e) {}
+    }
+    G.startChurchIntro = () => {
+      if (G.churchIntroDone || G.churchIntroPage != null || G.map !== "CHURCH" || !gardener) return;
+      loadChurchVoices();
+      G.introLock = true;
+      G.introFocus = "eli";
+      // his post is clear across the garden — pop him a few steps out along
+      // that line so the walk-up to the newcomer reads as a short greeting
+      const dx = gardener.position.x - playerPos.x, dz = gardener.position.z - playerPos.z;
+      const d = Math.hypot(dx, dz) || 1;
+      gardener.position.set(playerPos.x + (dx / d) * 4.5, terrainY(playerPos.x, playerPos.z), playerPos.z + (dz / d) * 4.5);
+      gardener.visible = true;
+      gardenerCtl = { mode: "approach", church: true, t: 0, post: [-3.4, 3.0], postRot: 2.4, announced: false };
+    };
+    G.churchStartPage = (n) => {
+      G.churchIntroPage = n;
+      G.introLock = true;
+      G.introFocus = "eli";
+      playVoiceClip(n, 0, { bufs: churchVoiceBufs, pageOf: () => G.churchIntroPage });
+      if (G.reqChurchIntro) G.reqChurchIntro(n);
+    };
+    const endChurchIntro = () => {
+      stopVoiceClip();
+      G.churchIntroPage = null;
+      G.introFocus = null;
+      G.introLock = false;
+      saveChurchIntroDone();
+      if (gardener) gardenerCtl.mode = "return"; // back to his post, not off the map
+      if (G.reqChurchIntro) G.reqChurchIntro(null);
+    };
+    G.churchIntroNext = () => {
+      if (G.churchIntroPage == null) return;
+      const pg = CHURCH_INTRO_PAGES[G.churchIntroPage];
+      if (!pg || pg.end) { endChurchIntro(); return; }
+      G.churchStartPage(G.churchIntroPage + 1);
+    };
+    G.skipChurchIntro = () => endChurchIntro();
+
     G.setYouthGroup = (v) => {
       const was = G.youthGroup;
       G.youthGroup = !!v;
@@ -2347,6 +2424,13 @@ export default function DragonGardenQuest() {
       } catch (e) {
         introTimer = setTimeout(() => G.startIntro(), 1500);
       }
+    })();
+    (async () => {
+      try {
+        if (!window.storage) return;
+        const r = await window.storage.get("garden-church-intro").catch(() => null);
+        if (r && r.value === "1") G.churchIntroDone = true;
+      } catch (e) {}
     })();
     G.buyHoe = () => {
       if (G.build.hoe) { toast("You already own the hoe!", "warn"); return; }
@@ -3602,6 +3686,12 @@ export default function DragonGardenQuest() {
       else if (name === "CHURCH") buildChurch();
       else buildShopInterior(name);
       if (window.YGTEEV_API) { if (name === "CHURCH") joinLiveGarden(); else leaveLiveGarden(); }
+      // First community-garden visit: Eli walks up and explains the rules.
+      // Fire after the transition settles (and only if still on CHURCH).
+      if (name === "CHURCH" && !G.churchIntroDone) {
+        loadChurchVoices();
+        setTimeout(() => { if (G.map === "CHURCH" && !G.transitioning) G.startChurchIntro(); }, 1400);
+      }
       // the community garden's sacred plots only take glowberries — preselect
       // them on entry (even at ×0), and drop back to a seed you own on exit
       if (name === "CHURCH") G.selectedSeed = "glowberry";
@@ -4696,7 +4786,11 @@ export default function DragonGardenQuest() {
             gardener.position.y = terrainY(gardener.position.x, gardener.position.z);
             playerAngle = Math.atan2(gardener.position.x - playerPos.x, gardener.position.z - playerPos.z);
             player.rotation.y = playerAngle;
-            if (!gardenerCtl.announced) { gardenerCtl.announced = true; applyIntroPage(0); syncHud(); }
+            if (!gardenerCtl.announced) {
+              gardenerCtl.announced = true;
+              if (gardenerCtl.church) G.churchStartPage(0);
+              else { applyIntroPage(0); syncHud(); }
+            }
           } else {
             gardener.position.x += (adx / ad) * dt * 2.0;
             gardener.position.z += (adz / ad) * dt * 2.0;
@@ -4847,7 +4941,7 @@ export default function DragonGardenQuest() {
   }, [started]);
 
   const shopOpenRef = useRef(false);
-  useEffect(() => { shopOpenRef.current = !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!seedGift; }, [shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, seedGift]);
+  useEffect(() => { shopOpenRef.current = !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!seedGift || churchIntro != null; }, [shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, seedGift, churchIntro]);
   useEffect(() => { const g = gameRef.current; if (g) g.styleActive = shop === "style"; }, [shop]);
   useEffect(() => { const g = gameRef.current; if (g) g.buildActive = buildMode; }, [buildMode]);
   useEffect(() => { if (hud.map !== "HOME" && buildMode) setBuildMode(false); }, [hud.map, buildMode]);
@@ -5503,6 +5597,33 @@ export default function DragonGardenQuest() {
                 </div>
                 <button onClick={introNext} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, padding: "8px 22px" }}>
                   {pg.end ? "Let's grow!" : pg.task ? "I'm on it" : "Next ▸"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ); })()}
+
+      {/* Eli's first-visit community-garden welcome */}
+      {churchIntro != null && (() => { const pg = CHURCH_INTRO_PAGES[churchIntro]; if (!pg) return null; return (
+        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: "calc(12px + env(safe-area-inset-bottom, 0px))", width: "min(600px, 95vw)", zIndex: 28 }}>
+          <div style={{ ...S.panel, background: WOOD_TEX, position: "relative", padding: "13px 15px", display: "flex", gap: 12, alignItems: "flex-start", textAlign: "left" }}>
+            <Corners />
+            <div style={{ width: 54, height: 54, flex: "0 0 54px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #ffffff, #7a8a5a)", border: `2px solid ${GOLD}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}><span style={{ fontSize: 24, fontWeight: 800, color: "#ffffff", textShadow: "0 2px 4px rgba(0,0,0,0.45)", fontFamily: "Georgia, serif" }}>E</span></div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ ...S.goldText, fontWeight: 800, letterSpacing: 1.4, fontSize: 13 }}>OLD GARDENER ELI</div>
+                <button onClick={() => gameRef.current?.skipChurchIntro()} style={{ background: "none", border: "none", color: PARCH, opacity: 0.5, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>skip ›</button>
+              </div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.55, margin: "5px 0 10px" }}>"{pg.t}"</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {CHURCH_INTRO_PAGES.map((_, i) => (
+                    <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: i <= churchIntro ? "#ffb845" : "rgba(47,127,193,0.3)" }} />
+                  ))}
+                </div>
+                <button onClick={() => gameRef.current?.churchIntroNext()} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, padding: "8px 22px" }}>
+                  {pg.end ? "Let's grow!" : "Next ▸"}
                 </button>
               </div>
             </div>
