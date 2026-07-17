@@ -2988,6 +2988,8 @@ export default function DragonGardenQuest() {
         goldBag.position.set(8.5, 0, 3.9);
         worldGroup.add(goldBag);
         hotspots.push({ x: 8.5, z: 3.9, r: 2.1, type: "goldbag", label: "A glowing pouch lies in the road…" });
+        addCircleCol(8.5, 3.9, 0.45); // solid until picked up
+        goldBag.userData.col = colliders[colliders.length - 1];
       }
     }
 
@@ -3787,6 +3789,8 @@ export default function DragonGardenQuest() {
         if (G.flyCoins) G.flyCoins(4);
         if (goldBag) {
           spawnBurst(goldBag.position.x, goldBag.position.z, 0xffd45e, 8, { glow: true, vy: 2.2, y0: 0.4 });
+          const ci = colliders.indexOf(goldBag.userData.col);
+          if (ci >= 0) colliders.splice(ci, 1); // stop blocking once collected
           worldGroup.remove(goldBag);
           goldBag = null;
         }
@@ -4179,6 +4183,14 @@ export default function DragonGardenQuest() {
       }
 
       resolveCollisions(playerPos, dragon, G.map === "HOME" && G.dragonState === "idle");
+      // solid groupmates in the community garden (they move, so push
+      // dynamically off their current position; skip parked-underground ones)
+      if (G.map === "CHURCH") {
+        for (const id in livePlayers) {
+          const m = livePlayers[id].mesh;
+          if (m.position.y > -30) pushOutOfCircle(playerPos, m.position.x, m.position.z, 0.55);
+        }
+      }
 
       player.position.copy(playerPos);
       const groundY = terrainY(playerPos.x, playerPos.z);
