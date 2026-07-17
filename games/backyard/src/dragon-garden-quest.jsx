@@ -4253,6 +4253,8 @@ export default function DragonGardenQuest() {
         if (bd < 2.6 && !G.bridgeNoteShown && !shopOpenRef.current) {
           G.bridgeNoteShown = true;
           if (G.reqBridge) G.reqBridge();
+        } else if (bd > 4.2 && G.bridgeNoteShown) {
+          G.bridgeNoteShown = false; // re-arm: the note shows again on the next approach
         }
       }
       if (counterKeeper && !G.transitioning) {
@@ -5445,8 +5447,7 @@ export default function DragonGardenQuest() {
                 "The spring floods took the bridge. Our youth group rebuilds it for every new member — join one in the YGTeeV app, and we'll have you across to the blessed soil in no time."
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => { gameRef.current?.setYouthGroup(true); setBridgeTalk(false); }} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, flex: 1 }}>I've joined a youth group!</button>
-                <button onClick={() => setBridgeTalk(false)} style={{ ...S.btn(WOOD, PARCH), border: `1px solid ${GOLD}`, fontSize: 13.5, flex: 1 }}>Maybe later</button>
+                <button onClick={() => setBridgeTalk(false)} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, flex: 1 }}>OK</button>
               </div>
             </div>
           </div>
