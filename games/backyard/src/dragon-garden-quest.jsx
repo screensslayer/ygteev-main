@@ -5467,8 +5467,8 @@ export default function DragonGardenQuest() {
         </div>
       )}
       {introInfo.task && !taskSplash && (
-        <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 15 }}>
-          <div style={{ ...S.panel, padding: "9px 16px", display: "flex", alignItems: "center", gap: 10, border: "2px solid #ffb845", animation: "btnPulse 1.7s infinite" }}>
+        <div style={{ position: "absolute", top: "calc(12px + env(safe-area-inset-top, 0px))", left: "50%", transform: "translateX(-50%)", zIndex: 15 }}>
+          <div style={{ ...S.panel, padding: "9px 12px 9px 16px", display: "flex", alignItems: "center", gap: 10, border: "2px solid #ffb845", animation: "btnPulse 1.7s infinite" }}>
             <div style={{ width: 34, height: 34, flex: "0 0 34px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #ffffff, #7a8a5a)", border: `2px solid ${GOLD}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{ fontSize: 15, fontWeight: 800, color: "#fff", textShadow: "0 1px 3px rgba(0,0,0,0.4)", fontFamily: "Georgia, serif" }}>E</span>
             </div>
@@ -5476,6 +5476,7 @@ export default function DragonGardenQuest() {
               <div style={{ fontSize: 9.5, letterSpacing: 2, color: "#f2971f", fontWeight: 800 }}>ELI'S TASK</div>
               <div style={{ fontSize: 14, fontWeight: 800 }}>{INTRO_TASK_LABEL[introInfo.task]}</div>
             </div>
+            <button onClick={introSkip} style={{ background: "none", border: "none", color: PARCH, opacity: 0.5, fontSize: 11, cursor: "pointer", fontFamily: "inherit", padding: "4px 2px", flex: "0 0 auto", alignSelf: "flex-start" }}>skip ›</button>
           </div>
         </div>
       )}
