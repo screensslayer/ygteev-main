@@ -4191,6 +4191,9 @@ export default function DragonGardenQuest() {
           if (m.position.y > -30) pushOutOfCircle(playerPos, m.position.x, m.position.z, 0.55);
         }
       }
+      // Eli is solid too — he moves (approach/leave/greet), so collide off
+      // his live position rather than a stale spawn-point collider
+      if (gardener && gardener.visible) pushOutOfCircle(playerPos, gardener.position.x, gardener.position.z, 0.42);
 
       player.position.copy(playerPos);
       const groundY = terrainY(playerPos.x, playerPos.z);
