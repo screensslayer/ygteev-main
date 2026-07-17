@@ -164,7 +164,7 @@ const INTRO_PAGES = [
   { t: "Every gardener begins the same way: a seed, a little dirt, and a whole lot of hope. Those three strawberry seeds in your pouch? My gift. Show me what you can do.", focus: "eli", task: "plant", gift: { key: "strawberry", n: 3 } },
   { t: "Ha! Good hands, child. Now comes the gardener's hardest lesson — waiting. When the berries ripen, gather them up.", focus: "eli", task: "harvest" },
   { t: "Hear that rumble from the cave? That's Ember dreaming of breakfast. Take him a strawberry, and you'll make a friend for life.", focus: "cave", task: "feed" },
-  { t: "Look at that smile! You've the heart of a true gardener. Here — a Blueberry seed. You've earned it.", focus: "eli", give: true, gift: { key: "blueberry", n: 1 } },
+  { t: "Look at that smile! You've the heart of a true gardener. Here — a Blueberry seed. You've earned it.", focus: "eli", gift: { key: "blueberry", n: 1 } },
   { t: "Now hear me well: some seeds are too holy for ordinary dirt. Glowberries take root only in blessed soil — across the river, in the youth group garden.", focus: "bridge" },
   { t: "And if you haven't joined a youth group in the YGTeeV app, don't wait, child. No champion ever grew alone — that fellowship is the richest soil you'll ever plant yourself in.", focus: "eli" },
   { t: "Off you go now. The soil is waiting… and so is Ember's appetite. Find me at the church garden when you're ready.", focus: "eli", end: true },
@@ -201,7 +201,7 @@ export default function DragonGardenQuest() {
   const [hud, setHud] = useState({
     gold: 25, xp: window.YGTEEV?.profile?.xp ?? 10000, level: 1, hunger: 100,
     map: "HOME", prompt: "", selectedSeed: "strawberry",
-    inv: { seeds: { strawberry: 3, blueberry: 0, sunfruit: 0, glowberry: 0 },
+    inv: { seeds: { strawberry: 0, blueberry: 0, sunfruit: 0, glowberry: 0 },
            fruit: { strawberry: 0, blueberry: 0, sunfruit: 0, glowberry: 0 } },
     league: { mine: 0, fund: 0, endMs: Date.now() + 6048e5, rivals: [] },
     showHunger: false, promptType: null,
@@ -231,13 +231,10 @@ export default function DragonGardenQuest() {
   const introInfo = hud.intro || { page: null, task: null };
   const introDlg = introInfo.page != null;
   const [taskSplash, setTaskSplash] = useState(null);
-  const [itemGet, setItemGet] = useState(null); // { key, n, phase: 'show' | 'fly' }
-  const reqItemGetRef = useRef(() => {});
-  reqItemGetRef.current = (gift) => {
-    setItemGet({ ...gift, phase: "show" });
-    setTimeout(() => setItemGet((c) => (c ? { ...c, phase: "fly" } : c)), 1650);
-    setTimeout(() => setItemGet(null), 2350);
-  };
+  // Eli's seed gift card — { key, n, page }; claimed via "ADD TO POCKET"
+  const [seedGift, setSeedGift] = useState(null);
+  const reqSeedGiftRef = useRef(() => {});
+  reqSeedGiftRef.current = (g) => setSeedGift(g);
   const prevIntroTaskRef = useRef(null);
   useEffect(() => {
     const t = introInfo.task || null;
@@ -1933,7 +1930,7 @@ export default function DragonGardenQuest() {
     const G = {
       gold: 25, xp: window.YGTEEV?.profile?.xp ?? 10000, level: 1,
       hunger: 100, hungerRate: 100 / 170,
-      inv: { seeds: { strawberry: 3, blueberry: 0, sunfruit: 0, glowberry: 0 },
+      inv: { seeds: { strawberry: 0, blueberry: 0, sunfruit: 0, glowberry: 0 },
              fruit: { strawberry: 0, blueberry: 0, sunfruit: 0, glowberry: 0 } },
       selectedSeed: "strawberry",
       map: "HOME",
@@ -1949,7 +1946,7 @@ export default function DragonGardenQuest() {
       buildActive: false, ghostOk: false, ghostCell: null,
       counterActive: false, counterKind: null, counterNear: false, exitLatch: false,
       introActive: false, introFocus: null, introLock: false, introTask: null, introTaskDone: null,
-      introPage: null, introGave: false,
+      introPage: null, introGave: false, introGiftClaimed: {},
       youthGroup: false, bridgeNoteShown: false, goldBagFound: false,
     };
     gameRef.current = G;
@@ -1967,7 +1964,7 @@ export default function DragonGardenQuest() {
       G.__dev = () => ({ px: playerPos.x, pz: playerPos.z, prompt: currentPrompt ? currentPrompt.type : null, ac: AC ? AC.state : null, keeper: window.__BY_KEEPER ? !window.__BY_KEEPER.paused : false, live: liveCh ? Object.keys(livePlayers).length : null });
     }
     G.reqCounter = (kind) => reqCounterRef.current(kind);
-    G.reqItemGet = (gift) => reqItemGetRef.current(gift);
+    G.reqSeedGift = (g) => reqSeedGiftRef.current(g);
     G.reqBridge = () => reqBridgeRef.current();
     G.reqGoldBag = () => reqGoldBagRef.current();
     G.flyCoins = (n) => flyCoinsRef.current(n);
@@ -2229,6 +2226,7 @@ export default function DragonGardenQuest() {
       G.introLock = true; // the player watches; no wandering off mid-welcome
       G.introPage = null;
       G.introGave = false;
+      G.introGiftClaimed = {};
       gardener = makeVillager(4.6, -3.4, 0, { shirt: 0x7a8a5a, hat: "straw", beard: true, cane: true, manual: true, solid: false });
       gardener.rotation.y = Math.atan2(playerPos.x - 4.6, playerPos.z + 3.4);
       gardenerCtl = { mode: "approach", t: 0, post: [4.6, -3.4], postRot: 0, announced: false };
@@ -2244,19 +2242,17 @@ export default function DragonGardenQuest() {
       const pg = INTRO_PAGES[n];
       G.introFocus = (pg && pg.focus) || "eli";
       playVoiceClip(n);
-      if (pg && pg.gift) {
-        SFX.itemGet();
-        if (G.reqItemGet) G.reqItemGet(pg.gift);
-      }
-      if (pg && pg.give && !G.introGave) {
-        G.introGave = true;
-        G.introGrantSeed();
-      }
     }
     G.introAdvance = () => {
       if (G.introPage == null) return;
       const pg = INTRO_PAGES[G.introPage];
       if (!pg) { G.introPage = null; return; }
+      // gift gate: a page that gifts seeds shows the "add to pocket" card
+      // AFTER Eli's line, before advancing. Claiming re-calls this.
+      if (pg.gift && !G.introGiftClaimed[G.introPage]) {
+        if (G.reqSeedGift) G.reqSeedGift({ ...pg.gift, page: G.introPage });
+        return;
+      }
       if (pg.end) {
         G.introPage = null;
         stopVoiceClip();
@@ -2279,9 +2275,16 @@ export default function DragonGardenQuest() {
       toast("Return to the Home Meadow to replay Eli's welcome!", "warn");
       return false;
     };
-    G.introGrantSeed = () => {
-      G.inv.seeds.blueberry++;
-      spawnBurst(playerPos.x, playerPos.z, 0x4f6de8, 6, { glow: true, vy: 2.2, y0: 0.8 });
+    // Grant an intro seed gift once (the "ADD TO POCKET" button), then let
+    // the story continue past the page.
+    G.claimIntroGift = (page) => {
+      const pg = INTRO_PAGES[page];
+      if (!pg || !pg.gift || G.introGiftClaimed[page]) return;
+      G.introGiftClaimed[page] = true;
+      G.inv.seeds[pg.gift.key] = (G.inv.seeds[pg.gift.key] || 0) + pg.gift.n;
+      SFX.itemGet();
+      spawnBurst(playerPos.x, playerPos.z, SEEDS[pg.gift.key].color, 7, { glow: true, vy: 2.2, y0: 0.8 });
+      syncHud();
     };
     G.finishIntro = () => {
       G.introTask = null; G.introTaskDone = null;
@@ -2299,6 +2302,8 @@ export default function DragonGardenQuest() {
     };
     G.skipIntro = () => {
       stopVoiceClip();
+      // don't leave a skipper empty-handed — grant any unclaimed starter gifts
+      INTRO_PAGES.forEach((pg, i) => { if (pg.gift) G.claimIntroGift(i); });
       G.introTask = null; G.introTaskDone = null;
       G.introPage = null;
       G.introActive = false;
@@ -4821,7 +4826,7 @@ export default function DragonGardenQuest() {
   }, [started]);
 
   const shopOpenRef = useRef(false);
-  useEffect(() => { shopOpenRef.current = !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep; }, [shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep]);
+  useEffect(() => { shopOpenRef.current = !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!seedGift; }, [shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, seedGift]);
   useEffect(() => { const g = gameRef.current; if (g) g.styleActive = shop === "style"; }, [shop]);
   useEffect(() => { const g = gameRef.current; if (g) g.buildActive = buildMode; }, [buildMode]);
   useEffect(() => { if (hud.map !== "HOME" && buildMode) setBuildMode(false); }, [hud.map, buildMode]);
@@ -5412,24 +5417,22 @@ export default function DragonGardenQuest() {
       )}
 
       {/* intro objective chip */}
-      {itemGet && (() => {
-        const R = RARITY[itemGet.key] || { c: "#9ab87a", tier: "Seed" };
-        const vw = window.innerWidth, vh = window.innerHeight;
-        const ix = `${34 - vw / 2 + 60}px`;
-        const iy = `${vh - 56 - vh * 0.42}px`;
+      {seedGift && (() => {
+        const R = RARITY[seedGift.key] || { c: "#9ab87a", tier: "Seed" };
+        const FRUIT = { strawberry: "🍓", blueberry: "🫐", sunfruit: "🍑", glowberry: "✨" };
         return (
-          <div style={{
-            position: "absolute", left: "50%", top: "42%", zIndex: 36, pointerEvents: "none",
-            "--ix": ix, "--iy": iy,
-            animation: itemGet.phase === "show" ? "itemIn 0.45s cubic-bezier(0.3, 1.4, 0.5, 1) forwards" : "itemFly 0.65s ease-in forwards",
-          }}>
-            <div style={{ ...S.panel, border: `2.5px solid ${R.c}`, padding: "16px 26px 14px", textAlign: "center", boxShadow: `0 0 30px ${R.c}88, 0 12px 26px rgba(23,73,126,0.35)`, position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", left: "50%", top: 52, width: 190, height: 190, marginLeft: -95, marginTop: -95, background: `conic-gradient(${R.c}33 0deg, transparent 24deg, ${R.c}33 48deg, transparent 72deg, ${R.c}33 96deg, transparent 120deg, ${R.c}33 144deg, transparent 168deg, ${R.c}33 192deg, transparent 216deg, ${R.c}33 240deg, transparent 264deg, ${R.c}33 288deg, transparent 312deg, ${R.c}33 336deg, transparent 360deg)`, animation: "rayspin 6s linear infinite", borderRadius: "50%" }} />
+          <div style={{ position: "absolute", inset: 0, zIndex: 36, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(10,7,18,0.5)" }}>
+            <div style={{ ...S.panel, border: `2.5px solid ${R.c}`, padding: "20px 28px 18px", textAlign: "center", boxShadow: `0 0 34px ${R.c}88, 0 14px 30px rgba(23,73,126,0.4)`, position: "relative", overflow: "hidden", width: "min(320px, 86vw)", animation: "itemIn 0.4s cubic-bezier(0.3, 1.4, 0.5, 1) forwards" }}>
+              <div style={{ position: "absolute", left: "50%", top: 78, width: 210, height: 210, marginLeft: -105, marginTop: -105, background: `conic-gradient(${R.c}33 0deg, transparent 24deg, ${R.c}33 48deg, transparent 72deg, ${R.c}33 96deg, transparent 120deg, ${R.c}33 144deg, transparent 168deg, ${R.c}33 192deg, transparent 216deg, ${R.c}33 240deg, transparent 264deg, ${R.c}33 288deg, transparent 312deg, ${R.c}33 336deg, transparent 360deg)`, animation: "rayspin 6s linear infinite", borderRadius: "50%" }} />
               <div style={{ position: "relative" }}>
-                <div style={{ fontSize: 10, letterSpacing: 3, color: "#f2971f", fontWeight: 800, marginBottom: 8 }}>ITEM RECEIVED</div>
-                <div style={{ width: 62, height: 62, margin: "0 auto 8px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #ffffff, #cfe9fa)", border: `3px solid ${R.c}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, boxShadow: `0 0 16px ${R.c}77` }}>🌱</div>
-                <div style={{ fontSize: 16.5, fontWeight: 800, color: R.c }}>{SEEDS[itemGet.key].name} Seed{itemGet.n > 1 ? "s" : ""} ×{itemGet.n}</div>
-                <div style={{ fontSize: 9.5, letterSpacing: 1.6, opacity: 0.8, color: R.c }}>{R.tier.toUpperCase()}</div>
+                <div style={{ fontSize: 10, letterSpacing: 3, color: "#f2971f", fontWeight: 800, marginBottom: 10 }}>A GIFT FROM ELI</div>
+                <div style={{ width: 84, height: 84, margin: "0 auto 10px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #ffffff, #cfe9fa)", border: `3px solid ${R.c}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 46, boxShadow: `0 0 18px ${R.c}77` }}>{FRUIT[seedGift.key] || "🌱"}</div>
+                <div style={{ fontSize: 17.5, fontWeight: 800, color: R.c }}>{SEEDS[seedGift.key].name} Seed{seedGift.n > 1 ? "s" : ""} ×{seedGift.n}</div>
+                <div style={{ fontSize: 9.5, letterSpacing: 1.6, opacity: 0.8, color: R.c, marginBottom: 14 }}>{R.tier.toUpperCase()}</div>
+                <button onClick={() => { gameRef.current?.claimIntroGift(seedGift.page); setSeedGift(null); gameRef.current?.introAdvance(); }}
+                  style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 14, width: "100%", letterSpacing: 0.5, fontWeight: 800 }}>
+                  ＋ ADD TO POCKET
+                </button>
               </div>
             </div>
           </div>
