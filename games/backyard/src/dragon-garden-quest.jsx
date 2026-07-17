@@ -3624,7 +3624,11 @@ export default function DragonGardenQuest() {
     const joy = { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
     const onTouchStart = (e) => {
       for (const t of e.changedTouches) {
-        if (t.clientX < window.innerWidth * 0.55 && !joy.active) {
+        // floating joystick anywhere on the 3D view (edge to edge). UI
+        // buttons are separate DOM elements, so touches on them don't reach
+        // the canvas; a quick tap here still registers ~0 drag and lets
+        // tap-to-act fire on release.
+        if (!joy.active) {
           joy.active = true; joy.id = t.identifier; joy.ox = t.clientX; joy.oy = t.clientY; joy.dx = 0; joy.dy = 0;
         }
       }
