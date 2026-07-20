@@ -1,7 +1,7 @@
 # Lovable prompt — Pastor Onboarding v2 ("Claim your church")
 
 > Paste everything below the line into Lovable, and **attach
-> `pastor-onboarding-v2/index.html`** as the visual spec. That single HTML file
+> `pastor-onboarding-v3/index.html`** as the visual spec. That single HTML file
 > is the pixel-level source of truth — colors, spacing, motion, and copy.
 > Also needed: a Google Maps Platform API key with **Places API** enabled
 > (set as a Lovable env var, e.g. `VITE_GOOGLE_PLACES_KEY`).
@@ -11,9 +11,12 @@
 Rebuild the signup wizard at `/create` on pastors.ygteev.com. Keep the landing
 page, sign-in, and the pastor dashboard exactly as they are — this replaces
 ONLY the create flow. The attached `index.html` is an interactive prototype of
-the target design: match it visually (dark ink background with violet/pink
-radial glows, Bricolage Grotesque display font, pill buttons, glass cards,
-staggered rise-in animations, 4-segment progress bar). Click through it with
+the target design: a clean, high-converting B2B onboarding in the style of
+ElevenLabs/Stripe — near-white background (#fafafa), Inter, hairline borders
+(#e6e6ea), white cards with soft shadows, black primary buttons, one green
+accent for positive states and amber for the verify card. NO gradients, NO
+dark theme, minimal motion (screen slides, a pin-drop on the map, one
+checkmark pop). Thin black progress bar + "Step N of 4" top right. Click through it with
 the numbered dots before building. Drop the numbered dev dots — they're
 prototype chrome.
 

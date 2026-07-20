@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Create your youth group — YGTeeV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafafa; --surface: #ffffff;
+    --ink: #111113; --ink-2: #4b4b52; --ink-3: #8a8a93;
+    --line: #e6e6ea; --line-2: #d5d5db;
+    --accent: #111113;            /* black CTAs — the B2B move */
+    --green: #0f7b46; --green-bg: #edf7f1; --green-line: #bfe3cf;
+    --amber: #92600a; --amber-bg: #fdf6e8; --amber-line: #eeddb5;
+    --blue: #2545d3; --blue-bg: #eef1fd;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(17,17,19,0.05), 0 4px 16px rgba(17,17,19,0.05);
+    --font: 'Inter', -apple-system, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body { font-family: var(--font); background: var(--bg); color: var(--ink);
+    font-size: 15px; line-height: 1.5; display: flex; justify-content: center;
+    -webkit-font-smoothing: antialiased; }
+
+  .shell { width: min(480px, 100vw); min-height: 100dvh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; justify-content: space-between;
+    padding: max(20px, env(safe-area-inset-top)) 24px 0; }
+  .wordmark { font-weight: 700; font-size: 15.5px; letter-spacing: -0.3px; }
+  .wordmark span { color: var(--ink-3); font-weight: 500; }
+  .stepno { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .progress { height: 2px; background: var(--line); margin: 14px 24px 0; border-radius: 2px; overflow: hidden; }
+  .progress i { display: block; height: 100%; background: var(--ink); width: 25%;
+    transition: width 0.45s cubic-bezier(0.3, 0.8, 0.3, 1); }
+
+  main { flex: 1; position: relative; }
+  .screen { position: absolute; inset: 0; padding: 28px 24px calc(28px + env(safe-area-inset-bottom));
+    overflow-y: auto; overscroll-behavior: contain;
+    opacity: 0; transform: translateX(16px); pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.35s cubic-bezier(0.25, 0.9, 0.2, 1); }
+  .screen.on { opacity: 1; transform: none; pointer-events: auto; }
+  .screen.off-l { transform: translateX(-16px); }
+
+  h1 { font-size: 23px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.25; margin-bottom: 6px; }
+  .sub { font-size: 14.5px; color: var(--ink-2); margin-bottom: 24px; }
+
+  /* controls */
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+    font-family: var(--font); font-weight: 600; font-size: 15px;
+    border-radius: var(--radius); padding: 13px 20px; cursor: pointer;
+    border: 1px solid transparent; transition: background 0.15s, border-color 0.15s, transform 0.06s; }
+  .btn:active { transform: scale(0.995); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #26262b; }
+  .btn-primary:disabled { background: #c9c9cf; cursor: default; }
+  .btn-outline { background: var(--surface); color: var(--ink); border-color: var(--line-2); }
+  .btn-outline:hover { border-color: var(--ink-3); }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field .box { display: flex; align-items: center; gap: 9px; border-radius: var(--radius);
+    padding: 12px 13px; background: var(--surface); border: 1px solid var(--line-2);
+    transition: border-color 0.15s, box-shadow 0.15s; }
+  .field .box:focus-within { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(17,17,19,0.08); }
+  .field input { flex: 1; background: none; border: none; outline: none; color: var(--ink);
+    font-size: 15px; font-family: var(--font); min-width: 0; }
+  .field input::placeholder { color: var(--ink-3); }
+  .field .icon { color: var(--ink-3); font-size: 15px; line-height: 1; }
+
+  .notice { display: flex; gap: 8px; align-items: flex-start; border-radius: var(--radius);
+    padding: 10px 12px; font-size: 13px; line-height: 1.45; margin-top: 8px; }
+  .notice.ok { background: var(--green-bg); border: 1px solid var(--green-line); color: var(--green); }
+  .notice.dim { background: var(--surface); border: 1px solid var(--line); color: var(--ink-2); }
+  .notice.warn { background: var(--amber-bg); border: 1px solid var(--amber-line); color: var(--amber); }
+
+  .divider { display: flex; align-items: center; gap: 12px; color: var(--ink-3); font-size: 12.5px; margin: 20px 0; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+  .hintline { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; }
+  .hintline a { color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+  .hintline b { color: var(--ink-2); font-weight: 600; }
+
+  /* search results */
+  .results { display: flex; flex-direction: column; border: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--surface); overflow: hidden; margin-top: 12px;
+    box-shadow: var(--shadow); }
+  .results:empty { display: none; border: none; box-shadow: none; }
+  .result { display: flex; align-items: center; gap: 12px; text-align: left; width: 100%;
+    padding: 13px 14px; cursor: pointer; border: none; border-bottom: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); font-family: var(--font); font-size: 14px; }
+  .result:last-child { border-bottom: none; }
+  .result:hover { background: #f6f6f8; }
+  .result .pin { width: 36px; height: 36px; flex: 0 0 36px; border-radius: 8px; display: grid;
+    place-items: center; font-size: 16px; background: #f2f2f5; border: 1px solid var(--line); }
+  .result b { display: block; font-weight: 600; font-size: 14px; }
+  .result span { display: block; font-size: 12.5px; color: var(--ink-3); margin-top: 1px; }
+  .result .found { margin-left: auto; flex: 0 0 auto; font-size: 11px; font-weight: 600;
+    color: var(--blue); background: var(--blue-bg); border: 1px solid #cdd6f7;
+    padding: 3px 8px; border-radius: 99px; white-space: nowrap; }
+  .searching { display: flex; align-items: center; gap: 8px; padding: 14px; font-size: 13px; color: var(--ink-3); }
+
+  /* claim card */
+  .card { border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+    box-shadow: var(--shadow); overflow: hidden; }
+  .card .body { padding: 16px; }
+  .claimhead { display: flex; gap: 13px; align-items: center; margin-bottom: 12px; }
+  .claimhead .logo { width: 52px; height: 52px; flex: 0 0 52px; border-radius: 10px;
+    display: grid; place-items: center; font-weight: 700; font-size: 21px; color: #fff;
+    background: #111113; }
+  .claimhead .name { font-weight: 700; font-size: 16.5px; letter-spacing: -0.3px; }
+  .claimhead .meta { font-size: 12.5px; color: var(--ink-3); margin-top: 1px; }
+  .desc { font-size: 13.5px; color: var(--ink-2); border-left: 2px solid var(--line-2);
+    padding-left: 10px; margin-bottom: 12px; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+    border-radius: 99px; padding: 4px 10px; }
+  .badge.ok { color: var(--green); background: var(--green-bg); border: 1px solid var(--green-line); }
+
+  .mapbox { position: relative; height: 104px; border-radius: 10px; overflow: hidden; margin-top: 12px;
+    background:
+      linear-gradient(#eceef1 1px, transparent 1px),
+      linear-gradient(90deg, #eceef1 1px, transparent 1px),
+      #f5f6f8;
+    background-size: 20px 20px, 20px 20px; border: 1px solid var(--line); }
+  .mapbox .road { position: absolute; background: #e2e4e9; }
+  .mapbox .r1 { left: 0; right: 0; top: 46%; height: 6px; transform: rotate(-3deg); }
+  .mapbox .r2 { top: 0; bottom: 0; left: 64%; width: 5px; transform: rotate(7deg); }
+  .mapbox .pinwrap { position: absolute; left: 50%; top: 44%; transform: translate(-50%, -100%); }
+  .mapbox .pindrop { font-size: 26px; display: block;
+    animation: pindrop 0.5s cubic-bezier(0.3, 1.4, 0.4, 1) 0.15s both; }
+  @keyframes pindrop { from { transform: translateY(-32px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .mapbox .ring { position: absolute; left: 50%; top: 47%; width: 12px; height: 12px; border-radius: 50%;
+    transform: translate(-50%, -50%); border: 2px solid #d33a2f; animation: ring 1.8s ease-out 0.5s infinite; }
+  @keyframes ring { from { opacity: 0.6; transform: translate(-50%,-50%) scale(0.5); } to { opacity: 0; transform: translate(-50%,-50%) scale(3); } }
+  .mapbox .addr { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 7px;
+    font-size: 11.5px; color: var(--ink-2); background: rgba(255,255,255,0.96);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
+  .mapbox .addr b { color: var(--green); font-size: 10.5px; letter-spacing: 0.4px; white-space: nowrap; }
+  .mapbox .addr span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* size selector */
+  .sizes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .size { display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    border-radius: var(--radius); padding: 12px 13px; cursor: pointer; text-align: left;
+    background: var(--surface); border: 1px solid var(--line-2); color: var(--ink);
+    font-family: var(--font); transition: border-color 0.12s, box-shadow 0.12s; }
+  .size b { font-size: 14px; font-weight: 600; }
+  .size span { font-size: 12.5px; color: var(--ink-3); }
+  .size.sel { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+  .size.sel span { color: var(--ink); font-weight: 600; }
+
+  /* payment */
+  .paycard { border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+    box-shadow: var(--shadow); padding: 4px 16px; }
+  .rowline { display: flex; justify-content: space-between; align-items: baseline;
+    padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .rowline:last-child { border-bottom: none; }
+  .rowline .lbl { color: var(--ink-2); }
+  .rowline .big { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; }
+  .rowline .big small { font-size: 13px; color: var(--ink-3); font-weight: 500; }
+  .trust { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px;
+    color: var(--ink-3); font-size: 12px; }
+  .trust b { color: var(--ink-2); font-weight: 600; }
+
+  /* launch */
+  .check { width: 56px; height: 56px; border-radius: 50%; margin-bottom: 16px; display: grid;
+    place-items: center; font-size: 26px; color: #fff; background: var(--green);
+    animation: pop 0.45s cubic-bezier(0.3, 1.5, 0.4, 1) both; }
+  @keyframes pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .action { display: flex; gap: 12px; align-items: center; border: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--surface); padding: 13px 14px; margin-bottom: 9px; }
+  .action .ic { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 8px; display: grid;
+    place-items: center; font-size: 17px; background: #f2f2f5; border: 1px solid var(--line); }
+  .action b { display: block; font-size: 14px; font-weight: 600; }
+  .action span { display: block; font-size: 12.5px; color: var(--ink-3); margin-top: 1px; }
+  .action .act { margin-left: auto; flex: 0 0 auto; font-size: 12.5px; font-weight: 600; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line-2); border-radius: 8px;
+    padding: 7px 12px; cursor: pointer; white-space: nowrap; }
+  .action .act:hover { border-color: var(--ink-3); }
+  .codes { display: flex; gap: 6px; margin: 12px 0 8px; }
+  .codes input { width: 100%; height: 46px; border-radius: 8px; text-align: center;
+    font-family: var(--font); font-size: 18px; font-weight: 600; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line-2); outline: none; }
+  .codes input:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(17,17,19,0.08); }
+  .tiny { font-size: 12.5px; color: var(--ink-3); }
+  .tiny a { color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+
+  footer { padding: 0 24px calc(18px + env(safe-area-inset-bottom)); text-align: center;
+    font-size: 11.5px; color: var(--ink-3); }
+
+  .dev { position: fixed; bottom: 10px; right: 10px; display: flex; gap: 5px; z-index: 60; opacity: 0.55; }
+  .dev button { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--line-2);
+    background: var(--surface); color: var(--ink-3); font-family: var(--font); font-size: 11px; cursor: pointer; }
+  .dev button.cur { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  .spin { width: 14px; height: 14px; border: 2px solid var(--line-2); border-top-color: var(--ink);
+    border-radius: 50%; animation: sp 0.7s linear infinite; flex: 0 0 14px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="wordmark">YGTeeV <span>for Youth Groups</span></div>
+    <div class="stepno" id="stepno">Step 1 of 4</div>
+  </header>
+  <div class="progress"><i id="progbar"></i></div>
+
+  <main>
+    <!-- ============ STEP 1 · ACCOUNT ============ -->
+    <section class="screen" id="s1">
+      <h1>Create your account</h1>
+      <p class="sub">Set up your youth group in about two minutes.</p>
+      <button class="btn btn-outline" onclick="go(2)"> Continue with Apple</button>
+      <div style="height:9px"></div>
+      <button class="btn btn-outline" onclick="go(2)"><b style="font-weight:700">G</b> Continue with Google</button>
+      <div class="divider">or</div>
+      <div class="field"><label>Work email</label>
+        <div class="box"><span class="icon">✉️</span><input id="email" type="email" placeholder="you@yourchurch.org" autocomplete="email" oninput="emailCheck()" /></div>
+        <div class="notice dim" id="emailhint">Use your church email address — it verifies your group instantly.</div>
+      </div>
+      <div class="field"><label>Password</label>
+        <div class="box"><span class="icon">🔒</span><input id="pw" type="password" placeholder="8+ characters" oninput="acctCheck()" /></div>
+      </div>
+      <div style="height:6px"></div>
+      <button class="btn btn-primary" id="acctBtn" disabled onclick="go(2)">Continue</button>
+      <p class="tiny" style="text-align:center;margin-top:14px">Already have an account? <a href="#">Sign in</a></p>
+    </section>
+
+    <!-- ============ STEP 2 · FIND YOUR CHURCH ============ -->
+    <section class="screen" id="s2">
+      <div id="findPhase">
+        <h1>Find your church</h1>
+        <p class="sub">Search for the church, not the youth group — we'll take it from there.</p>
+        <div style="display:flex;gap:8px">
+          <div class="field" style="flex:1"><label>Church name</label>
+            <div class="box"><span class="icon">🔍</span><input id="q" placeholder="e.g. Elevation Church" oninput="search(this.value)" autocomplete="off" /></div>
+          </div>
+          <div class="field" style="flex:0 0 96px"><label>ZIP</label>
+            <div class="box"><input id="zip" placeholder="28277" inputmode="numeric" maxlength="5" oninput="zipChange(this.value)" /></div>
+          </div>
+        </div>
+        <div class="hintline" id="nearchip">Searching near <b id="nearloc">Charlotte, NC</b> · <a onclick="editNear(event)">Change</a></div>
+        <div class="hintline" id="nearedit" style="display:none">
+          <input id="nearinput" placeholder="City or ZIP" style="border:1px solid var(--line-2);border-radius:7px;padding:6px 9px;font-size:13px;font-family:var(--font);outline:none;width:130px"
+            onkeydown="if(event.key==='Enter')applyNear()" />
+          <button onclick="applyNear()" style="border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:7px;padding:6px 12px;font-size:12.5px;font-weight:600;font-family:var(--font);cursor:pointer;margin-left:5px">Set</button>
+        </div>
+        <div class="results" id="results"></div>
+      </div>
+
+      <div id="claimPhase" style="display:none">
+        <h1 id="claimTitle">We found your group</h1>
+        <p class="sub" id="claimSub">Our system already built a profile for your youth group. Confirm it's yours.</p>
+        <div class="card" id="claimCard"></div>
+        <div id="domainCheck"></div>
+        <div style="height:16px"></div>
+        <div class="field"><label>Your group's name</label>
+          <div class="box"><input id="gname" /></div>
+        </div>
+        <label style="display:block;font-size:13px;font-weight:600;margin:4px 0 8px">About how many students?</label>
+        <div class="sizes" id="sizes"></div>
+        <div style="height:16px"></div>
+        <button class="btn btn-primary" id="claimBtn" disabled onclick="go(3)">Claim this group</button>
+        <p class="tiny" style="text-align:center;margin-top:12px"><a onclick="backToSearch(event)">← Not your church? Search again</a></p>
+      </div>
+    </section>
+
+    <!-- ============ STEP 3 · PAYMENT ============ -->
+    <section class="screen" id="s3">
+      <h1>Start your free trial</h1>
+      <p class="sub">Every student in your group gets Pro — included in your plan.</p>
+      <div class="notice ok" style="margin:0 0 14px">✓&nbsp; 3 months free, then your plan price. Cancel anytime.</div>
+      <div class="paycard">
+        <div class="rowline"><span style="font-weight:600" id="payGroup"></span><span class="lbl" id="paySize" style="font-size:12.5px"></span></div>
+        <div class="rowline"><span class="lbl">After your trial</span><span class="big" id="payPrice"></span></div>
+        <div class="rowline"><span class="lbl">Due today</span><span style="font-weight:700;color:var(--green)">$0.00</span></div>
+      </div>
+      <div class="trust"><b> Pay</b> · <b>Stripe</b> · PCI-DSS compliant</div>
+      <div style="flex:1;min-height:24px"></div>
+      <button class="btn btn-primary" id="payBtn" onclick="fakePay(this)">Continue to secure checkout</button>
+      <p class="tiny" style="text-align:center;margin-top:12px">Free until <b id="trialEnd" style="color:var(--ink-2)"></b>. We'll email you before your trial ends.</p>
+    </section>
+
+    <!-- ============ STEP 4 · LAUNCH ============ -->
+    <section class="screen" id="s4">
+      <div class="check">✓</div>
+      <h1 id="liveTitle"></h1>
+      <p class="sub" id="liveSub"></p>
+
+      <div class="notice warn" id="verifyCard" style="display:none;flex-direction:column;align-items:stretch;padding:14px;margin:0 0 14px">
+        <b style="font-size:13.5px">Verify your church to go public</b>
+        <p style="font-size:12.5px;margin-top:4px;color:var(--amber)">Your group works now for anyone you invite. To appear on the public map as
+          <b id="vChurch"></b>, enter the code we'll send to any inbox <b id="vDomain"></b>.</p>
+        <div class="codes">
+          <input maxlength="1" inputmode="numeric"/><input maxlength="1" inputmode="numeric"/><input maxlength="1" inputmode="numeric"/>
+          <input maxlength="1" inputmode="numeric"/><input maxlength="1" inputmode="numeric"/><input maxlength="1" inputmode="numeric"/>
+        </div>
+        <p class="tiny">Send the code to <a>office@…</a> · or <a>request a manual review</a></p>
+      </div>
+
+      <div class="action">
+        <div class="ic">📱</div>
+        <div><b>Download the app</b><span>Sign in with this account — you land as pastor.</span></div>
+        <button class="act">App Store</button>
+      </div>
+      <div class="action">
+        <div class="ic">🔗</div>
+        <div><b>Invite your students</b><span id="inviteLink">ygteev.com/j/elevyth</span></div>
+        <button class="act" onclick="this.textContent='Copied ✓'">Copy link</button>
+      </div>
+      <div class="action">
+        <div class="ic">🎨</div>
+        <div><b>Finish your profile</b><span>Logo, meeting time and bio — later, in the app.</span></div>
+        <button class="act">Later</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>Built by people who run youth groups · Your data is yours · <u>Privacy</u></footer>
+</div>
+
+<div class="dev" id="dev"></div>
+
+<script>
+/* ============ mock data (production: Google Places + discovered_youth_groups) ============ */
+const CHURCHES = [
+  { key: 'elev', icon: '⛪', name: 'Elevation Church — Ballantyne', addr: '8835 Blakeney Professional Dr, Charlotte, NC', dist: '0.8 mi', domain: 'elevationchurch.org',
+    discovered: { yth: 'Elevation YTH', logo: 'E', insta: '@elevationyth',
+      desc: 'A place for every student to belong, believe, and become — Wednesdays at 6:30pm.' } },
+  { key: 'south', icon: '⛪', name: 'Southbrook Church', addr: '5607 Providence Rd, Waxhaw, NC', dist: '4.2 mi', domain: 'southbrook.org', discovered: null },
+  { key: 'grace', icon: '⛪', name: 'Grace Community Chapel', addr: '212 Main St, Monroe, NC', dist: '9.6 mi', domain: 'gracecc.org', discovered: null },
+];
+const TIERS = [
+  { label: '1–19', price: 29 }, { label: '20–49', price: 59 },
+  { label: '50–99', price: 119 }, { label: '100–199', price: 169 }, { label: '200+', price: 379 },
+];
+const FREE_MAIL = ['gmail.com','yahoo.com','icloud.com','outlook.com','hotmail.com','aol.com','me.com'];
+const S = { step: 1, church: null, tier: null, emailDomain: null, branded: false, near: 'Charlotte, NC' };
+
+/* ============ routing ============ */
+function go(n) {
+  const prev = document.querySelector('.screen.on');
+  if (prev) { prev.classList.remove('on'); prev.classList.add('off-l'); setTimeout(() => prev.classList.remove('off-l'), 400); }
+  S.step = n;
+  document.getElementById('s' + n).classList.add('on');
+  document.getElementById('progbar').style.width = (n * 25) + '%';
+  document.getElementById('stepno').textContent = 'Step ' + n + ' of 4';
+  document.querySelectorAll('#dev button').forEach((b, i) => b.classList.toggle('cur', i === n - 1));
+  location.hash = 'step=' + n;
+  if (n === 3) fillPay();
+  if (n === 4) launch();
+  document.getElementById('s' + n).scrollTop = 0;
+}
+
+/* ============ step 1 ============ */
+function emailCheck() {
+  const v = document.getElementById('email').value.trim().toLowerCase();
+  const hint = document.getElementById('emailhint');
+  const at = v.split('@')[1] || '';
+  S.emailDomain = at || null;
+  if (at && at.includes('.') && !FREE_MAIL.includes(at)) {
+    S.branded = true;
+    hint.className = 'notice ok'; hint.textContent = '✓ Looks like a church email — we\'ll confirm it matches your church.';
+  } else if (at && FREE_MAIL.includes(at)) {
+    S.branded = false;
+    hint.className = 'notice dim'; hint.textContent = 'Personal email works too — you can verify your church afterwards.';
+  } else {
+    S.branded = false;
+    hint.className = 'notice dim'; hint.textContent = 'Use your church email address — it verifies your group instantly.';
+  }
+  acctCheck();
+}
+function acctCheck() {
+  const ok = /.+@.+\..+/.test(document.getElementById('email').value) && document.getElementById('pw').value.length >= 8;
+  document.getElementById('acctBtn').disabled = !ok;
+}
+
+/* ============ step 2 · search ============ */
+let searchT = null;
+function setNear(label) {
+  S.near = label;
+  document.getElementById('nearloc').textContent = label;
+  const q = document.getElementById('q');
+  if (q.value.trim().length >= 2) search(q.value);
+}
+function zipChange(v) { setNear(v.trim().length >= 5 ? v.trim() : 'Charlotte, NC'); }
+function editNear(e) {
+  e.preventDefault();
+  document.getElementById('nearchip').style.display = 'none';
+  document.getElementById('nearedit').style.display = 'block';
+  const inp = document.getElementById('nearinput'); inp.value = ''; inp.focus();
+}
+function applyNear() {
+  const v = document.getElementById('nearinput').value.trim();
+  document.getElementById('nearedit').style.display = 'none';
+  document.getElementById('nearchip').style.display = 'block';
+  if (!v) return;
+  if (/^\d{5}$/.test(v)) document.getElementById('zip').value = v;
+  setNear(v);
+}
+const DYN = {};
+function synth(q) {
+  const t = q.trim().replace(/\s+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+  const base = /church|chapel|ministr|fellowship|temple/i.test(t) ? t : t + ' Church';
+  const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14);
+  const mk = (key, name, addr, dist) => { DYN[key] = { key, icon: '⛪', name, addr, dist, domain: slug + '.org', discovered: null }; return DYN[key]; };
+  return [
+    mk('dyn1', base, '4120 Steele Creek Rd, Charlotte, NC', '1.2 mi'),
+    mk('dyn2', base + ' — North Campus', '918 Harris Blvd, Concord, NC', '7.8 mi'),
+  ];
+}
+function search(v) {
+  clearTimeout(searchT);
+  const box = document.getElementById('results');
+  if (v.trim().length < 2) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="searching"><div class="spin"></div>Searching churches near ' + S.near + '…</div>';
+  searchT = setTimeout(() => {
+    const hits = CHURCHES.filter(c => c.name.toLowerCase().includes(v.trim().toLowerCase()));
+    const list = hits.length ? hits : synth(v);
+    box.innerHTML = list.map(c => `
+      <button class="result" onclick="pick('${c.key}')">
+        <div class="pin">${c.icon}</div>
+        <div><b>${c.name}</b><span>${c.dist ? c.dist + ' · ' : ''}${c.addr}</span></div>
+        ${c.discovered ? '<span class="found">Already on YGTeeV</span>' : ''}
+      </button>`).join('') + `
+      <button class="result" onclick="pickManual()">
+        <div class="pin">✏️</div>
+        <div><b>Can't find your church?</b><span>Enter it manually — we'll review and verify it.</span></div>
+      </button>`;
+  }, 550);
+}
+function pick(key) {
+  S.church = CHURCHES.find(c => c.key === key) || DYN[key];
+  const d = S.church.discovered;
+  document.getElementById('claimTitle').textContent = d ? 'We found your group' : 'Confirm your church';
+  document.getElementById('claimSub').textContent = d
+    ? 'Our system already built a profile for your youth group. Confirm it\'s yours.'
+    : 'We filled in the details from your search. Confirm and continue.';
+  const mapbox = `
+    <div class="mapbox">
+      <div class="road r1"></div><div class="road r2"></div>
+      <div class="ring"></div>
+      <div class="pinwrap"><span class="pindrop">📍</span></div>
+      <div class="addr"><b>✓ LOCATED</b><span>${S.church.addr}</span></div>
+    </div>`;
+  document.getElementById('claimCard').innerHTML = d ? `
+    <div class="body">
+      <div class="claimhead">
+        <div class="logo" style="background:#c2410c">${d.logo}</div>
+        <div><div class="name">${d.yth}</div><div class="meta">${S.church.name} · ${d.insta}</div></div>
+      </div>
+      <div class="desc">${d.desc}</div>
+      <span class="badge ok">✓ Profile ready — logo, bio & map pin</span>
+      ${mapbox}
+    </div>` : `
+    <div class="body">
+      <div class="claimhead">
+        <div class="logo">${S.church.name[0]}</div>
+        <div><div class="name">${S.church.name}</div><div class="meta">${S.church.addr}</div></div>
+      </div>
+      <span class="badge ok">✓ Address & map pin filled from your search</span>
+      ${mapbox}
+    </div>`;
+  const dc = document.getElementById('domainCheck');
+  if (S.emailDomain && S.emailDomain === S.church.domain) {
+    S.branded = true;
+    dc.className = 'notice ok'; dc.textContent = `✓ Your email matches @${S.church.domain} — you'll be verified the moment you claim.`;
+  } else if (S.emailDomain && S.branded) {
+    S.branded = false;
+    dc.className = 'notice dim'; dc.textContent = `Your email (@${S.emailDomain}) doesn't match @${S.church.domain} — quick verification after checkout.`;
+  } else {
+    S.branded = false;
+    dc.className = 'notice dim'; dc.textContent = `You'll verify ${S.church.domain ? '@' + S.church.domain : 'your church'} after checkout — or request a review.`;
+  }
+  document.getElementById('gname').value = d ? d.yth : S.church.name.split('—')[0].split(' Church')[0].trim() + ' Youth';
+  document.getElementById('sizes').innerHTML = TIERS.map((t, i) => `
+    <button class="size" id="sz${i}" onclick="pickSize(${i})"><b>${t.label}</b><span>$${t.price}/mo</span></button>`).join('');
+  document.getElementById('claimBtn').textContent = d ? 'Claim this group' : 'Create my group';
+  document.getElementById('claimBtn').disabled = S.tier == null;
+  document.getElementById('findPhase').style.display = 'none';
+  document.getElementById('claimPhase').style.display = 'block';
+}
+function pickManual() { pick('grace'); }
+function backToSearch(e) { e.preventDefault(); S.tier = null; document.getElementById('claimPhase').style.display = 'none'; document.getElementById('findPhase').style.display = 'block'; }
+function pickSize(i) {
+  S.tier = TIERS[i];
+  document.querySelectorAll('.size').forEach((el, j) => el.classList.toggle('sel', j === i));
+  document.getElementById('claimBtn').disabled = false;
+}
+
+/* ============ step 3 ============ */
+function fillPay() {
+  document.getElementById('payGroup').textContent = document.getElementById('gname').value || 'Your group';
+  document.getElementById('paySize').textContent = (S.tier?.label || '1–19') + ' students';
+  document.getElementById('payPrice').innerHTML = '$' + (S.tier?.price ?? 29) + '<small>/mo</small>';
+  const end = new Date(Date.now() + 90 * 864e5);
+  document.getElementById('trialEnd').textContent = end.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+}
+function fakePay(btn) {
+  btn.innerHTML = '<div class="spin" style="border-top-color:#fff;border-color:rgba(255,255,255,0.35)"></div> Opening checkout…';
+  setTimeout(() => { btn.textContent = 'Continue to secure checkout'; go(4); }, 900);
+}
+
+/* ============ step 4 ============ */
+function launch() {
+  const gname = document.getElementById('gname').value || 'Your group';
+  document.getElementById('liveTitle').textContent = gname + ' is live';
+  document.getElementById('liveSub').textContent = S.branded
+    ? 'Officially verified and on the map. Now put it in your students\' hands.'
+    : 'Your students can join today — one step left to appear on the public map.';
+  document.getElementById('verifyCard').style.display = S.branded ? 'none' : 'flex';
+  if (!S.branded && S.church) {
+    document.getElementById('vChurch').textContent = S.church.name.split('—')[0].trim();
+    document.getElementById('vDomain').textContent = '@' + S.church.domain;
+  }
+  const link = (document.getElementById('gname').value || 'mygroup').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 10);
+  document.getElementById('inviteLink').textContent = 'ygteev.com/j/' + link;
+}
+document.querySelectorAll('.codes input').forEach((inp, i, all) => {
+  inp.addEventListener('input', () => { if (inp.value && all[i + 1]) all[i + 1].focus(); });
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Backspace' && !inp.value && all[i - 1]) all[i - 1].focus(); });
+});
+
+/* ============ dev nav + boot ============ */
+const dev = document.getElementById('dev');
+[1, 2, 3, 4].forEach(n => { const b = document.createElement('button'); b.textContent = n; b.onclick = () => { if (n >= 2 && !S.church) pick('elev'); if (n >= 2 && S.tier == null) pickSize(1); go(n); }; dev.appendChild(b); });
+const m = location.hash.match(/step=(\d)/);
+go(m ? Math.min(4, Math.max(1, +m[1])) : 1);
+if (m && +m[1] >= 2) { pick('elev'); pickSize(1); go(+m[1]); }
+</script>
+</body>
+</html>
