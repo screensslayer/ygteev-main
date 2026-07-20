@@ -1970,6 +1970,7 @@ export default function DragonGardenQuest() {
       churchPlots: Array.from({ length: 324 }, () => ({ seed: null, plantedAt: 0, collectAt: null })),
       time: 0,
       dragonState: "idle", dragonTimer: 0, shakeT: 0,
+      prowlIdx: 0, prowlFrenzyT: 0, prowlNextFrenzy: 0,
       dragonMood: "sleep", sleepBlend: 1, wakeT: 0, dragonHappyT: 0,
       week: computeWeek(), quizActive: false, saveT: 0, lastCollectToast: -9,
       playerHopT: 0, transitioning: false, pendingMap: null, hungerAlertT: 0,
@@ -3839,6 +3840,15 @@ export default function DragonGardenQuest() {
         spawnBurst(node.x, node.z, 0x6b4a2f, 7, { vy: 1.6, spread: 0.6, y0: 0.3 });
         G.playerHopT = 0.32;
         if (G.onIntroEvent) G.onIntroEvent("plant");
+        // a prowling Ember pounces on anything freshly planted
+        if (G.map === "HOME" && G.dragonState === "prowl" && dragon) {
+          G.dragonState = "rampage_out";
+          G.rampageTarget = node.idx;
+          setRampage(true);
+          toast("🐉 Ember spotted your fresh plant — he's charging!", "danger");
+          G.shakeT = 0.6;
+          SFX.roar();
+        }
       } else if (type === "harvest") {
         const p = node.data();
         const s = SEEDS[p.seed];
@@ -3872,6 +3882,11 @@ export default function DragonGardenQuest() {
         SFX.feed();
         if (dragon) spawnBurst(dragon.position.x, dragon.position.z + 0.9, 0xffb020, 5, { vy: 1.4, spread: 0.5, y0: 1 });
         G.playerHopT = 0.32;
+        if (G.dragonState === "prowl") {
+          // fed mid-prowl — satisfied, he heads back to his cave
+          G.dragonState = "rampage_back";
+          toast("🐉 Ember calms down and trots back to his cave.");
+        }
         if (G.onIntroEvent) G.onIntroEvent("feed");
       } else if (type === "toolsmith") setShop("tools");
       else if (type === "counter") G.startCounter(currentPrompt.kind);
@@ -4064,14 +4079,25 @@ export default function DragonGardenQuest() {
       src.connect(g); g.connect(audioOut);
       src.start();
     }
+    // Ember's patrol loop when the garden has nothing to steal: cave mouth →
+    // west meadow → along the road → east meadow → behind the house → back.
+    // Clears the house box, cave rocks, garden plots, and the big bushes.
+    const PROWL_PATH = [[0, -8.6], [-5, -7], [-7, -3.5], [-5, 2.4], [0, 3.4], [5, 3.2], [9, 0], [10.5, -4.5], [10, -9.8], [4, -9.8]];
     function triggerRampage() {
       const planted = G.homePlots.map((p, i) => (p.seed ? i : -1)).filter((i) => i >= 0);
-      G.hunger = 55;
       G.hungerAlertT = 6;
       if (!planted.length) {
-        toast("🐉 Ember roared from the cave… luckily nothing was planted!", "warn");
+        // nothing to eat — he stays hangry and prowls the meadow until fed.
+        // Hunger is NOT reset here: only actually eating refills him.
+        G.dragonState = "prowl";
+        G.prowlIdx = 0;
+        G.prowlFrenzyT = 0;
+        G.prowlNextFrenzy = 4 + Math.random() * 4;
+        toast("🐉 EMBER IS HANGRY! He's prowling the meadow for food!", "danger");
+        if (G.map === "HOME" && dragon) { G.shakeT = 0.6; SFX.roar(); }
         return;
       }
+      G.hunger = 55; // he's about to eat — the meal is what refills him
       const victim = planted[Math.floor(Math.random() * planted.length)];
       if (G.map === "HOME" && dragon) {
         G.dragonState = "rampage_out";
@@ -4224,6 +4250,7 @@ export default function DragonGardenQuest() {
               playEatSound();
               spawnBurst(targetNode.x, targetNode.z, 0x6b4a2f, 8, { vy: 2, spread: 0.7 });
             }
+            G.hunger = Math.max(G.hunger, 55); // eating is what refills him (prowl charges arrive at 0)
             G.dragonState = "rampage_back";
           } else {
             G.dragonState = "idle";
@@ -4237,6 +4264,36 @@ export default function DragonGardenQuest() {
           dragon.rotation.y = Math.atan2(dir.x, dir.z);
           dragon.position.y = Math.abs(Math.sin(t * 9)) * 0.3;
           dragon.rotation.x = -0.22; // charging lean
+        }
+      } else if (G.dragonState === "prowl") {
+        // hangry patrol: stalks the loop until he's fed (or something is
+        // planted — doAction turns that into an immediate charge)
+        G.prowlNextFrenzy -= dt;
+        if (G.prowlFrenzyT > 0) {
+          // crazy burst: spins and hops in place
+          G.prowlFrenzyT -= dt;
+          dragon.rotation.y += dt * 9;
+          dragon.position.y = Math.abs(Math.sin(t * 13)) * 0.35;
+          dragon.rotation.x = 0;
+          if (G.prowlFrenzyT <= 0) G.prowlNextFrenzy = 6 + Math.random() * 5;
+        } else {
+          const wp = PROWL_PATH[G.prowlIdx % PROWL_PATH.length];
+          const dir = new THREE.Vector3(wp[0], 0, wp[1]).sub(dragon.position); dir.y = 0;
+          const dist = dir.length();
+          if (dist < 0.5) G.prowlIdx = (G.prowlIdx + 1) % PROWL_PATH.length;
+          else {
+            dir.normalize();
+            dragon.position.addScaledVector(dir, dt * 2.4);
+            dragon.rotation.y = Math.atan2(dir.x, dir.z);
+            dragon.position.y = Math.abs(Math.sin(t * 7)) * 0.22;
+            dragon.rotation.x = -0.12; // stalking lean
+          }
+          if (G.prowlNextFrenzy <= 0) {
+            G.prowlFrenzyT = 1.4;
+            const pd = Math.hypot(playerPos.x - dragon.position.x, playerPos.z - dragon.position.z);
+            if (pd < 14 && Math.random() < 0.4) SFX.roar();
+            if (pd < 8) G.shakeT = Math.max(G.shakeT, 0.25);
+          }
         }
       }
     }
@@ -4276,7 +4333,7 @@ export default function DragonGardenQuest() {
         }
       }
 
-      resolveCollisions(playerPos, dragon, G.map === "HOME" && G.dragonState === "idle");
+      resolveCollisions(playerPos, dragon, G.map === "HOME" && (G.dragonState === "idle" || G.dragonState === "prowl"));
       // solid groupmates in the community garden (they move, so push
       // dynamically off their current position; skip parked-underground ones)
       if (G.map === "CHURCH") {
@@ -4490,7 +4547,7 @@ export default function DragonGardenQuest() {
         }
       }
 
-      G.hunger -= G.hungerRate * dt;
+      G.hunger = Math.max(0, G.hunger - G.hungerRate * dt);
       if (G.hungerAlertT > 0) G.hungerAlertT -= dt;
       if (G.hunger <= 0 && G.dragonState === "idle") triggerRampage();
       updateDragon(dt);
@@ -4718,10 +4775,19 @@ export default function DragonGardenQuest() {
         }
       }
       for (const h of hotspots) {
-        const d = Math.hypot(playerPos.x - h.x, playerPos.z - h.z);
+        let hx = h.x, hz = h.z;
+        if (h.type === "dragon" && G.dragonState !== "idle") {
+          // he's out of the cave — the feed prompt follows him while he
+          // prowls; while he's charging or running home he can't be fed
+          if (G.dragonState !== "prowl" || !dragon) continue;
+          hx = dragon.position.x; hz = dragon.position.z;
+        }
+        const d = Math.hypot(playerPos.x - hx, playerPos.z - hz);
         if (d < h.r && d < best + 1) {
           currentPrompt = { type: h.type, kind: h.kind };
-          promptText = h.type === "dragon" && G.sleepBlend > 0.6 ? "Ember is asleep 💤 — feed him a snack?" : h.label;
+          promptText = h.type === "dragon" && G.dragonState === "prowl"
+            ? "Ember is hangry — offer him a berry!"
+            : h.type === "dragon" && G.sleepBlend > 0.6 ? "Ember is asleep 💤 — feed him a snack?" : h.label;
           ringTarget = null;
         }
       }

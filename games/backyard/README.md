@@ -113,9 +113,19 @@ claws, mismatched googly white eyes, articulated jaw/tongue/eyelids.
 Hunger drives him (drains only while the game is open; restored on load
 with a floor so he never rampages at the door): full ≥72 → sleeps
 (snore audio fades in when near), <62 → wakes with a yawn stretch,
-<30 → hangry (brows slam, eyes burn, fast flaps), 0 → rampage: charges
-a random planted home plot, eats it (chomp audio), runs home. Feeding
-him fruit restores fullness + a happy wiggle.
+<30 → hangry (brows slam, eyes burn, fast flaps). At 0, **eating is the
+only thing that refills him**:
+
+- Garden has plants → rampage: charges a random planted plot, eats it
+  (chomp audio), runs home refilled.
+- Garden empty → **prowl**: he leaves the cave and patrols a fixed loop
+  around the meadow and house, angry, with a crazy spin-and-hop burst
+  every ~6–11s — **forever, until fed**. The feed prompt follows his
+  live position ("Ember is hangry — offer him a berry!"), and planting
+  anything while he prowls makes him charge and eat it immediately.
+  Feeding him one fruit ends the prowl and he runs back to his cave.
+
+Feeding him fruit restores fullness + a happy wiggle.
 
 **Design playground:** `/dragon-lab.html` (same URL base) — standalone
 page with the full rig and 8 test states (Standing/Sleeping/Waking/
