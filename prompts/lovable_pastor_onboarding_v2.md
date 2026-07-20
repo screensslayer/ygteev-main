@@ -55,14 +55,16 @@ links), phone-first (max-width 430px column), with partial-save to
   2. within ~300m of lat/lng AND similar name (church_name or name), case
      insensitive.
   When matched, write the Place's `place_id` back onto that row (backfill).
-- **Matched (claim card)**: show "✨ We already made your page" and a card
-  with the discovered row's branding — hero gradient, `logo_url` (fallback:
-  initial in a gradient tile), `name` (e.g. "Elevation YTH"), church name ·
-  `instagram_handle`, `short_description`, chip "✓ Found by YGTeeV Discovery —
-  logo, bio & pin ready". CTA label: "This is my group — claim it →".
-- **No match (create card)**: card with church name, address, chip
-  "✓ Address & map pin filled from your search". CTA: "Create my group →".
-- Both cards include the **map confirmation**: stylized dark map tile with an
+- **Matched (claim card)**: heading becomes "We found your group" / "Our
+  system already built a profile for your youth group. Confirm it's yours."
+  White bordered card: `logo_url` tile (fallback: initial on a dark tile),
+  `name` (e.g. "Elevation YTH"), church name · `instagram_handle`,
+  `short_description` as a left-bordered quote, green badge "✓ Profile ready —
+  logo, bio & map pin". CTA label: "Claim this group".
+- **No match (create card)**: heading "Confirm your church"; card with church
+  name, address, green badge "✓ Address & map pin filled from your search".
+  CTA: "Create my group".
+- Both cards include the **map confirmation**: light map tile with an
   animated pin drop, pulsing radius ring, and a "✓ LOCATED · {address}" bar
   (see prototype).
 - Below the card: the **definitive email verdict chip** — compare the
@@ -75,18 +77,21 @@ links), phone-first (max-width 430px column), with partial-save to
 - **Group name** input, prefilled: discovered `name` if matched, else
   "{Church-without-'Church'} Youth".
 - **"About how many students?"** — 5 tap chips from `subscription_tiers`
-  (range_label + $price/mo from price_cents), grid layout, selected chip
-  glows violet. This IS the tier selection — no slider.
+  (range_label + $price/mo from price_cents), 2-col grid of white radio
+  cards; the selected card gets a black border. This IS the tier selection —
+  no slider.
 - Save to draft: church_name, address_line, address_city, latitude,
   longitude, place_id, discovered_id, church_domain, church_website,
   group_name, tier_id.
 
 ## Screen 3 — Payment
 
-- "Lock it in." / "Every student in your group gets Pro — included."
-- Lime badge "⚡ 3 MONTHS FREE — CANCEL ANYTIME". Summary card: group name +
-  "{range} students" · "After your trial **${price}/mo**" · "Due today
-  **$0.00**" (lime). Marks row: " Pay · stripe · 256-bit encrypted".
+- "Start your free trial" / "Every student in your group gets Pro —
+  included in your plan."
+- Green notice "✓ 3 months free, then your plan price. Cancel anytime."
+  Order-summary card: group name + "{range} students" · "After your trial
+  **${price}/mo**" · "Due today **$0.00**" (green). Trust row: " Pay ·
+  Stripe · PCI-DSS compliant".
 - CTA "Continue to secure checkout →" calls the `create-checkout-session`
   edge function `{ draft_id, tier_id, success_url, cancel_url, promo_code? }`
   and redirects to the returned `url`. The server already defaults to a
@@ -100,7 +105,7 @@ The `stripe-webhook` finalizes everything server-side (creates the group,
 memberships, welcome email). Poll the draft until `finalized_youth_group_id`
 is set, then read the group's `verification_status`.
 
-- Confetti burst. Headline "{Group name} is live."
+- Green checkmark pop (no confetti). Headline "{Group name} is live".
 - **verified** (branded email matched at finalize): sub "Officially claimed
   and on the map. Now put it in your students' hands." No verify card.
 - **pending**: sub "Your students can join today — one step left to go
@@ -114,10 +119,10 @@ is set, then read the group's `verification_status`.
     for admin review).
   - Check: rpc `verify_claim_code(_group_id, _code)` → `{ok:true}` flips the
     group public; re-render as the verified state with a small celebration.
-- Always: three cards — **Get the app** (App Store button; signing in with
-  this account lands them as pastor), **Invite your students**
-  (`ygteev.com/j/{slug}` + Copy), **Finish your look** (logo, meeting time &
-  bio — "do it in the app later").
+- Always: three bordered action rows — **Download the app** (App Store
+  button; signing in with this account lands them as pastor), **Invite your
+  students** (`ygteev.com/j/{slug}` + Copy link), **Finish your profile**
+  (logo, meeting time & bio — "later, in the app").
 
 ## Backend contract (already deployed — do NOT create tables or functions)
 
