@@ -1890,7 +1890,7 @@ export default function DragonGardenQuest() {
     // ticking doesn't spam writes; the payload still carries exact timers
     function stateSig() {
       return JSON.stringify([
-        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 25), G.goldBagFound,
+        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 10), G.goldBagFound,
         G.homePlots.map((p) => p.seed ? p.seed + (p.regrowAt != null ? "r" : "g") : "-"),
       ]);
     }
@@ -1905,7 +1905,7 @@ export default function DragonGardenQuest() {
       if (d.selectedSeed && SEEDS[d.selectedSeed]) G.selectedSeed = d.selectedSeed;
       if (G.selectedSeed === "glowberry" && G.map !== "CHURCH") G.selectedSeed = "strawberry"; // glow seeds are church-only
       G.goldBagFound = d.goldBag === 1;
-      if (typeof d.hunger === "number") G.hunger = Math.min(100, Math.max(30, d.hunger)); // never rampage at the door
+      if (typeof d.hunger === "number") G.hunger = Math.min(100, Math.max(0, d.hunger)); // exact restore — a starving Ember stays starving
       if (Array.isArray(d.homePlots)) {
         d.homePlots.forEach((sp, i) => {
           if (i >= G.homePlots.length) return;

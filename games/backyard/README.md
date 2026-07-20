@@ -111,7 +111,8 @@ The in-game dragon is the "lab v3" design: black lathed hide, red
 segmented belly plates + wing membranes, purple horns/brows/spikes/
 claws, mismatched googly white eyes, articulated jaw/tongue/eyelids.
 Hunger drives him (drains only while the game is open; restored on load
-with a floor so he never rampages at the door): full ≥72 → sleeps
+**exactly** — quit with a starving Ember and he's still starving, and
+acts on it immediately): full ≥72 → sleeps
 (snore audio fades in when near), <62 → wakes with a yawn stretch,
 <30 → hangry (brows slam, eyes burn, fast flaps). At 0, **eating is the
 only thing that refills him**:
