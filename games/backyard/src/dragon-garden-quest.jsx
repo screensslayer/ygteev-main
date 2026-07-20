@@ -83,11 +83,12 @@ const FENCE_TIERS = [
 ];
 const kitCostAt = (n) => 150 + n * 50;
 
+// c = accent (borders/glows on light cards), t = text (dark enough to read)
 const RARITY = {
-  strawberry: { tier: "Common", c: "#9ab87a" },
-  blueberry: { tier: "Uncommon", c: "#6a9ad8" },
-  sunfruit: { tier: "Rare", c: "#e0a03a" },
-  glowberry: { tier: "Legendary", c: "#7dfcd0" },
+  strawberry: { tier: "Common", c: "#9ab87a", t: "#5f7d3c" },
+  blueberry: { tier: "Uncommon", c: "#6a9ad8", t: "#3868ab" },
+  sunfruit: { tier: "Rare", c: "#e0a03a", t: "#a3660e" },
+  glowberry: { tier: "Legendary", c: "#7dfcd0", t: "#0f8f68" },
 };
 const LEVEL_XP = (lvl) => 60 + (lvl - 1) * 90;
 
@@ -3072,10 +3073,21 @@ export default function DragonGardenQuest() {
         bagGlow.position.y = 0.4;
         goldBag.add(bagGlow);
         goldBag.userData.glow = bagGlow;
+        // floating "!" so the find can't be missed
+        const mark = new THREE.Group();
+        const markMat = new THREE.MeshStandardMaterial({ color: SRGB(0xffc832), emissive: SRGB(0xd89a18), emissiveIntensity: 0.9, roughness: 0.4 });
+        const markBar = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.105, 0.5, 6), markMat);
+        markBar.position.y = 0.42;
+        const markDot = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6), markMat);
+        mark.add(markBar, markDot);
+        mark.position.y = 1.0;
+        goldBag.add(mark);
+        goldBag.userData.mark = mark;
+        goldBag.scale.setScalar(1.45);
         goldBag.position.set(8.5, 0, 3.9);
         worldGroup.add(goldBag);
         hotspots.push({ x: 8.5, z: 3.9, r: 2.1, type: "goldbag", label: "A glowing pouch lies in the road…" });
-        addCircleCol(8.5, 3.9, 0.45); // solid until picked up
+        addCircleCol(8.5, 3.9, 0.62); // solid until picked up
         goldBag.userData.col = colliders[colliders.length - 1];
       }
     }
@@ -4743,6 +4755,7 @@ export default function DragonGardenQuest() {
       if (goldBag) {
         goldBag.userData.glow.material.opacity = 0.42 + Math.sin(G.time * 2.6) * 0.2;
         goldBag.rotation.y = Math.sin(G.time * 0.9) * 0.12;
+        goldBag.userData.mark.position.y = 1.0 + Math.sin(G.time * 2.2) * 0.09;
       }
       if (sparkles) {
         sparkles.rotation.y = G.time * 0.08;
@@ -5338,8 +5351,8 @@ export default function DragonGardenQuest() {
                             <span style={{ position: "absolute", bottom: -5, right: -8, fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 8, background: "rgba(23,73,126,0.92)", border: "1px solid rgba(255,184,69,0.5)", color: "#fff", lineHeight: 1.4, whiteSpace: "nowrap" }}>×{hud.inv.seeds[k]}</span>
                           </div>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 800, fontSize: 13.5, color: R.c }}>{sd.name}</div>
-                            <div style={{ fontSize: 8.5, letterSpacing: 1.4, opacity: 0.85, color: R.c }}>{R.tier.toUpperCase()}</div>
+                            <div style={{ fontWeight: 800, fontSize: 13.5, color: R.t }}>{sd.name}</div>
+                            <div style={{ fontSize: 8.5, letterSpacing: 1.4, opacity: 0.85, color: R.t }}>{R.tier.toUpperCase()}</div>
                           </div>
                         </div>
                         <div style={{ fontSize: 10.5, opacity: 0.75 }}>{k === "glowberry" ? "⏱ 5m to tree · 🌟 fruits 12h" : <>⏱ {sd.grow}s &nbsp; 💰 sells {sd.sell}g</>}</div>
@@ -5383,7 +5396,7 @@ export default function DragonGardenQuest() {
                       }}>
                         <div style={{ width: 36, height: 36, flex: "0 0 36px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #f2fafe, #b8dcf2)", border: `2px solid ${n > 0 ? R.c : "#5a4a34"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>{FRUIT_EMOJI[k]}</div>
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: 12.5, color: n > 0 ? R.c : PARCH }}>{SEEDS[k].name}</div>
+                          <div style={{ fontWeight: 700, fontSize: 12.5, color: n > 0 ? R.t : PARCH }}>{SEEDS[k].name}</div>
                           <div style={{ fontSize: 10, opacity: 0.75 }}>×{n} · {SEEDS[k].sell}g ea</div>
                         </div>
                         <b style={{ ...S.goldText, fontSize: 12.5 }}>{line}g</b>
@@ -5620,8 +5633,8 @@ export default function DragonGardenQuest() {
               <div style={{ position: "relative" }}>
                 <div style={{ fontSize: 10, letterSpacing: 3, color: "#f2971f", fontWeight: 800, marginBottom: 10 }}>A GIFT FROM ELI</div>
                 <div style={{ width: 84, height: 84, margin: "0 auto 10px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #ffffff, #cfe9fa)", border: `3px solid ${R.c}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 46, boxShadow: `0 0 18px ${R.c}77` }}>{FRUIT[seedGift.key] || "🌱"}</div>
-                <div style={{ fontSize: 17.5, fontWeight: 800, color: R.c }}>{SEEDS[seedGift.key].name} Seed{seedGift.n > 1 ? "s" : ""} ×{seedGift.n}</div>
-                <div style={{ fontSize: 9.5, letterSpacing: 1.6, opacity: 0.8, color: R.c, marginBottom: 14 }}>{R.tier.toUpperCase()}</div>
+                <div style={{ fontSize: 17.5, fontWeight: 800, color: R.t || R.c }}>{SEEDS[seedGift.key].name} Seed{seedGift.n > 1 ? "s" : ""} ×{seedGift.n}</div>
+                <div style={{ fontSize: 9.5, letterSpacing: 1.6, opacity: 0.8, color: R.t || R.c, marginBottom: 14 }}>{R.tier.toUpperCase()}</div>
                 <button onClick={() => { gameRef.current?.claimIntroGift(seedGift.page); setSeedGift(null); gameRef.current?.introAdvance(); }}
                   style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 14, width: "100%", letterSpacing: 0.5, fontWeight: 800 }}>
                   ＋ ADD TO POCKET
