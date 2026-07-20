@@ -3,8 +3,8 @@
 > Paste everything below the line into Lovable, and **attach
 > `pastor-onboarding-v3/index.html`** as the visual spec. That single HTML file
 > is the pixel-level source of truth — colors, spacing, motion, and copy.
-> Also needed: a Google Maps Platform API key with **Places API** enabled
-> (set as a Lovable env var, e.g. `VITE_GOOGLE_PLACES_KEY`).
+> No Google key needed on the frontend — church search goes through the
+> `places-search` edge function (already deployed).
 
 ---
 
@@ -40,8 +40,17 @@ links), phone-first (max-width 430px column), with partial-save to
 
 - Headline "Find your church." / "Search the church, not the youth group —
   we'll handle the rest."
-- **Church name search** (Google Places Autocomplete, church/establishment
-  types) with a **ZIP field** beside it. Location bias: IP-derived by default;
+- **Church name search** via the `places-search` edge function (never call
+  Google directly — no key on the frontend):
+  - `POST { op: "search", q, near }` → `{ results: [{ place_id, name,
+    address, lat, lng, website, domain, distance_mi }] }` — debounce ~400ms.
+  - `POST { op: "geocode", q }` → `{ lat, lng, label }` for resolving a
+    typed City/ZIP into the `near` bias (pass `near` as "lat,lng" once
+    resolved, else the raw string works too).
+  - `POST { op: "details", place_id }` exists if a single place needs
+    re-fetching.
+  A **ZIP field** sits beside the search. Location bias: IP-derived city by
+  default;
   a chip under the field shows "📍 Searching near {city} · change" — tapping
   *change* swaps the chip for an inline City-or-ZIP input (Enter or Set
   applies; a 5-digit value also fills the ZIP field). Typing a ZIP re-biases
@@ -49,8 +58,8 @@ links), phone-first (max-width 430px column), with partial-save to
   dashed "Can't find your church? Enter it manually — we'll review & verify
   it." row (manual entry = free-text church name/address/city → geocode; the
   group will use the manual-review verification path).
-- On selection, resolve Place Details (name, formatted_address, lat/lng,
-  **website**) and try to match a row in `discovered_youth_groups`:
+- On selection, the search result already carries name/address/lat/lng/
+  **website/domain**; try to match a row in `discovered_youth_groups`:
   1. exact `place_id` match, else
   2. within ~300m of lat/lng AND similar name (church_name or name), case
      insensitive.
