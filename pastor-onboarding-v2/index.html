@@ -277,7 +277,7 @@
       <h1 class="rise">Lock it <span class="hl">in.</span></h1>
       <p class="sub rise">Every student in your group gets Pro — included.</p>
       <div class="rise">
-        <div class="freebadge">⚡ 14 DAYS FREE — CANCEL ANYTIME</div>
+        <div class="freebadge">⚡ 3 MONTHS FREE — CANCEL ANYTIME</div>
         <div class="paycard">
           <div class="rowline"><span id="payGroup" style="font-weight:700"></span><span id="paySize" style="color:var(--tx-soft);font-size:12.5px"></span></div>
           <div class="rowline"><span style="color:var(--tx-soft)">After your trial</span><span class="big" id="payPrice"></span></div>
@@ -287,7 +287,7 @@
       </div>
       <div style="flex:1"></div>
       <div class="rise"><button class="btn btn-primary" id="payBtn" onclick="fakePay(this)">Continue to secure checkout →</button></div>
-      <p class="tiny rise" style="margin-top:12px">You'll get a reminder 2 days before your trial ends.</p>
+      <p class="tiny rise" style="margin-top:12px">Free until <b id="trialEnd" style="color:var(--tx-soft)"></b> — we'll remind you before it ends.</p>
     </section>
 
     <!-- ============ STEP 4 · LAUNCH ============ -->
@@ -509,6 +509,8 @@ function fillPay() {
   document.getElementById('payGroup').textContent = document.getElementById('gname').value || 'Your group';
   document.getElementById('paySize').textContent = (S.tier?.label || '1–19') + ' students';
   document.getElementById('payPrice').innerHTML = '$' + (S.tier?.price ?? 29) + '<small>/mo</small>';
+  const end = new Date(Date.now() + 90 * 864e5);
+  document.getElementById('trialEnd').textContent = end.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
 }
 function fakePay(btn) {
   btn.innerHTML = '<div class="spin"></div> Opening checkout…';

@@ -10,7 +10,7 @@ Replaces the 8-step wizard with **4 screens, ~2 minutes, phone-first**:
 |---|---|---|
 | 1 | **Account** | Apple / Google one-tap, or church email + password. Live hint: branded church email = instant verification later. |
 | 2 | **Find your church** | Search the **church** (not the youth group) via Google Places. Discovered churches show an "ON YGTEEV" badge → tapping reveals the **claim card** with the branding we already scraped (logo, bio, Instagram) — the "we already made your page" moment. Unknown churches get a create card pre-seeded from the Places result. Then: group name (prefilled) + student-count chips that double as tier selection. |
-| 3 | **Payment** | Tier summary, "$0.00 due today", 14-day trial badge → Stripe Checkout (Apple Pay on phones). |
+| 3 | **Payment** | Tier summary, "$0.00 due today", **3-month free trial** badge → Stripe Checkout (Apple Pay on phones). |
 | 4 | **Launch** | Confetti. Two states: **verified** (branded email → officially claimed, public) or **unverified** (personal email → group live privately; amber "Verify to go public" card with 6-digit code to any inbox at the church's domain, or manual review). Always: App Store button, student invite link, "finish your look later". |
 
 ## Verification model (the important design decision)
@@ -49,4 +49,6 @@ Verification gates **publicity, not payment**:
 Feature-tour screens (4), branding step (logo/gradient/description), meeting
 day/time, pricing slider. All deferred to the landing page or the iOS app.
 Landing-page copy fix needed: "No credit card to start" contradicts
-`payment_method_collection: always` — change to "14-day free trial · cancel anytime".
+`payment_method_collection: always` — change to "3 months free · cancel anytime".
+Trial length is server-side: `create-checkout-session` v14 defaults to **90
+days** (deployed to prod + staging 2026-07-20); promo codes still override.

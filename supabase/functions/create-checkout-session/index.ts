@@ -2,7 +2,7 @@
 // code up in `pastor_signup_promos`; if valid (active, not expired,
 // under max_uses), uses its `trial_days` for the Stripe Checkout
 // Session and increments the use count. Falls back to the default
-// 14-day trial when no code is provided or the code is invalid.
+// trial when no code is provided or the code is invalid.
 //
 // Promo code is stashed on the Stripe subscription metadata so the
 // `stripe-webhook` (and any future reconciliation) can attribute
@@ -14,7 +14,9 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json"
 };
-const DEFAULT_TRIAL_DAYS = 14;
+// v8 (2026-07-20): default trial extended 14 -> 90 days — every pastor
+// gets 3 months free. Promo codes can still override via trial_days.
+const DEFAULT_TRIAL_DAYS = 90;
 Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") return new Response("ok", {
     headers: cors
