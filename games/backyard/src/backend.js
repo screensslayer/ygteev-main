@@ -58,7 +58,16 @@ export function createApi() {
     async getLeague() {
       const { data, error } = await supabase.rpc("by_get_league");
       if (error) throw error;
-      return data ?? []; // [{ group_id, group_name, berries, fund, rank }]
+      // [{ group_id, group_name, berries, fund, rank, active_count, multiplier, adjusted }]
+      // multiplier/adjusted are precomputed server-side by the berry cron
+      return data ?? [];
+    },
+
+    async getPulse(groupId) {
+      const { data, error } = await supabase.rpc("by_garden_pulse", groupId ? { _gid: groupId } : {});
+      if (error) throw error;
+      // { players_today, group_players_today, trees_alive, trees_today, top_planters }
+      return data ?? {};
     },
 
     // Live players: presence + position broadcasts on the private per-group

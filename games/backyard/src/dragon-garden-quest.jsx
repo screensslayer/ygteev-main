@@ -215,7 +215,7 @@ export default function DragonGardenQuest() {
     map: "HOME", prompt: "", selectedSeed: "strawberry",
     inv: { seeds: { strawberry: 0, blueberry: 0, sunfruit: 0, glowberry: 0 },
            fruit: { strawberry: 0, blueberry: 0, sunfruit: 0, glowberry: 0 } },
-    league: { mine: 0, fund: 0, endMs: Date.now() + 6048e5, rivals: [] },
+    league: { mine: 0, fund: 0, endMs: Date.now() + 6048e5, rivals: [], rows: [], pulse: {} },
     showHunger: false, promptType: null,
     intro: { page: null, task: null },
     youth: false,
@@ -244,6 +244,10 @@ export default function DragonGardenQuest() {
   const [churchIntro, setChurchIntro] = useState(null);
   const reqChurchIntroRef = useRef(() => {});
   reqChurchIntroRef.current = (n) => setChurchIntro(n);
+  // Garden League live board + rank-movement memory (session-scoped)
+  const [board, setBoard] = useState(false);
+  const prevRanksRef = useRef({});
+  const rankMoveRef = useRef({});
   const introInfo = hud.intro || { page: null, task: null };
   const introDlg = introInfo.page != null;
   const [taskSplash, setTaskSplash] = useState(null);
@@ -1955,6 +1959,13 @@ export default function DragonGardenQuest() {
           .filter((r) => r.group_id !== myGid)
           .slice(0, 8)
           .map((r) => ({ name: r.group_name, berries: r.berries, rate: 0, acc: 0 }));
+        // full board for the Garden League view (multiplier precomputed server-side)
+        G.week.rows = rows.map((r) => ({
+          id: r.group_id, name: r.group_name, berries: r.berries,
+          mult: Number(r.multiplier) || 1, adjusted: r.adjusted ?? r.berries,
+          active: r.active_count || 0, mine: r.group_id === myGid,
+        }));
+        try { G.pulse = await api.getPulse(myGid); } catch (e) { /* pulse is cosmetic */ }
       } catch (e) { /* standings are cosmetic between polls */ }
     }
     if (window.YGTEEV_API) { syncLeague(); setInterval(syncLeague, 60000); }
@@ -2025,6 +2036,8 @@ export default function DragonGardenQuest() {
       league: {
         mine: G.week.mine, fund: G.week.fund, endMs: G.week.endMs, myName: G.week.myName,
         rivals: G.week.rivals.map((r) => ({ name: r.name, berries: r.berries })),
+        rows: G.week.rows || [],
+        pulse: G.pulse || {},
       },
     });
 
@@ -5059,7 +5072,7 @@ export default function DragonGardenQuest() {
   }, [started]);
 
   const shopOpenRef = useRef(false);
-  useEffect(() => { shopOpenRef.current = !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!seedGift || churchIntro != null; }, [shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, seedGift, churchIntro]);
+  useEffect(() => { shopOpenRef.current = !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!seedGift || churchIntro != null || board; }, [shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, seedGift, churchIntro, board]);
   useEffect(() => { const g = gameRef.current; if (g) g.styleActive = shop === "style"; }, [shop]);
   useEffect(() => { const g = gameRef.current; if (g) g.buildActive = buildMode; }, [buildMode]);
   useEffect(() => { if (hud.map !== "HOME" && buildMode) setBuildMode(false); }, [hud.map, buildMode]);
@@ -5223,6 +5236,11 @@ export default function DragonGardenQuest() {
       <div style={{ position: "absolute", top: "calc(10px + env(safe-area-inset-top, 0px))", left: EMBEDDED_IOS ? 56 : 10, display: "flex", gap: 7 }}>
         <div style={{ ...S.panel, padding: "7px 13px", fontSize: 14, fontWeight: 700, ...S.goldText, display: "flex", alignItems: "center", gap: 6 }}><GoldCoin size={15} /> {hud.gold}</div>
         <div style={{ ...S.panel, padding: "7px 13px", fontSize: 14, fontWeight: 700 }}>✨ {hud.xp}</div>
+        {/* live pulse — players today; opens the Garden League board */}
+        <div onClick={() => setBoard(true)} style={{ ...S.panel, padding: "7px 11px", fontSize: 12.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#3ddc84", boxShadow: "0 0 7px #3ddc84", animation: "pulse 1.1s infinite alternate", flex: "0 0 8px" }} />
+          {Math.max(1, hud.league.pulse.players_today || 0)}<span style={{ opacity: 0.65, fontWeight: 600 }}>today</span>
+        </div>
       </div>
 
       {/* dragon fullness — slide-in alert, below the gold/xp row so it never covers it */}
@@ -5528,15 +5546,11 @@ export default function DragonGardenQuest() {
                     </div>
                   ))}
                 </div>
-                <div style={{ fontSize: 10.5, opacity: 0.7, letterSpacing: 1.5, marginBottom: 5 }}>🏆 GARDEN LEAGUE · WEEKLY BERRY RACE</div>
-                {[{ name: hud.league.myName || "Grace Community Garden", berries: hud.league.mine, mine: true }, ...hud.league.rivals]
-                  .sort((a, b) => b.berries - a.berries)
-                  .map((r, i) => (
-                    <div key={r.name} style={{ display: "flex", justifyContent: "space-between", padding: "5px 6px", fontSize: 12.5, borderBottom: "1px solid rgba(110,170,220,0.15)", background: r.mine ? "rgba(255,184,69,0.14)" : "transparent", borderRadius: 6 }}>
-                      <span>{["🥇", "🥈", "🥉", "🌱"][i]} {r.name}{r.mine ? " (you)" : ""}</span>
-                      <b style={r.mine ? S.goldText : {}}>✨ {r.berries}</b>
-                    </div>
-                  ))}
+                <div style={{ fontSize: 10.5, opacity: 0.7, letterSpacing: 1.5, marginBottom: 5 }}>🏆 GARDEN LEAGUE</div>
+                <button onClick={() => { setShop(null); setBoard(true); }}
+                  style={{ ...S.btn(goldBtnBg, "#5a3305"), width: "100%", fontSize: 13.5, fontWeight: 800 }}>
+                  🏆 Open the League Board
+                </button>
                 <button onClick={() => { const g = gameRef.current; if (g?.toggleMute) setMuted(g.toggleMute()); }}
                   style={{ ...S.btn(WOOD, PARCH), width: "100%", marginTop: 12, border: `1px solid ${GOLD}` }}>
                   {muted ? "🔇 Sound off — tap to unmute" : "🔊 Sound on — tap to mute"}
@@ -5804,6 +5818,108 @@ export default function DragonGardenQuest() {
           </div>
         </div>
       )}
+
+      {/* Garden League — live board (betting-terminal styling, deliberately
+          darker + glassier than the parchment UI so it reads as "live data") */}
+      {board && (() => {
+        const L = hud.league;
+        const live = L.rows && L.rows.length > 0;
+        const rows = (live ? L.rows : [
+          { id: "me", name: L.myName || "My Garden", berries: L.mine, mult: 1, adjusted: L.mine, active: 0, mine: true },
+          ...L.rivals.map((r, i) => ({ id: "rv" + i, name: r.name, berries: r.berries, mult: 1, adjusted: r.berries, active: 0, mine: false })),
+        ]).slice().sort((a, b) => b.adjusted - a.adjusted || b.berries - a.berries);
+        const leader = Math.max(1, rows[0] ? rows[0].adjusted : 1);
+        const my = rows.find((r) => r.mine);
+        const myRank = my ? rows.indexOf(my) + 1 : null;
+        const P = L.pulse || {};
+        const msLeft = Math.max(0, (L.endMs || 0) - Date.now());
+        const dd = Math.floor(msLeft / 864e5), hh = Math.floor((msLeft % 864e5) / 36e5);
+        rows.forEach((r, i) => {
+          const prev = prevRanksRef.current[r.id];
+          if (prev != null && prev !== i + 1) rankMoveRef.current[r.id] = { d: prev > i + 1 ? 1 : -1, t: Date.now() };
+        });
+        setTimeout(() => { const m = {}; rows.forEach((r, i) => { m[r.id] = i + 1; }); prevRanksRef.current = m; }, 0);
+        const chip = (label, value, hot) => (
+          <div key={label} style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "6px 10px", borderRadius: 9, background: hot ? "rgba(61,220,132,0.12)" : "rgba(120,165,255,0.09)", border: `1px solid ${hot ? "rgba(61,220,132,0.45)" : "rgba(120,165,255,0.22)"}`, minWidth: 62 }}>
+            <b style={{ fontSize: 15, fontVariantNumeric: "tabular-nums", color: hot ? "#5af0a0" : "#eaf2ff" }}>{value}</b>
+            <span style={{ fontSize: 8, letterSpacing: 1.2, opacity: 0.6, marginTop: 1, whiteSpace: "nowrap" }}>{label}</span>
+          </div>
+        );
+        return (
+          <div style={{ position: "absolute", inset: 0, zIndex: 40, background: "rgba(5,8,20,0.72)", backdropFilter: "blur(7px)", WebkitBackdropFilter: "blur(7px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "14px 8px" }}>
+            <div style={{ width: "min(560px, 96vw)", maxHeight: "calc(94vh - env(safe-area-inset-top, 0px))", overflowY: "auto", borderRadius: 20, background: "linear-gradient(168deg, #131e42 0%, #0a1128 48%, #0e1634 100%)", border: "1px solid rgba(130,170,255,0.3)", boxShadow: "0 26px 80px rgba(0,0,0,0.65), inset 0 1px 0 rgba(170,205,255,0.2)", color: "#e8f0ff", padding: "15px 13px 12px" }}>
+
+              {/* header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 999, background: "rgba(255,70,70,0.13)", border: "1px solid rgba(255,90,90,0.5)" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ff5a5a", boxShadow: "0 0 8px #ff5a5a", animation: "pulse 0.9s infinite alternate" }} />
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 2, color: "#ff9a9a" }}>LIVE</span>
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: 3, color: "#ffcf70", textShadow: "0 0 18px rgba(255,184,69,0.45)" }}>GARDEN LEAGUE</div>
+                <button onClick={() => setBoard(false)} style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid rgba(130,170,255,0.35)", background: "rgba(120,165,255,0.1)", color: "#cfe0ff", fontSize: 14, cursor: "pointer", lineHeight: 1 }}>✕</button>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "7px 2px 0", fontSize: 10.5 }}>
+                <span style={{ opacity: 0.6, letterSpacing: 1.4 }}>WEEKLY BERRY RACE · RESETS IN {dd}d {hh}h</span>
+                <span style={{ color: "#5af0a0", fontWeight: 700 }}>👥 {Math.max(1, P.players_today || 0)} played today</span>
+              </div>
+
+              {/* my garden — hero card */}
+              {my && (
+                <div style={{ borderRadius: 15, padding: "12px 12px 10px", margin: "12px 0 10px", background: "linear-gradient(140deg, rgba(255,184,69,0.17), rgba(255,184,69,0.04) 70%)", border: "1px solid rgba(255,184,69,0.5)", boxShadow: "0 0 26px rgba(255,184,69,0.14)" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 9, letterSpacing: 2, color: "#ffcf70", opacity: 0.85, fontWeight: 800 }}>YOUR GARDEN</div>
+                      <div style={{ fontSize: 16.5, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{my.name}</div>
+                    </div>
+                    <div style={{ textAlign: "right", flex: "0 0 auto" }}>
+                      <span style={{ fontSize: 26, fontWeight: 800, color: "#ffcf70", fontVariantNumeric: "tabular-nums" }}>#{myRank}</span>
+                      <span style={{ fontSize: 11, opacity: 0.6 }}> / {rows.length}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
+                    {chip("SCORE", my.adjusted, true)}
+                    {chip("BERRIES", "✨" + my.berries)}
+                    {chip("FAIRNESS", "×" + my.mult.toFixed(2), my.mult > 1)}
+                    {chip("GARDENERS", my.active || "—")}
+                    {chip("TREES LIVE", P.trees_alive ?? "—")}
+                    {chip("PLAYED TODAY", P.group_players_today ?? "—")}
+                  </div>
+                  {Array.isArray(P.top_planters) && P.top_planters.length > 0 && (
+                    <div style={{ marginTop: 9, fontSize: 10.5, opacity: 0.8 }}>
+                      <span style={{ letterSpacing: 1.4, fontSize: 8.5, opacity: 0.7 }}>TOP PLANTERS · </span>
+                      {P.top_planters.map((t) => `${t.name} ×${t.trees}`).join(" · ")}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* standings */}
+              <div style={{ fontSize: 9, letterSpacing: 2, opacity: 0.55, margin: "2px 4px 6px", display: "flex", justifyContent: "space-between" }}>
+                <span>ALL GARDENS · FAIR-SCORED</span><span>SCORE</span>
+              </div>
+              {rows.map((r, i) => {
+                const pct = Math.max(4, Math.round((r.adjusted / leader) * 100));
+                const mvRec = rankMoveRef.current[r.id];
+                const mv = mvRec && Date.now() - mvRec.t < 90000 ? mvRec.d : 0;
+                return (
+                  <div key={r.id} style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: 8, padding: "9px 10px", borderRadius: 12, marginBottom: 6, background: r.mine ? "rgba(255,184,69,0.1)" : "rgba(120,165,255,0.05)", border: r.mine ? "1px solid rgba(255,184,69,0.55)" : "1px solid rgba(120,165,255,0.13)" }}>
+                    <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: pct + "%", background: r.mine ? "linear-gradient(90deg, rgba(255,184,69,0.18), rgba(255,184,69,0.02))" : "linear-gradient(90deg, rgba(95,145,255,0.16), rgba(95,145,255,0.02))", transition: "width 0.9s cubic-bezier(0.2, 0.8, 0.2, 1)", pointerEvents: "none" }} />
+                    <span style={{ position: "relative", width: 26, textAlign: "center", fontSize: i < 3 ? 15 : 12.5, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: "#ffcf70" }}>{["🥇", "🥈", "🥉"][i] || i + 1}</span>
+                    <span style={{ position: "relative", width: 10, fontSize: 10, color: mv > 0 ? "#5af0a0" : mv < 0 ? "#ff8a7a" : "rgba(255,255,255,0.2)" }}>{mv > 0 ? "▲" : mv < 0 ? "▼" : "·"}</span>
+                    <span style={{ position: "relative", flex: 1, minWidth: 0, fontSize: 13, fontWeight: r.mine ? 800 : 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}{r.mine ? <span style={{ color: "#ffcf70" }}> · you</span> : ""}</span>
+                    <span style={{ position: "relative", fontSize: 10.5, opacity: 0.55, fontVariantNumeric: "tabular-nums", flex: "0 0 auto" }}>✨{r.berries}</span>
+                    <span style={{ position: "relative", fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 7, background: r.mult > 1 ? "rgba(61,220,132,0.13)" : "rgba(120,165,255,0.1)", border: `1px solid ${r.mult > 1 ? "rgba(61,220,132,0.4)" : "rgba(120,165,255,0.2)"}`, color: r.mult > 1 ? "#5af0a0" : "#b8cdfa", fontVariantNumeric: "tabular-nums", flex: "0 0 auto" }}>×{r.mult.toFixed(2)}</span>
+                    <b style={{ position: "relative", fontSize: 15, fontVariantNumeric: "tabular-nums", minWidth: 40, textAlign: "right", flex: "0 0 auto" }}>{r.adjusted}</b>
+                  </div>
+                );
+              })}
+              <div style={{ fontSize: 9.5, opacity: 0.5, textAlign: "center", margin: "8px 4px 2px", lineHeight: 1.5 }}>
+                Scores are fairness-adjusted: smaller gardens earn a ×boost (up to ×3) based on active gardeners, so every youth group competes on even soil.
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* shopkeeper counter dialogue */}
       {counterTalk && (() => { const C = COUNTER_CFG[counterTalk.kind]; return (
