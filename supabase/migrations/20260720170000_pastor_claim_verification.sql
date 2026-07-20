@@ -1,0 +1,18 @@
+-- Pastor onboarding v2: church claiming + domain verification.
+-- Verification gates PUBLICITY, not payment. Applied to staging + prod
+-- 2026-07-20; verified end-to-end on staging (finalize -> pending ->
+-- wrong code rejected -> right code -> verified + public).
+--
+-- Pieces:
+--   pastor_signup_drafts      + place_id, discovered_id, church_domain, church_website
+--   discovered_youth_groups   + place_id (exact Places matching, backfilled on match)
+--   youth_groups              + verification_status ('verified' grandfathered), church_domain
+--   claim_verifications       6-digit code rows (sha256(code||id), 30-min TTL, 6 attempts)
+--   verify_claim_code(gid, code) RPC -> flips group public + links discovered row
+--   finalize_pastor_signup v2 -> group_type/description defaults (iOS map hides
+--       groups missing either), branded-email instant verification, discovered
+--       branding copy + link; unbranded groups start is_public=false/pending
+--   send-claim-code edge function (deployed separately) emails the code to any
+--       inbox @church_domain; pastor-only, rate-limited 3/hr
+--
+-- Full SQL lives in the applied migration of the same name on both projects.
