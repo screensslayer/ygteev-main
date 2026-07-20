@@ -3266,9 +3266,11 @@ export default function DragonGardenQuest() {
 
       exits = [
         { x: -20, z: 0, r: 2.2, to: "HOME", spawn: [21, 3] },
-        { x: -8.2, z: 7.75, r: 1.3, to: "SHOP_MARKET", spawn: [0, 3.6] },
-        { x: 0, z: 7.75, r: 1.3, to: "SHOP_SEEDS", spawn: [0, 3.6] },
-        { x: 8.2, z: 7.75, r: 1.3, to: "SHOP_TOOLS", spawn: [0, 3.6] },
+        // spawn well inside the shop (not at the doorway) so turning around
+        // doesn't walk the player out through the door gap into the void
+        { x: -8.2, z: 7.75, r: 1.3, to: "SHOP_MARKET", spawn: [0, 2] },
+        { x: 0, z: 7.75, r: 1.3, to: "SHOP_SEEDS", spawn: [0, 2] },
+        { x: 8.2, z: 7.75, r: 1.3, to: "SHOP_TOOLS", spawn: [0, 2] },
       ];
       hotspots = [];
     }
