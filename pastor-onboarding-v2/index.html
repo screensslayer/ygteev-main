@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Claim your youth group — YGTeeV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --violet: #6B2BFF; --violet-deep: #3D0FB8; --violet-soft: #B79FFF;
+    --blue: #2D7BFF; --cyan: #00E0FF; --pink: #FF3DA5; --yellow: #FFD60A;
+    --lime: #B4FF3C; --orange: #FF6B35;
+    --ink: #0A0712; --ink-2: #1A1428; --ink-3: #2D2542;
+    --paper: #FAF8FF; --line: rgba(255,255,255,0.09);
+    --tx: #F4F1FF; --tx-soft: rgba(244,241,255,0.62); --tx-faint: rgba(244,241,255,0.38);
+    --ok: #34D399; --warn: #FBBF24;
+    --disp: 'Bricolage Grotesque', 'SF Pro Display', -apple-system, system-ui, sans-serif;
+    --body: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--body); color: var(--tx); background: var(--ink);
+    background-image:
+      radial-gradient(55% 40% at 15% 0%, rgba(107,43,255,0.32) 0%, transparent 55%),
+      radial-gradient(45% 35% at 90% 12%, rgba(255,61,165,0.16) 0%, transparent 60%),
+      radial-gradient(50% 40% at 50% 100%, rgba(0,224,255,0.10) 0%, transparent 55%);
+    background-attachment: fixed;
+    display: flex; justify-content: center;
+  }
+
+  /* ---------- phone shell ---------- */
+  .shell { width: min(430px, 100vw); min-height: 100dvh; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+  header { display: flex; align-items: center; gap: 12px; padding: max(18px, env(safe-area-inset-top)) 22px 12px; }
+  .mark { width: 34px; height: 34px; border-radius: 11px; flex: 0 0 34px;
+    background: linear-gradient(135deg, var(--violet) 0%, var(--pink) 120%);
+    display: grid; place-items: center; font-family: var(--disp); font-weight: 800; font-size: 15px; color: #fff;
+    box-shadow: 0 4px 14px rgba(107,43,255,0.45), inset 0 1px 0 rgba(255,255,255,0.35); }
+  .progress { flex: 1; display: flex; gap: 5px; }
+  .progress i { height: 4px; flex: 1; border-radius: 99px; background: rgba(255,255,255,0.10); overflow: hidden; position: relative; }
+  .progress i::after { content: ''; position: absolute; inset: 0; border-radius: 99px; transform: translateX(-101%);
+    background: linear-gradient(90deg, var(--violet), var(--pink)); transition: transform 0.55s cubic-bezier(0.3, 0.9, 0.2, 1); }
+  .progress i.on::after { transform: translateX(0); }
+  .stepno { font-family: var(--mono); font-size: 10.5px; color: var(--tx-faint); letter-spacing: 1px; }
+
+  main { flex: 1; position: relative; }
+  .screen { position: absolute; inset: 0; padding: 8px 22px calc(30px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain;
+    opacity: 0; transform: translateX(26px); pointer-events: none;
+    transition: opacity 0.38s ease, transform 0.45s cubic-bezier(0.25, 0.9, 0.2, 1); }
+  .screen.on { opacity: 1; transform: none; pointer-events: auto; }
+  .screen.off-l { transform: translateX(-26px); }
+
+  h1 { font-family: var(--disp); font-weight: 800; font-size: clamp(28px, 8vw, 34px); line-height: 1.06; letter-spacing: -0.8px; margin: 14px 0 8px; }
+  h1 .hl { background: linear-gradient(92deg, var(--violet-soft), var(--pink)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { font-size: 15px; line-height: 1.5; color: var(--tx-soft); margin-bottom: 26px; max-width: 34ch; }
+
+  /* staggered entrance */
+  .screen.on .rise { animation: rise 0.5s cubic-bezier(0.25, 0.9, 0.2, 1) both; }
+  .screen.on .rise:nth-child(2) { animation-delay: 0.05s; } .screen.on .rise:nth-child(3) { animation-delay: 0.1s; }
+  .screen.on .rise:nth-child(4) { animation-delay: 0.15s; } .screen.on .rise:nth-child(5) { animation-delay: 0.2s; }
+  .screen.on .rise:nth-child(6) { animation-delay: 0.25s; } .screen.on .rise:nth-child(7) { animation-delay: 0.3s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+  /* ---------- controls ---------- */
+  .btn { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%;
+    font-family: var(--disp); font-weight: 700; font-size: 16.5px; letter-spacing: -0.2px;
+    border: none; border-radius: 999px; padding: 16px 24px; cursor: pointer; color: var(--tx);
+    transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s; }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: linear-gradient(180deg, var(--violet) 0%, var(--violet-deep) 100%); color: #fff;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.3) inset, 0 -2px 0 rgba(0,0,0,0.25) inset, 0 10px 26px rgba(107,43,255,0.42); }
+  .btn-primary:disabled { filter: saturate(0.25) brightness(0.7); box-shadow: none; cursor: default; }
+  .btn-ghost { background: rgba(255,255,255,0.06); border: 1px solid var(--line); }
+  .btn-oauth { background: #fff; color: #111; box-shadow: 0 6px 18px rgba(0,0,0,0.35); }
+  .btn-oauth.g { background: rgba(255,255,255,0.08); color: var(--tx); border: 1px solid rgba(255,255,255,0.16); box-shadow: none; }
+
+  .field { margin-bottom: 13px; }
+  .field label { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 1.6px; color: var(--tx-faint); margin: 0 4px 7px; }
+  .field .box { display: flex; align-items: center; gap: 10px; border-radius: 16px; padding: 15px 16px;
+    background: rgba(255,255,255,0.055); border: 1px solid var(--line); transition: border-color 0.2s, box-shadow 0.2s; }
+  .field .box:focus-within { border-color: rgba(183,159,255,0.65); box-shadow: 0 0 0 4px rgba(107,43,255,0.18); }
+  .field input { flex: 1; background: none; border: none; outline: none; color: var(--tx); font-size: 16px; font-family: var(--body); min-width: 0; }
+  .field input::placeholder { color: var(--tx-faint); }
+
+  .chipnote { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; border-radius: 99px; padding: 5px 11px; margin: 2px 4px 0; }
+  .chipnote.ok { color: var(--ok); background: rgba(52,211,153,0.10); border: 1px solid rgba(52,211,153,0.3); }
+  .chipnote.dim { color: var(--tx-soft); background: rgba(255,255,255,0.05); border: 1px solid var(--line); }
+
+  .divider { display: flex; align-items: center; gap: 12px; color: var(--tx-faint); font-size: 11.5px; letter-spacing: 1.5px; margin: 18px 0; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+  /* ---------- search / results ---------- */
+  .results { display: flex; flex-direction: column; gap: 9px; margin-top: 4px; }
+  .result { display: flex; align-items: center; gap: 13px; text-align: left; width: 100%;
+    border-radius: 16px; padding: 13px 14px; cursor: pointer; border: 1px solid var(--line);
+    background: rgba(255,255,255,0.045); color: var(--tx); font-family: var(--body);
+    animation: rise 0.35s cubic-bezier(0.25,0.9,0.2,1) both; transition: border-color 0.15s, background 0.15s; }
+  .result:nth-child(2) { animation-delay: 0.06s; } .result:nth-child(3) { animation-delay: 0.12s; } .result:nth-child(4) { animation-delay: 0.18s; }
+  .result:active { background: rgba(255,255,255,0.09); }
+  .result .pin { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 13px; display: grid; place-items: center; font-size: 18px;
+    background: rgba(107,43,255,0.16); border: 1px solid rgba(107,43,255,0.35); }
+  .result b { display: block; font-size: 15px; font-weight: 700; letter-spacing: -0.2px; }
+  .result span { display: block; font-size: 12.5px; color: var(--tx-soft); margin-top: 2px; }
+  .result .found { margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: 1px; color: var(--cyan);
+    background: rgba(0,224,255,0.10); border: 1px solid rgba(0,224,255,0.35); padding: 4px 8px; border-radius: 99px; white-space: nowrap; }
+
+  /* ---------- claim card ---------- */
+  .claim { border-radius: 22px; overflow: hidden; border: 1px solid rgba(183,159,255,0.35);
+    background: linear-gradient(180deg, rgba(107,43,255,0.16), rgba(255,255,255,0.04) 55%);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.45), 0 0 40px rgba(107,43,255,0.14); }
+  .claim .hero { height: 92px; position: relative;
+    background: linear-gradient(120deg, #3D0FB8 0%, #6B2BFF 45%, #FF3DA5 130%); }
+  .claim .hero::after { content: '✦ ✦ ✦'; position: absolute; right: 14px; top: 12px; color: rgba(255,255,255,0.4); font-size: 11px; letter-spacing: 6px; }
+  .claim .logo { width: 62px; height: 62px; border-radius: 20px; margin: -31px 0 0 18px; position: relative;
+    display: grid; place-items: center; font-family: var(--disp); font-weight: 800; font-size: 24px; color: #fff;
+    background: linear-gradient(135deg, #FF6B35, #FF3DA5); border: 3px solid var(--ink-2);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.5); }
+  .claim .body { padding: 12px 18px 16px; }
+  .claim .name { font-family: var(--disp); font-weight: 800; font-size: 20px; letter-spacing: -0.4px; }
+  .claim .meta { font-size: 12.5px; color: var(--tx-soft); margin: 3px 0 10px; }
+  .claim .desc { font-size: 13.5px; line-height: 1.5; color: var(--tx-soft); border-left: 2px solid rgba(183,159,255,0.5); padding-left: 10px; margin-bottom: 12px; }
+  .wow { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--yellow); margin-bottom: 4px; }
+  .wow::before { content: '✨'; }
+
+  /* ---------- size chips ---------- */
+  .sizes { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .size { border-radius: 16px; padding: 13px 8px 11px; text-align: center; cursor: pointer;
+    background: rgba(255,255,255,0.045); border: 1.5px solid var(--line); color: var(--tx);
+    font-family: var(--disp); transition: all 0.16s ease; }
+  .size b { display: block; font-size: 16.5px; font-weight: 800; letter-spacing: -0.3px; }
+  .size span { display: block; font-size: 11.5px; color: var(--tx-soft); margin-top: 2px; font-family: var(--body); }
+  .size.sel { border-color: var(--violet-soft); background: rgba(107,43,255,0.18);
+    box-shadow: 0 0 0 4px rgba(107,43,255,0.15), 0 8px 22px rgba(107,43,255,0.25); transform: translateY(-1px); }
+  .size.sel span { color: var(--violet-soft); font-weight: 700; }
+
+  /* ---------- pay screen ---------- */
+  .paycard { border-radius: 22px; padding: 20px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); }
+  .paycard .rowline { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; border-bottom: 1px dashed rgba(255,255,255,0.08); font-size: 14px; }
+  .paycard .rowline:last-child { border: none; }
+  .paycard .big { font-family: var(--disp); font-size: 30px; font-weight: 800; letter-spacing: -0.8px; }
+  .paycard .big small { font-size: 14px; color: var(--tx-soft); font-weight: 600; }
+  .freebadge { display: inline-flex; align-items: center; gap: 7px; border-radius: 99px; padding: 7px 13px; margin-bottom: 14px;
+    font-size: 12.5px; font-weight: 800; color: var(--lime); background: rgba(180,255,60,0.08); border: 1px solid rgba(180,255,60,0.35); }
+  .paymarks { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; color: var(--tx-faint); font-size: 11.5px; }
+  .paymarks b { color: var(--tx-soft); font-weight: 700; }
+
+  /* ---------- launch ---------- */
+  .bigcheck { width: 84px; height: 84px; border-radius: 50%; margin: 6px auto 14px; display: grid; place-items: center; font-size: 40px;
+    background: radial-gradient(circle at 35% 30%, rgba(52,211,153,0.35), rgba(52,211,153,0.08));
+    border: 2px solid rgba(52,211,153,0.6); box-shadow: 0 0 44px rgba(52,211,153,0.3); animation: pop 0.55s cubic-bezier(0.3, 1.6, 0.4, 1) both; }
+  @keyframes pop { from { transform: scale(0.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .launchcard { border-radius: 18px; padding: 15px 16px; margin-bottom: 11px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); display: flex; gap: 13px; align-items: center; }
+  .launchcard .ic { width: 42px; height: 42px; flex: 0 0 42px; border-radius: 14px; display: grid; place-items: center; font-size: 20px; background: rgba(107,43,255,0.16); border: 1px solid rgba(107,43,255,0.35); }
+  .launchcard b { display: block; font-size: 14.5px; font-family: var(--disp); letter-spacing: -0.2px; }
+  .launchcard span { display: block; font-size: 12.5px; color: var(--tx-soft); margin-top: 2px; line-height: 1.4; }
+  .launchcard .act { margin-left: auto; flex: 0 0 auto; font-size: 12px; font-weight: 800; color: var(--violet-soft);
+    background: rgba(107,43,255,0.14); border: 1px solid rgba(107,43,255,0.4); border-radius: 99px; padding: 7px 12px; cursor: pointer; white-space: nowrap; }
+  .verify { border-radius: 18px; padding: 16px; margin-bottom: 11px;
+    background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.35); }
+  .verify b { font-family: var(--disp); font-size: 14.5px; color: var(--warn); }
+  .verify p { font-size: 12.5px; color: var(--tx-soft); line-height: 1.5; margin: 5px 0 12px; }
+  .codes { display: flex; gap: 7px; justify-content: center; margin-bottom: 10px; }
+  .codes input { width: 42px; height: 50px; border-radius: 12px; text-align: center; font-family: var(--mono); font-size: 20px; font-weight: 600;
+    color: var(--tx); background: rgba(255,255,255,0.06); border: 1px solid var(--line); outline: none; }
+  .codes input:focus { border-color: var(--warn); box-shadow: 0 0 0 3px rgba(251,191,36,0.15); }
+  .tiny { font-size: 11.5px; color: var(--tx-faint); text-align: center; }
+  .tiny a { color: var(--violet-soft); font-weight: 600; text-decoration: none; }
+
+  footer { padding: 0 22px calc(16px + env(safe-area-inset-bottom)); text-align: center; font-size: 11px; color: var(--tx-faint); }
+  footer b { color: var(--tx-soft); font-weight: 600; }
+
+  /* dev navigator (prototype only) */
+  .dev { position: fixed; bottom: 12px; right: 12px; display: flex; gap: 6px; z-index: 60; opacity: 0.5; }
+  .dev button { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: rgba(20,14,40,0.7);
+    color: var(--tx-soft); font-family: var(--mono); font-size: 11px; cursor: pointer; }
+  .dev button.cur { background: var(--violet); color: #fff; border-color: transparent; }
+
+  canvas#confetti { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+  .spin { width: 16px; height: 16px; border: 2.5px solid rgba(255,255,255,0.25); border-top-color: #fff; border-radius: 50%; animation: sp 0.7s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="mark">YG</div>
+    <div class="progress" id="prog"><i></i><i></i><i></i><i></i></div>
+    <div class="stepno" id="stepno">1/4</div>
+  </header>
+
+  <main>
+    <!-- ============ STEP 1 · ACCOUNT ============ -->
+    <section class="screen" id="s1">
+      <h1 class="rise">Run your group<br/>on <span class="hl">YGTeeV.</span></h1>
+      <p class="sub rise">Two minutes from here to a youth group your students will actually open.</p>
+      <div class="rise"><button class="btn btn-oauth" onclick="go(2)"> Continue with Apple</button></div>
+      <div class="rise" style="margin-top:10px"><button class="btn btn-oauth g" onclick="go(2)"><span style="font-weight:800">G</span> Continue with Google</button></div>
+      <div class="divider rise">OR USE EMAIL</div>
+      <div class="rise">
+        <div class="field"><label>CHURCH EMAIL</label>
+          <div class="box"><span>✉️</span><input id="email" type="email" placeholder="you@yourchurch.org" autocomplete="email" oninput="emailCheck()" /></div>
+          <span class="chipnote dim" id="emailhint">Use your church email — your group gets verified instantly</span>
+        </div>
+        <div class="field"><label>PASSWORD</label>
+          <div class="box"><span>🔒</span><input id="pw" type="password" placeholder="8+ characters" oninput="acctCheck()" /></div>
+        </div>
+      </div>
+      <div class="rise" style="margin-top:8px"><button class="btn btn-primary" id="acctBtn" disabled onclick="go(2)">Create account →</button></div>
+      <p class="tiny rise" style="margin-top:14px">Already have an account? <a href="#">Sign in</a></p>
+    </section>
+
+    <!-- ============ STEP 2 · FIND YOUR CHURCH ============ -->
+    <section class="screen" id="s2">
+      <div id="findPhase">
+        <h1 class="rise">Find your <span class="hl">church.</span></h1>
+        <p class="sub rise">Search the church, not the youth group — we'll handle the rest.</p>
+        <div class="rise">
+          <div class="field"><label>CHURCH NAME</label>
+            <div class="box"><span>⛪</span><input id="q" placeholder="e.g. Elevation Church" oninput="search(this.value)" autocomplete="off" /></div>
+          </div>
+        </div>
+        <div class="results" id="results"></div>
+      </div>
+
+      <div id="claimPhase" style="display:none">
+        <div class="wow rise" id="wowline">We already made your page</div>
+        <div class="claim rise" id="claimCard"></div>
+        <div class="rise" style="margin-top:16px">
+          <div class="field"><label>YOUR GROUP'S NAME</label>
+            <div class="box"><span>👥</span><input id="gname" /></div>
+          </div>
+        </div>
+        <label class="rise" style="display:block;font-size:10.5px;font-weight:700;letter-spacing:1.6px;color:var(--tx-faint);margin:6px 4px 8px">ABOUT HOW MANY STUDENTS?</label>
+        <div class="sizes rise" id="sizes"></div>
+        <div class="rise" style="margin-top:16px"><button class="btn btn-primary" id="claimBtn" disabled onclick="go(3)">This is my group — claim it →</button></div>
+        <p class="tiny rise" style="margin-top:10px"><a href="#" onclick="backToSearch(event)">← Not your church? Search again</a></p>
+      </div>
+    </section>
+
+    <!-- ============ STEP 3 · PAYMENT ============ -->
+    <section class="screen" id="s3">
+      <h1 class="rise">Lock it <span class="hl">in.</span></h1>
+      <p class="sub rise">Every student in your group gets Pro — included.</p>
+      <div class="rise">
+        <div class="freebadge">⚡ 14 DAYS FREE — CANCEL ANYTIME</div>
+        <div class="paycard">
+          <div class="rowline"><span id="payGroup" style="font-weight:700"></span><span id="paySize" style="color:var(--tx-soft);font-size:12.5px"></span></div>
+          <div class="rowline"><span style="color:var(--tx-soft)">After your trial</span><span class="big" id="payPrice"></span></div>
+          <div class="rowline"><span style="color:var(--tx-soft)">Due today</span><span style="font-family:var(--disp);font-weight:800;color:var(--lime)">$0.00</span></div>
+        </div>
+        <div class="paymarks"><b> Pay</b> · <b>stripe</b> · 256-bit encrypted</div>
+      </div>
+      <div style="flex:1"></div>
+      <div class="rise"><button class="btn btn-primary" id="payBtn" onclick="fakePay(this)">Continue to secure checkout →</button></div>
+      <p class="tiny rise" style="margin-top:12px">You'll get a reminder 2 days before your trial ends.</p>
+    </section>
+
+    <!-- ============ STEP 4 · LAUNCH ============ -->
+    <section class="screen" id="s4">
+      <div class="bigcheck">🎉</div>
+      <h1 class="rise" style="text-align:center;font-size:28px" id="liveTitle"></h1>
+      <p class="sub rise" style="text-align:center;margin-inline:auto" id="liveSub"></p>
+
+      <div class="verify rise" id="verifyCard" style="display:none">
+        <b>⚠ Verify to go public</b>
+        <p>Your group is live for anyone you invite. To appear on the public map and officially claim <b id="vChurch" style="color:var(--tx)"></b>, confirm a code we'll send to any inbox <b style="color:var(--tx)" id="vDomain"></b>.</p>
+        <div class="codes">
+          <input maxlength="1" inputmode="numeric"/><input maxlength="1" inputmode="numeric"/><input maxlength="1" inputmode="numeric"/>
+          <input maxlength="1" inputmode="numeric"/><input maxlength="1" inputmode="numeric"/><input maxlength="1" inputmode="numeric"/>
+        </div>
+        <p class="tiny">or <a href="#">send the code to office@…</a> · <a href="#">request manual review</a></p>
+      </div>
+
+      <div class="launchcard rise">
+        <div class="ic">📱</div>
+        <div><b>Get the app</b><span>Sign in with this account — you land as pastor.</span></div>
+        <div class="act">App Store</div>
+      </div>
+      <div class="launchcard rise">
+        <div class="ic">🔗</div>
+        <div><b>Invite your students</b><span id="inviteLink">ygteev.com/j/elevyth</span></div>
+        <div class="act" onclick="this.textContent='Copied!'">Copy</div>
+      </div>
+      <div class="launchcard rise">
+        <div class="ic">🎨</div>
+        <div><b>Finish your look</b><span>Logo, meeting time & bio — do it in the app later.</span></div>
+        <div class="act">Later</div>
+      </div>
+    </section>
+  </main>
+
+  <footer>Built by people who run youth groups · <b>Your data is yours</b></footer>
+</div>
+
+<div class="dev" id="dev"></div>
+<canvas id="confetti"></canvas>
+
+<script>
+/* ============ mock data (production: Google Places + discovered_youth_groups) ============ */
+const CHURCHES = [
+  { key: 'elev', icon: '⛪', name: 'Elevation Church — Ballantyne', addr: '8835 Blakeney Professional Dr, Charlotte, NC', domain: 'elevationchurch.org',
+    discovered: { yth: 'Elevation YTH', logo: 'E', insta: '@elevationyth',
+      desc: 'A place for every student to belong, believe, and become — Wednesdays at 6:30pm.' } },
+  { key: 'south', icon: '⛪', name: 'Southbrook Church', addr: '5607 Providence Rd, Waxhaw, NC', domain: 'southbrook.org', discovered: null },
+  { key: 'grace', icon: '⛪', name: 'Grace Community Chapel', addr: '212 Main St, Monroe, NC', domain: 'gracecc.org', discovered: null },
+];
+const TIERS = [
+  { label: '1–19', price: 29 }, { label: '20–49', price: 59 },
+  { label: '50–99', price: 119 }, { label: '100–199', price: 169 }, { label: '200+', price: 379 },
+];
+const FREE_MAIL = ['gmail.com','yahoo.com','icloud.com','outlook.com','hotmail.com','aol.com','me.com'];
+
+const S = { step: 1, church: null, tier: null, emailDomain: null, branded: false };
+
+/* ============ routing ============ */
+function go(n) {
+  const prev = document.querySelector('.screen.on');
+  if (prev) { prev.classList.remove('on'); prev.classList.add('off-l'); setTimeout(() => prev.classList.remove('off-l'), 500); }
+  S.step = n;
+  document.getElementById('s' + n).classList.add('on');
+  document.querySelectorAll('#prog i').forEach((el, i) => el.classList.toggle('on', i < n));
+  document.getElementById('stepno').textContent = n + '/4';
+  document.querySelectorAll('#dev button').forEach((b, i) => b.classList.toggle('cur', i === n - 1));
+  location.hash = 'step=' + n;
+  if (n === 3) fillPay();
+  if (n === 4) launch();
+  document.getElementById('s' + n).scrollTop = 0;
+}
+
+/* ============ step 1 ============ */
+function emailCheck() {
+  const v = document.getElementById('email').value.trim().toLowerCase();
+  const hint = document.getElementById('emailhint');
+  const at = v.split('@')[1] || '';
+  S.emailDomain = at || null;
+  if (at && at.includes('.') && !FREE_MAIL.includes(at)) {
+    S.branded = true;
+    hint.className = 'chipnote ok'; hint.textContent = '✓ Church email — instant verification';
+  } else if (at && FREE_MAIL.includes(at)) {
+    S.branded = false;
+    hint.className = 'chipnote dim'; hint.textContent = 'Personal email works too — you can verify your church later';
+  } else {
+    S.branded = false;
+    hint.className = 'chipnote dim'; hint.textContent = 'Use your church email — your group gets verified instantly';
+  }
+  acctCheck();
+}
+function acctCheck() {
+  const ok = /.+@.+\..+/.test(document.getElementById('email').value) && document.getElementById('pw').value.length >= 8;
+  document.getElementById('acctBtn').disabled = !ok;
+}
+
+/* ============ step 2 · search ============ */
+let searchT = null;
+function search(v) {
+  clearTimeout(searchT);
+  const box = document.getElementById('results');
+  if (v.trim().length < 2) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div style="display:flex;justify-content:center;padding:18px"><div class="spin"></div></div>';
+  searchT = setTimeout(() => {
+    const hits = CHURCHES.filter(c => c.name.toLowerCase().includes(v.trim().toLowerCase()));
+    const list = hits.length ? hits : CHURCHES;
+    box.innerHTML = list.map(c => `
+      <button class="result" onclick="pick('${c.key}')">
+        <div class="pin">${c.icon}</div>
+        <div><b>${c.name}</b><span>${c.addr}</span></div>
+        ${c.discovered ? '<span class="found">ON YGTEEV</span>' : ''}
+      </button>`).join('') + `
+      <button class="result" onclick="pickManual()" style="border-style:dashed">
+        <div class="pin">✏️</div>
+        <div><b>Can't find your church?</b><span>Enter it manually — we'll review & verify it.</span></div>
+      </button>`;
+  }, 550);
+}
+function pick(key) {
+  S.church = CHURCHES.find(c => c.key === key);
+  const d = S.church.discovered;
+  document.getElementById('wowline').style.display = d ? 'flex' : 'none';
+  document.getElementById('claimCard').innerHTML = d ? `
+    <div class="hero"></div>
+    <div class="logo">${d.logo}</div>
+    <div class="body">
+      <div class="name">${d.yth}</div>
+      <div class="meta">${S.church.name} · ${d.insta}</div>
+      <div class="desc">${d.desc}</div>
+      <span class="chipnote ok">✓ Found by YGTeeV Discovery — logo, bio & pin ready</span>
+    </div>` : `
+    <div class="hero" style="background:linear-gradient(120deg,#1A1428,#2D2542)"></div>
+    <div class="logo" style="background:linear-gradient(135deg,var(--violet),var(--blue))">${S.church.name[0]}</div>
+    <div class="body">
+      <div class="name">${S.church.name}</div>
+      <div class="meta">${S.church.addr}</div>
+      <span class="chipnote ok">✓ Address & map pin filled from your search</span>
+    </div>`;
+  document.getElementById('gname').value = d ? d.yth : S.church.name.split('—')[0].split(' Church')[0].trim() + ' Youth';
+  document.getElementById('sizes').innerHTML = TIERS.map((t, i) => `
+    <button class="size" id="sz${i}" onclick="pickSize(${i})"><b>${t.label}</b><span>$${t.price}/mo</span></button>`).join('');
+  document.getElementById('claimBtn').textContent = d ? 'This is my group — claim it →' : 'Create my group →';
+  document.getElementById('claimBtn').disabled = S.tier == null;
+  document.getElementById('findPhase').style.display = 'none';
+  const cp = document.getElementById('claimPhase');
+  cp.style.display = 'block';
+  cp.querySelectorAll('.rise').forEach((el, i) => { el.style.animation = 'none'; el.offsetHeight; el.style.animation = `rise 0.5s cubic-bezier(0.25,0.9,0.2,1) ${i * 0.06}s both`; });
+}
+function pickManual() { pick('grace'); }
+function backToSearch(e) { e.preventDefault(); S.tier = null; document.getElementById('claimPhase').style.display = 'none'; document.getElementById('findPhase').style.display = 'block'; }
+function pickSize(i) {
+  S.tier = TIERS[i];
+  document.querySelectorAll('.size').forEach((el, j) => el.classList.toggle('sel', j === i));
+  document.getElementById('claimBtn').disabled = false;
+}
+
+/* ============ step 3 ============ */
+function fillPay() {
+  document.getElementById('payGroup').textContent = document.getElementById('gname').value || 'Your group';
+  document.getElementById('paySize').textContent = (S.tier?.label || '1–19') + ' students';
+  document.getElementById('payPrice').innerHTML = '$' + (S.tier?.price ?? 29) + '<small>/mo</small>';
+}
+function fakePay(btn) {
+  btn.innerHTML = '<div class="spin"></div> Opening checkout…';
+  setTimeout(() => { btn.innerHTML = 'Continue to secure checkout →'; go(4); }, 900);
+}
+
+/* ============ step 4 ============ */
+function launch() {
+  const gname = document.getElementById('gname').value || 'Your group';
+  document.getElementById('liveTitle').innerHTML = `<span class="hl">${gname}</span> is live.`;
+  document.getElementById('liveSub').textContent = S.branded
+    ? 'Officially claimed and on the map. Now put it in your students\' hands.'
+    : 'Your students can join today — one step left to go public.';
+  document.getElementById('verifyCard').style.display = S.branded ? 'none' : 'block';
+  if (!S.branded && S.church) {
+    document.getElementById('vChurch').textContent = S.church.name.split('—')[0].trim();
+    document.getElementById('vDomain').textContent = '@' + S.church.domain;
+  }
+  const link = (document.getElementById('gname').value || 'mygroup').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 10);
+  document.getElementById('inviteLink').textContent = 'ygteev.com/j/' + link;
+  confetti();
+}
+document.querySelectorAll('.codes input').forEach((inp, i, all) => {
+  inp.addEventListener('input', () => { if (inp.value && all[i + 1]) all[i + 1].focus(); });
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Backspace' && !inp.value && all[i - 1]) all[i - 1].focus(); });
+});
+
+/* ============ confetti ============ */
+function confetti() {
+  const cv = document.getElementById('confetti'), cx = cv.getContext('2d');
+  cv.width = innerWidth; cv.height = innerHeight;
+  const COLS = ['#6B2BFF', '#FF3DA5', '#00E0FF', '#FFD60A', '#B4FF3C'];
+  const ps = Array.from({ length: 90 }, () => ({
+    x: Math.random() * cv.width, y: -20 - Math.random() * cv.height * 0.5,
+    w: 5 + Math.random() * 6, h: 8 + Math.random() * 8,
+    vy: 2 + Math.random() * 3, vx: -1 + Math.random() * 2,
+    r: Math.random() * Math.PI, vr: -0.12 + Math.random() * 0.24,
+    c: COLS[Math.floor(Math.random() * COLS.length)] }));
+  let t = 0;
+  (function tick() {
+    cx.clearRect(0, 0, cv.width, cv.height); t++;
+    ps.forEach(p => { p.y += p.vy; p.x += p.vx + Math.sin((t + p.y) / 22); p.r += p.vr;
+      cx.save(); cx.translate(p.x, p.y); cx.rotate(p.r); cx.fillStyle = p.c; cx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); cx.restore(); });
+    if (t < 260) requestAnimationFrame(tick); else cx.clearRect(0, 0, cv.width, cv.height);
+  })();
+}
+
+/* ============ dev nav + boot ============ */
+const dev = document.getElementById('dev');
+[1, 2, 3, 4].forEach(n => { const b = document.createElement('button'); b.textContent = n; b.onclick = () => { if (n >= 2 && !S.church) pick('elev'); if (n >= 2 && S.tier == null) pickSize(1); go(n); }; dev.appendChild(b); });
+const m = location.hash.match(/step=(\d)/);
+go(m ? Math.min(4, Math.max(1, +m[1])) : 1);
+if (m && +m[1] >= 2) { pick('elev'); pickSize(1); go(+m[1]); }
+</script>
+</body>
+</html>
