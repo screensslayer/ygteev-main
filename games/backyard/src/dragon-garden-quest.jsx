@@ -3643,7 +3643,7 @@ export default function DragonGardenQuest() {
       // trophy tally floats above the countdown
       winsSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: winsTex, transparent: true, depthWrite: false }));
       winsSprite.scale.set(3.6, 1.2, 1);
-      winsSprite.position.set(0, 4.18, 0);
+      winsSprite.position.set(0, 4.85, 0);
       worldGroup.add(winsSprite);
       drawWins(G.pulse && typeof G.pulse.league_wins === "number" ? G.pulse.league_wins : 0);
       lastWinsDrawn = G.pulse && typeof G.pulse.league_wins === "number" ? G.pulse.league_wins : 0;
@@ -4840,7 +4840,7 @@ export default function DragonGardenQuest() {
       if (winsSprite) {
         const w = G.pulse && typeof G.pulse.league_wins === "number" ? G.pulse.league_wins : 0;
         if (w !== lastWinsDrawn) { lastWinsDrawn = w; drawWins(w); }
-        winsSprite.position.y = 4.18 + Math.sin(G.time * 1.4 + 0.9) * 0.08;
+        winsSprite.position.y = 4.85 + Math.sin(G.time * 1.4 + 0.9) * 0.08;
         const wp2 = 1 + Math.sin(G.time * 2.6) * 0.015;
         winsSprite.scale.set(3.6 * wp2, 1.2 * wp2, 1);
       }
