@@ -131,7 +131,8 @@ is set, then read the group's `verification_status`.
   - Check: rpc `verify_claim_code(_group_id, _code)` → `{ok:true}` flips the
     group public; re-render as the verified state with a small celebration.
 - Always: three bordered action rows — **Download the app** (App Store
-  button; signing in with this account lands them as pastor), **Invite your
+  button → https://apps.apple.com/us/app/ygteev/id6773066416; signing in
+  with this account lands them as pastor), **Invite your
   students** (`ygteev.com/j/{slug}` + Copy link), **Finish your profile**
   (logo, meeting time & bio — "later, in the app").
 

@@ -4,7 +4,7 @@
 // successful insert. Auth is via service-role bearer or CRON_SECRET so
 // no JWT is required.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-const APP_STORE_URL = 'https://apps.apple.com/app/ygteev/id0000000000';
+const APP_STORE_URL = 'https://apps.apple.com/us/app/ygteev/id6773066416';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type, x-cron-secret',

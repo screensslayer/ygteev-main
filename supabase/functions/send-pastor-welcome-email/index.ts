@@ -18,7 +18,7 @@ const FROM_NAME = "Jim @ YGTeeV";
 const FROM_ADDRESS = Deno.env.get("YGTEEV_LEAD_FROM_EMAIL") ?? "jim@ygteev.com";
 const REPLY_TO = Deno.env.get("YGTEEV_LEAD_REPLY_TO") ?? FROM_ADDRESS;
 const DASHBOARD_URL = "https://pastors.ygteev.com/sign-in";
-const APP_STORE_URL = "https://apps.apple.com/app/ygteev/id0000000000";
+const APP_STORE_URL = "https://apps.apple.com/us/app/ygteev/id6773066416";
 function firstName(full) {
   if (!full) return "there";
   const first = full.trim().split(/\s+/)[0];
@@ -139,8 +139,8 @@ Deno.serve(async (req)=>{
     }).limit(1).maybeSingle();
     const trialEndIso = subRow?.trial_end ?? subRow?.current_period_end ?? null;
     const firstBillOn = fmtDate(trialEndIso);
-    // Compute trial_days from trial_end (approximate). If we can't, default to 14.
-    let trialDays = 14;
+    // Compute trial_days from trial_end (approximate). If we can't, default to 90.
+    let trialDays = 90;
     if (trialEndIso) {
       const days = Math.round((new Date(trialEndIso).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
       if (days > 0 && days <= 365) trialDays = days;
