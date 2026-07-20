@@ -141,7 +141,8 @@ is set, then read the group's `verification_status`.
   discovered_id, church_domain, church_website.
 - `discovered_youth_groups` — read for claim cards; write only `place_id`.
 - `subscription_tiers` — read (labels/prices); never hardcode prices.
-- `create-checkout-session`, `send-claim-code` edge functions;
+- `places-search`, `create-checkout-session`, `send-claim-code` edge
+  functions;
   `verify_claim_code` RPC; `stripe-webhook` + `finalize_pastor_signup` run
   server-side untouched.
 - Trust footer everywhere: "Built by people who run youth groups · Your data
