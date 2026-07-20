@@ -31,7 +31,7 @@ Verification gates **publicity, not payment**:
 
 | Prototype element | Production source |
 |---|---|
-| Church search | Google Places Autocomplete (type=church). Result gives name/address/lat/lng/**website** in one tap. |
+| Church search | Google Places Autocomplete (type=church) with **locationBias to the user's area** — IP-based by default, upgraded to precise browser geolocation if granted. The "📍 Searching near {city} · change" chip shows the bias and lets them override the city (pastors signing up from home/away still find their church). Results show distance. Result gives name/address/lat/lng/**website** in one tap. |
 | "ON YGTEEV" badge + claim card | Match Places result → `discovered_youth_groups` (geo proximity + name similarity; **add a `place_id` column** and backfill on every match). Card fields: `logo_url`, `hero_url`, `instagram_handle`, `short_description`, `name`. |
 | Student-count chips | `subscription_tiers` (labels + `price_cents`) — replaces the pricing slider. |
 | Draft persistence | `pastor_signup_drafts` — unchanged; partial-save per screen, resume + reminder emails already exist. |

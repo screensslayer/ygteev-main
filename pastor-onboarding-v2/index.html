@@ -243,6 +243,7 @@
         <div class="rise">
           <div class="field"><label>CHURCH NAME</label>
             <div class="box"><span>⛪</span><input id="q" placeholder="e.g. Elevation Church" oninput="search(this.value)" autocomplete="off" /></div>
+            <span class="chipnote dim">📍 Searching near <b style="color:var(--tx)">Charlotte, NC</b>&nbsp;·&nbsp;<a href="#" style="color:var(--violet-soft);text-decoration:none;font-weight:700">change</a></span>
           </div>
         </div>
         <div class="results" id="results"></div>
@@ -324,11 +325,11 @@
 <script>
 /* ============ mock data (production: Google Places + discovered_youth_groups) ============ */
 const CHURCHES = [
-  { key: 'elev', icon: '⛪', name: 'Elevation Church — Ballantyne', addr: '8835 Blakeney Professional Dr, Charlotte, NC', domain: 'elevationchurch.org',
+  { key: 'elev', icon: '⛪', name: 'Elevation Church — Ballantyne', addr: '8835 Blakeney Professional Dr, Charlotte, NC', dist: '0.8 mi', domain: 'elevationchurch.org',
     discovered: { yth: 'Elevation YTH', logo: 'E', insta: '@elevationyth',
       desc: 'A place for every student to belong, believe, and become — Wednesdays at 6:30pm.' } },
-  { key: 'south', icon: '⛪', name: 'Southbrook Church', addr: '5607 Providence Rd, Waxhaw, NC', domain: 'southbrook.org', discovered: null },
-  { key: 'grace', icon: '⛪', name: 'Grace Community Chapel', addr: '212 Main St, Monroe, NC', domain: 'gracecc.org', discovered: null },
+  { key: 'south', icon: '⛪', name: 'Southbrook Church', addr: '5607 Providence Rd, Waxhaw, NC', dist: '4.2 mi', domain: 'southbrook.org', discovered: null },
+  { key: 'grace', icon: '⛪', name: 'Grace Community Chapel', addr: '212 Main St, Monroe, NC', dist: '9.6 mi', domain: 'gracecc.org', discovered: null },
 ];
 const TIERS = [
   { label: '1–19', price: 29 }, { label: '20–49', price: 59 },
@@ -383,10 +384,10 @@ function synth(q) {
   const t = q.trim().replace(/\s+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
   const base = /church|chapel|ministr|fellowship|temple/i.test(t) ? t : t + ' Church';
   const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14);
-  const mk = (key, name, addr) => { DYN[key] = { key, icon: '⛪', name, addr, domain: slug + '.org', discovered: null }; return DYN[key]; };
+  const mk = (key, name, addr, dist) => { DYN[key] = { key, icon: '⛪', name, addr, dist, domain: slug + '.org', discovered: null }; return DYN[key]; };
   return [
-    mk('dyn1', base, '4120 Steele Creek Rd, Charlotte, NC'),
-    mk('dyn2', base + ' — North Campus', '918 Harris Blvd, Concord, NC'),
+    mk('dyn1', base, '4120 Steele Creek Rd, Charlotte, NC', '1.2 mi'),
+    mk('dyn2', base + ' — North Campus', '918 Harris Blvd, Concord, NC', '7.8 mi'),
   ];
 }
 function search(v) {
@@ -400,7 +401,7 @@ function search(v) {
     box.innerHTML = list.map(c => `
       <button class="result" onclick="pick('${c.key}')">
         <div class="pin">${c.icon}</div>
-        <div><b>${c.name}</b><span>${c.addr}</span></div>
+        <div><b>${c.name}</b><span>${c.dist ? c.dist + ' · ' : ''}${c.addr}</span></div>
         ${c.discovered ? '<span class="found">ON YGTEEV</span>' : ''}
       </button>`).join('') + `
       <button class="result" onclick="pickManual()" style="border-style:dashed">
