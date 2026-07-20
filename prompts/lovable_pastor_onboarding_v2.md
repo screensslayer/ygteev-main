@@ -60,7 +60,7 @@ links), phone-first (max-width 430px column), with partial-save to
   White bordered card: `logo_url` tile (fallback: initial on a dark tile),
   `name` (e.g. "Elevation YTH"), church name · `instagram_handle`,
   `short_description` as a left-bordered quote, green badge "✓ Profile ready —
-  logo, bio & map pin". CTA label: "Claim this group".
+  logo, bio & map pin".
 - **No match (create card)**: heading "Confirm your church"; card with church
   name, address, green badge "✓ Address & map pin filled from your search".
   CTA: "Create my group".
@@ -80,6 +80,9 @@ links), phone-first (max-width 430px column), with partial-save to
   (range_label + $price/mo from price_cents), 2-col grid of white radio
   cards; the selected card gets a black border. This IS the tier selection —
   no slider.
+- The screen's CTA (both claim and create cases) is the offer: **"Start
+  your 90-day free trial"**, with a dynamic subline once a size is picked:
+  "No charge today · then ${price}/mo". Disabled until a size is selected.
 - Save to draft: church_name, address_line, address_city, latitude,
   longitude, place_id, discovered_id, church_domain, church_website,
   group_name, tier_id.

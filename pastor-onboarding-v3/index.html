@@ -262,7 +262,8 @@
         <label style="display:block;font-size:13px;font-weight:600;margin:4px 0 8px">About how many students?</label>
         <div class="sizes" id="sizes"></div>
         <div style="height:16px"></div>
-        <button class="btn btn-primary" id="claimBtn" disabled onclick="go(3)">Claim this group</button>
+        <button class="btn btn-primary" id="claimBtn" disabled onclick="go(3)">Start your 90-day free trial</button>
+        <p class="tiny" style="text-align:center;margin-top:9px" id="ctaSub"></p>
         <p class="tiny" style="text-align:center;margin-top:12px"><a onclick="backToSearch(event)">← Not your church? Search again</a></p>
       </div>
     </section>
@@ -477,8 +478,9 @@ function pick(key) {
   document.getElementById('gname').value = d ? d.yth : S.church.name.split('—')[0].split(' Church')[0].trim() + ' Youth';
   document.getElementById('sizes').innerHTML = TIERS.map((t, i) => `
     <button class="size" id="sz${i}" onclick="pickSize(${i})"><b>${t.label}</b><span>$${t.price}/mo</span></button>`).join('');
-  document.getElementById('claimBtn').textContent = d ? 'Claim this group' : 'Create my group';
+  document.getElementById('claimBtn').textContent = 'Start your 90-day free trial';
   document.getElementById('claimBtn').disabled = S.tier == null;
+  document.getElementById('ctaSub').textContent = S.tier ? `No charge today · then $${S.tier.price}/mo` : '';
   document.getElementById('findPhase').style.display = 'none';
   document.getElementById('claimPhase').style.display = 'block';
 }
@@ -488,6 +490,7 @@ function pickSize(i) {
   S.tier = TIERS[i];
   document.querySelectorAll('.size').forEach((el, j) => el.classList.toggle('sel', j === i));
   document.getElementById('claimBtn').disabled = false;
+  document.getElementById('ctaSub').textContent = `No charge today · then $${S.tier.price}/mo`;
 }
 
 /* ============ step 3 ============ */
