@@ -63,7 +63,6 @@ links), phone-first (max-width 430px column), with partial-save to
   logo, bio & map pin".
 - **No match (create card)**: heading "Confirm your church"; card with church
   name, address, green badge "✓ Address & map pin filled from your search".
-  CTA: "Create my group".
 - Both cards include the **map confirmation**: light map tile with an
   animated pin drop, pulsing radius ring, and a "✓ LOCATED · {address}" bar
   (see prototype).
