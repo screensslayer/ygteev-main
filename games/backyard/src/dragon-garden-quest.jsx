@@ -5273,7 +5273,7 @@ export default function DragonGardenQuest() {
         <div onClick={() => setTray((t) => !t)} style={{ ...S.panel, position: "absolute", left: 12, bottom: "calc(14px + env(safe-area-inset-bottom, 0px))", padding: "8px 12px", display: "flex", alignItems: "center", gap: 9, cursor: "pointer", zIndex: 21 }}>
           <span style={{ fontSize: 20 }}>🌱</span>
           <div>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: SEEDS[hud.selectedSeed].glow ? "#7dfcd0" : PARCH }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: SEEDS[hud.selectedSeed].glow ? RARITY[hud.selectedSeed].t : PARCH }}>
               {SEEDS[hud.selectedSeed].name} <b style={S.goldText}>×{hud.inv.seeds[hud.selectedSeed]}</b>
             </div>
             <div style={{ fontSize: 9.5, opacity: 0.65 }}>{tray ? "tap to close" : "tap to switch seed"}</div>
@@ -5287,7 +5287,7 @@ export default function DragonGardenQuest() {
             {seedKeys.map((k) => (
               <div key={"ts" + k} style={S.chip(hud.selectedSeed === k)} onClick={() => { G?.selectSeed(k); setTray(false); }}>
                 <span style={{ fontSize: 15 }}>🌱</span>
-                <span style={{ fontSize: 9.5, color: SEEDS[k].glow ? "#7dfcd0" : PARCH }}>{SEEDS[k].name}</span>
+                <span style={{ fontSize: 9.5, color: SEEDS[k].glow ? RARITY[k].t : PARCH }}>{SEEDS[k].name}</span>
                 <b style={{ fontSize: 12, ...S.goldText }}>{hud.inv.seeds[k]}</b>
               </div>
             ))}
@@ -5297,7 +5297,7 @@ export default function DragonGardenQuest() {
             {seedKeys.map((k) => (
               <div key={"tf" + k} style={{ ...S.chip(false), cursor: "default" }}>
                 <span style={{ fontSize: 15 }}>{FRUIT_EMOJI[k]}</span>
-                <span style={{ fontSize: 9.5, color: SEEDS[k].glow ? "#7dfcd0" : PARCH }}>{SEEDS[k].name}</span>
+                <span style={{ fontSize: 9.5, color: SEEDS[k].glow ? RARITY[k].t : PARCH }}>{SEEDS[k].name}</span>
                 <b style={{ fontSize: 12, ...S.goldText }}>{hud.inv.fruit[k]}</b>
               </div>
             ))}
@@ -5486,7 +5486,7 @@ export default function DragonGardenQuest() {
                   {seedKeys.map((k) => (
                     <div key={"ps" + k} style={S.chip(hud.selectedSeed === k)} onClick={() => G?.selectSeed(k)}>
                       <span style={{ fontSize: 15 }}>🌱</span>
-                      <span style={{ fontSize: 9.5, color: SEEDS[k].glow ? "#7dfcd0" : PARCH }}>{SEEDS[k].name}</span>
+                      <span style={{ fontSize: 9.5, color: SEEDS[k].glow ? RARITY[k].t : PARCH }}>{SEEDS[k].name}</span>
                       <b style={{ fontSize: 12, ...S.goldText }}>{hud.inv.seeds[k]}</b>
                     </div>
                   ))}
@@ -5496,7 +5496,7 @@ export default function DragonGardenQuest() {
                   {seedKeys.map((k) => (
                     <div key={"pf" + k} style={{ ...S.chip(false), cursor: "default" }}>
                       <span style={{ fontSize: 15 }}>{FRUIT_EMOJI[k]}</span>
-                      <span style={{ fontSize: 9.5, color: SEEDS[k].glow ? "#7dfcd0" : PARCH }}>{SEEDS[k].name}</span>
+                      <span style={{ fontSize: 9.5, color: SEEDS[k].glow ? RARITY[k].t : PARCH }}>{SEEDS[k].name}</span>
                       <b style={{ fontSize: 12, ...S.goldText }}>{hud.inv.fruit[k]}</b>
                     </div>
                   ))}
