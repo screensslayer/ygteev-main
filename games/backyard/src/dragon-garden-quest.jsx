@@ -2149,7 +2149,7 @@ export default function DragonGardenQuest() {
       const tex = new THREE.CanvasTexture(cv);
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
       sp.scale.set(1.7, 0.42, 1);
-      sp.position.y = 1.82;
+      sp.position.y = 2.35; // clear of the hat brim — 1.82 clipped behind it
       return sp;
     }
     function ensureLivePlayer(id, meta) {
