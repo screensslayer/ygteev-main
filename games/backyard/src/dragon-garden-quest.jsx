@@ -2047,7 +2047,7 @@ export default function DragonGardenQuest() {
     let dragon = null, dragonHome = new THREE.Vector3();
     let goldBag = null; // one-time glowing pouch on the town road
     let butterflies = [], glowNodes = [], embers = [], smokes = [], caveLight = null, npcs = [], zzz = [];
-    let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, water = null, foams = [], swayers = [], petals = [], fountainFx = null;
+    let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, winsSprite = null, water = null, foams = [], swayers = [], petals = [], fountainFx = null;
     let buildCells = [], ghostMesh = null, buildMarkers = null, counterKeeper = null;
 
     // "Z" sprite texture for Ember's snoring
@@ -2091,6 +2091,43 @@ export default function DragonGardenQuest() {
       timerCtx.fillStyle = "#ffb845"; timerCtx.font = "bold 42px Georgia";
       timerCtx.fillText(str, 180, 74);
       timerTex.needsUpdate = true;
+    }
+
+    // "N WINS" trophy text above the league countdown — faux-3D gold
+    // lettering (extrusion stack + gradient face + glint) on a canvas
+    let lastWinsDrawn = -1;
+    const winsCanvas = document.createElement("canvas");
+    winsCanvas.width = 512; winsCanvas.height = 170;
+    const winsCtx = winsCanvas.getContext("2d");
+    const winsTex = new THREE.CanvasTexture(winsCanvas);
+    function drawWins(n) {
+      const c = winsCtx, W = winsCanvas.width;
+      c.clearRect(0, 0, W, 170);
+      const text = `🏆 ${n} WIN${n === 1 ? "" : "S"}`;
+      c.textAlign = "center"; c.textBaseline = "middle";
+      c.font = "900 84px 'Trebuchet MS', 'Arial Black', sans-serif";
+      const cx = W / 2, cy = 68;
+      // extrusion stack: dark bronze receding downward
+      for (let i = 11; i >= 1; i--) {
+        const k = i / 11;
+        c.fillStyle = `rgb(${Math.round(112 - 44 * k)}, ${Math.round(72 - 30 * k)}, ${Math.round(20 - 10 * k)})`;
+        c.fillText(text, cx, cy + i * 2.4);
+      }
+      // outline + gold gradient face
+      c.lineWidth = 9; c.lineJoin = "round"; c.strokeStyle = "rgba(56,30,4,0.92)";
+      c.strokeText(text, cx, cy);
+      const g = c.createLinearGradient(0, cy - 44, 0, cy + 44);
+      g.addColorStop(0, "#fff4c8"); g.addColorStop(0.42, "#ffd257");
+      g.addColorStop(0.55, "#f2a92c"); g.addColorStop(1, "#c97f14");
+      c.fillStyle = g;
+      c.fillText(text, cx, cy);
+      // top-edge glint
+      c.save();
+      c.beginPath(); c.rect(0, cy - 46, W, 18); c.clip();
+      c.fillStyle = "rgba(255,255,255,0.55)";
+      c.fillText(text, cx, cy);
+      c.restore();
+      winsTex.needsUpdate = true;
     }
 
     const player = makePlayer();
@@ -2509,7 +2546,7 @@ export default function DragonGardenQuest() {
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
-      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; water = null; foams = []; swayers = []; petals = []; fountainFx = null; goldBag = null;
+      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; swayers = []; petals = []; fountainFx = null; goldBag = null;
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
       colliders = [];
     }
@@ -3599,8 +3636,17 @@ export default function DragonGardenQuest() {
       // floating countdown above the cross
       timerSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: timerTex, transparent: true, depthWrite: false }));
       timerSprite.scale.set(3.4, 1.04, 1);
-      timerSprite.position.set(0, 4.2, 0);
+      // the stack sits low (just over the cross) — the portrait camera crops
+      // anything much above ~4.5 world-units at typical distances
+      timerSprite.position.set(0, 3.55, 0);
       worldGroup.add(timerSprite);
+      // trophy tally floats above the countdown
+      winsSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: winsTex, transparent: true, depthWrite: false }));
+      winsSprite.scale.set(3.6, 1.2, 1);
+      winsSprite.position.set(0, 4.18, 0);
+      worldGroup.add(winsSprite);
+      drawWins(G.pulse && typeof G.pulse.league_wins === "number" ? G.pulse.league_wins : 0);
+      lastWinsDrawn = G.pulse && typeof G.pulse.league_wins === "number" ? G.pulse.league_wins : 0;
 
       // 324 small sacred plots in four quadrant fields (2 instanced draw calls)
       const plotPositions = [];
@@ -4789,7 +4835,14 @@ export default function DragonGardenQuest() {
           const ss = String(secLeft % 60).padStart(2, "0");
           drawLeagueTimer(`${dd}d ${hh}:${mm}:${ss}`);
         }
-        timerSprite.position.y = 4.2 + Math.sin(G.time * 1.4) * 0.07;
+        timerSprite.position.y = 3.55 + Math.sin(G.time * 1.4) * 0.07;
+      }
+      if (winsSprite) {
+        const w = G.pulse && typeof G.pulse.league_wins === "number" ? G.pulse.league_wins : 0;
+        if (w !== lastWinsDrawn) { lastWinsDrawn = w; drawWins(w); }
+        winsSprite.position.y = 4.18 + Math.sin(G.time * 1.4 + 0.9) * 0.08;
+        const wp2 = 1 + Math.sin(G.time * 2.6) * 0.015;
+        winsSprite.scale.set(3.6 * wp2, 1.2 * wp2, 1);
       }
       if (caveLight) caveLight.intensity = 1.0 + Math.sin(G.time * 7) * 0.2 + Math.sin(G.time * 13.7) * 0.12;
       if (goldBag) {
