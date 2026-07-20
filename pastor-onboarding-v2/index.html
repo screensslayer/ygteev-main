@@ -125,6 +125,29 @@
   .wow { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--yellow); margin-bottom: 4px; }
   .wow::before { content: '✨'; }
 
+  /* ---------- located map ---------- */
+  .mapbox { position: relative; height: 110px; border-radius: 14px; overflow: hidden; margin-top: 12px;
+    background:
+      linear-gradient(rgba(183,159,255,0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(183,159,255,0.07) 1px, transparent 1px),
+      radial-gradient(80% 90% at 50% 45%, #241c3e 0%, #171129 100%);
+    background-size: 22px 22px, 22px 22px, cover;
+    border: 1px solid rgba(183,159,255,0.22); }
+  .mapbox .road { position: absolute; background: rgba(183,159,255,0.13); }
+  .mapbox .r1 { left: 0; right: 0; top: 46%; height: 7px; transform: rotate(-4deg); }
+  .mapbox .r2 { top: 0; bottom: 0; left: 62%; width: 6px; transform: rotate(8deg); }
+  .mapbox .pinwrap { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -100%); }
+  .mapbox .pindrop { font-size: 30px; display: block; filter: drop-shadow(0 6px 8px rgba(0,0,0,0.5));
+    animation: pindrop 0.6s cubic-bezier(0.3, 1.5, 0.4, 1) 0.25s both; }
+  @keyframes pindrop { from { transform: translateY(-46px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .mapbox .ring { position: absolute; left: 50%; top: 46%; width: 14px; height: 14px; border-radius: 50%;
+    transform: translate(-50%, -50%); border: 2px solid var(--pink); animation: ring 1.6s ease-out 0.6s infinite; }
+  @keyframes ring { from { opacity: 0.8; transform: translate(-50%,-50%) scale(0.5); } to { opacity: 0; transform: translate(-50%,-50%) scale(3.4); } }
+  .mapbox .addr { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--tx-soft); background: rgba(10,7,18,0.72); backdrop-filter: blur(8px);
+    border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; }
+  .mapbox .addr b { color: var(--ok); font-size: 10px; letter-spacing: 0.8px; white-space: nowrap; }
+
   /* ---------- size chips ---------- */
   .sizes { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
   .size { border-radius: 16px; padding: 13px 8px 11px; text-align: center; cursor: pointer;
@@ -355,6 +378,17 @@ function acctCheck() {
 
 /* ============ step 2 · search ============ */
 let searchT = null;
+const DYN = {}; // synthetic Places-style results for unmatched queries
+function synth(q) {
+  const t = q.trim().replace(/\s+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+  const base = /church|chapel|ministr|fellowship|temple/i.test(t) ? t : t + ' Church';
+  const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14);
+  const mk = (key, name, addr) => { DYN[key] = { key, icon: '⛪', name, addr, domain: slug + '.org', discovered: null }; return DYN[key]; };
+  return [
+    mk('dyn1', base, '4120 Steele Creek Rd, Charlotte, NC'),
+    mk('dyn2', base + ' — North Campus', '918 Harris Blvd, Concord, NC'),
+  ];
+}
 function search(v) {
   clearTimeout(searchT);
   const box = document.getElementById('results');
@@ -362,7 +396,7 @@ function search(v) {
   box.innerHTML = '<div style="display:flex;justify-content:center;padding:18px"><div class="spin"></div></div>';
   searchT = setTimeout(() => {
     const hits = CHURCHES.filter(c => c.name.toLowerCase().includes(v.trim().toLowerCase()));
-    const list = hits.length ? hits : CHURCHES;
+    const list = hits.length ? hits : synth(v);
     box.innerHTML = list.map(c => `
       <button class="result" onclick="pick('${c.key}')">
         <div class="pin">${c.icon}</div>
@@ -376,9 +410,16 @@ function search(v) {
   }, 550);
 }
 function pick(key) {
-  S.church = CHURCHES.find(c => c.key === key);
+  S.church = CHURCHES.find(c => c.key === key) || DYN[key];
   const d = S.church.discovered;
   document.getElementById('wowline').style.display = d ? 'flex' : 'none';
+  const mapbox = `
+    <div class="mapbox">
+      <div class="road r1"></div><div class="road r2"></div>
+      <div class="ring"></div>
+      <div class="pinwrap"><span class="pindrop">📍</span></div>
+      <div class="addr"><b>✓ LOCATED</b><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${S.church.addr}</span></div>
+    </div>`;
   document.getElementById('claimCard').innerHTML = d ? `
     <div class="hero"></div>
     <div class="logo">${d.logo}</div>
@@ -387,6 +428,7 @@ function pick(key) {
       <div class="meta">${S.church.name} · ${d.insta}</div>
       <div class="desc">${d.desc}</div>
       <span class="chipnote ok">✓ Found by YGTeeV Discovery — logo, bio & pin ready</span>
+      ${mapbox}
     </div>` : `
     <div class="hero" style="background:linear-gradient(120deg,#1A1428,#2D2542)"></div>
     <div class="logo" style="background:linear-gradient(135deg,var(--violet),var(--blue))">${S.church.name[0]}</div>
@@ -394,6 +436,7 @@ function pick(key) {
       <div class="name">${S.church.name}</div>
       <div class="meta">${S.church.addr}</div>
       <span class="chipnote ok">✓ Address & map pin filled from your search</span>
+      ${mapbox}
     </div>`;
   document.getElementById('gname').value = d ? d.yth : S.church.name.split('—')[0].split(' Church')[0].trim() + ' Youth';
   document.getElementById('sizes').innerHTML = TIERS.map((t, i) => `
