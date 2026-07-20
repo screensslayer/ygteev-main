@@ -2484,7 +2484,7 @@ export default function DragonGardenQuest() {
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
-      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; timerSprite = null; lastTimerSec = -1; water = null; foams = []; swayers = []; petals = []; fountainFx = null; goldBag = null;
+      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; water = null; foams = []; swayers = []; petals = []; fountainFx = null; goldBag = null;
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
       colliders = [];
     }
@@ -2609,6 +2609,23 @@ export default function DragonGardenQuest() {
         worldGroup.add(bm);
         bursts.push({ m: bm, vx: (Math.random() - 0.5) * (opts.vs || 1.2), vy: (opts.vy || 2) + Math.random() * 1.2, vz: (Math.random() - 0.5) * (opts.vs || 1.2), ttl: opts.ttl || 0.9 });
       }
+    }
+
+    // Small world-anchored "+2 🍓" text that rises off a plot and fades —
+    // quieter than a toast for routine feedback the player is looking at.
+    let floaties = [];
+    function spawnFloatie(x, z, text, y0 = 1.0) {
+      const cv = document.createElement("canvas"); cv.width = 256; cv.height = 96;
+      const cx = cv.getContext("2d");
+      cx.font = "700 46px system-ui, -apple-system, sans-serif";
+      cx.textAlign = "center"; cx.textBaseline = "middle";
+      cx.lineWidth = 9; cx.strokeStyle = "rgba(24,44,18,0.55)"; cx.strokeText(text, 128, 50);
+      cx.fillStyle = "#ffffff"; cx.fillText(text, 128, 50);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false }));
+      sp.scale.set(1.55, 0.58, 1);
+      sp.position.set(x, y0, z);
+      worldGroup.add(sp);
+      floaties.push({ sp, ttl: 1.3 });
     }
 
     function addPetals(spots, colorsArr, count, hMax) {
@@ -3802,21 +3819,18 @@ export default function DragonGardenQuest() {
       if (!ownedKeys.length) return;
       const i = ownedKeys.indexOf(G.selectedSeed);
       G.selectedSeed = ownedKeys[(i + 1) % ownedKeys.length];
-      toast(`🌱 Selected: ${SEEDS[G.selectedSeed].name} seed`);
     }
-    G.selectSeed = (k) => { if (G.inv.seeds[k] > 0) { G.selectedSeed = k; toast(`🌱 Selected: ${SEEDS[k].name} seed`); } };
+    G.selectSeed = (k) => { if (G.inv.seeds[k] > 0) G.selectedSeed = k; };
     G.openShopBuy = (key) => {
       const s = SEEDS[key];
       if (s.currency === "xp") {
         if (G.xp < s.cost) { toast("Not enough XP!", "warn"); return; }
         G.xp -= s.cost;
         syncXpSpend(s.cost, "seed_" + key);
-        toast(`Bought ${s.name} seed (−${s.cost} ✨)`, "gold");
         SFX.sparkle();
       } else {
         if (G.gold < s.cost) { toast("Not enough gold!", "warn"); return; }
         G.gold -= s.cost;
-        toast(`Bought ${s.name} seed (−${s.cost}g)`, "gold");
         SFX.coin(1);
       }
       G.inv.seeds[key]++;
@@ -3847,7 +3861,6 @@ export default function DragonGardenQuest() {
         G.inv.seeds[key]--;
         const p = node.data(); p.seed = key; p.plantedAt = G.time; p.regrowAt = null; p.harvests = 0;
         refreshPlotVisual(node);
-        toast(`Planted ${SEEDS[key].name}!`);
         SFX.plant();
         spawnBurst(node.x, node.z, 0x6b4a2f, 7, { vy: 1.6, spread: 0.6, y0: 0.3 });
         G.playerHopT = 0.32;
@@ -3870,12 +3883,12 @@ export default function DragonGardenQuest() {
         G.playerHopT = 0.32;
         if (G.onIntroEvent) G.onIntroEvent("harvest");
         p.harvests = (p.harvests || 0) + 1;
+        spawnFloatie(node.x, node.z, `+${FRUIT_PER_HARVEST} ${FRUIT_EMOJI[p.seed] || "🍓"}`);
         if (p.harvests >= MAX_HARVESTS) {
-          toast(`Harvested ${FRUIT_PER_HARVEST}× ${s.name}! 🥀 The plant is spent — the plot is free.`, "gold");
+          toast(`🥀 The ${s.name} plant is spent — the plot is free.`, "gold");
           p.seed = null; p.regrowAt = null; p.harvests = 0;
           spawnBurst(node.x, node.z, 0x9a8a6c, 5, { vy: 1.2, spread: 0.5, y0: 0.3 });
         } else {
-          toast(`Harvested ${FRUIT_PER_HARVEST}× ${s.name}! 🌱 Regrowing… (${MAX_HARVESTS - p.harvests} harvest${MAX_HARVESTS - p.harvests > 1 ? "s" : ""} left)`, "gold");
           p.regrowAt = G.time + (s.regrow || REGROW_SECS);
         }
         refreshPlotVisual(node);
@@ -4059,10 +4072,12 @@ export default function DragonGardenQuest() {
       G.week.fund += 35;
       if (G.time - G.lastCollectToast > 2) {
         G.lastCollectToast = G.time;
-        toast(`✨ A Glowberry ripened — +1 berry for ${G.week.myName || "the garden"}!`, "gold");
         SFX.sparkle();
         const node = plotNodes.find((n) => n.special && n.idx === i);
-        if (node) spawnBurst(node.x, node.z, 0x59c8ff, 4, { glow: true, vy: 2.4, y0: 1.4, spread: 0.5 });
+        if (node) {
+          spawnBurst(node.x, node.z, 0x59c8ff, 4, { glow: true, vy: 2.4, y0: 1.4, spread: 0.5 });
+          spawnFloatie(node.x, node.z, "+1 ✨", 2.2);
+        }
       }
       G.saveT = 0.2;
     }
@@ -4137,7 +4152,7 @@ export default function DragonGardenQuest() {
       else if (G.hunger < 62) G.dragonMood = "awake";
       if (prevMood !== G.dragonMood) {
         if (G.dragonMood === "awake") { G.wakeT = 0.9; G.hungerAlertT = 4.5; toast("🐉 Ember stirs awake — he's getting hungry!", "warn"); SFX.wake(); }
-        else { G.hungerAlertT = 3; toast("💤 Ember is full and curls up for a nap."); SFX.sleep(); }
+        else { SFX.sleep(); }
       }
       G.sleepBlend += ((G.dragonMood === "sleep" ? 1 : 0) - G.sleepBlend) * Math.min(1, dt * 2.2);
       const b = G.sleepBlend;
@@ -4953,6 +4968,18 @@ export default function DragonGardenQuest() {
         bst.vy -= 4 * dt;
         bst.m.scale.setScalar(Math.max(0.01, bst.ttl));
         if (bst.ttl <= 0) { worldGroup.remove(bst.m); bursts.splice(bi, 1); }
+      }
+      // rising "+2 🍓" plot floaties
+      for (let fi = floaties.length - 1; fi >= 0; fi--) {
+        const fl = floaties[fi];
+        fl.ttl -= dt;
+        fl.sp.position.y += dt * 0.75;
+        fl.sp.material.opacity = Math.min(1, fl.ttl / 0.5);
+        if (fl.ttl <= 0) {
+          worldGroup.remove(fl.sp);
+          fl.sp.material.map.dispose(); fl.sp.material.dispose();
+          floaties.splice(fi, 1);
+        }
       }
       // glowberry trees: mature at 5 min, fruit every 5 min, fade after 12 hours
       for (let ci = 0; ci < G.churchPlots.length; ci++) {
