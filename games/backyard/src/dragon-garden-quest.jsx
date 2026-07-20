@@ -1970,7 +1970,7 @@ export default function DragonGardenQuest() {
       churchPlots: Array.from({ length: 324 }, () => ({ seed: null, plantedAt: 0, collectAt: null })),
       time: 0,
       dragonState: "idle", dragonTimer: 0, shakeT: 0,
-      prowlIdx: 0, prowlFrenzyT: 0, prowlNextFrenzy: 0,
+      prowlIdx: 0, prowlFrenzyT: 0, prowlNextFrenzy: 0, prowlFireT: 0,
       dragonMood: "sleep", sleepBlend: 1, wakeT: 0, dragonHappyT: 0,
       week: computeWeek(), quizActive: false, saveT: 0, lastCollectToast: -9,
       playerHopT: 0, transitioning: false, pendingMap: null, hungerAlertT: 0,
@@ -4294,6 +4294,16 @@ export default function DragonGardenQuest() {
             if (pd < 14 && Math.random() < 0.4) SFX.roar();
             if (pd < 8) G.shakeT = Math.max(G.shakeT, 0.25);
           }
+        }
+        // fire trail: flames drip off behind him and slowly gutter out
+        // (during a frenzy spin the trail wraps into a ring around him)
+        G.prowlFireT -= dt;
+        if (G.prowlFireT <= 0) {
+          G.prowlFireT = G.prowlFrenzyT > 0 ? 0.045 : 0.075;
+          const fx = dragon.position.x - Math.sin(dragon.rotation.y) * 0.85;
+          const fz = dragon.position.z - Math.cos(dragon.rotation.y) * 0.85;
+          const fc = [0xff8c2a, 0xffb020, 0xe0482a][Math.floor(Math.random() * 3)];
+          spawnBurst(fx, fz, fc, 1, { glow: true, size: 0.12 + Math.random() * 0.08, vy: 0.5, vs: 0.3, ttl: 0.9 + Math.random() * 0.5, spread: 0.5, y0: 0.1 });
         }
       }
     }
