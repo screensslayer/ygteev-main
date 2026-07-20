@@ -249,7 +249,9 @@
               <div class="box"><input id="zip" placeholder="28277" inputmode="numeric" maxlength="5" oninput="zipChange(this.value)" /></div>
             </div>
           </div>
-          <span class="chipnote dim" id="nearchip">📍 Searching near <b style="color:var(--tx)">Charlotte, NC</b></span>
+          <span class="chipnote dim" id="nearchip">📍 Searching near <b style="color:var(--tx)" id="nearloc">Charlotte, NC</b>&nbsp;·&nbsp;<a href="#" onclick="editNear(event)" style="color:var(--violet-soft);text-decoration:none;font-weight:700">change</a></span>
+          <span class="chipnote dim" id="nearedit" style="display:none;padding:4px 6px 4px 12px">📍&nbsp;<input id="nearinput" placeholder="City or ZIP" style="background:none;border:none;outline:none;color:var(--tx);font-size:12px;font-family:var(--body);width:110px" onkeydown="if(event.key==='Enter')applyNear()" />
+            <button onclick="applyNear()" style="border:none;border-radius:99px;padding:4px 11px;font-size:11px;font-weight:800;font-family:var(--disp);background:var(--violet);color:#fff;cursor:pointer">Set</button></span>
         </div>
         <div class="results" id="results"></div>
       </div>
@@ -385,14 +387,31 @@ function acctCheck() {
 
 /* ============ step 2 · search ============ */
 let searchT = null;
-function zipChange(v) {
-  // production: recenter the Places locationBias on the ZIP's geocode
-  const chip = document.getElementById('nearchip');
-  chip.innerHTML = v.trim().length >= 5
-    ? `📍 Searching near <b style="color:var(--tx)">${v.trim()}</b>`
-    : `📍 Searching near <b style="color:var(--tx)">Charlotte, NC</b>`;
+// production: recenter the Places locationBias on the geocoded city/ZIP
+function setNear(label) {
+  S.near = label;
+  document.getElementById('nearloc').textContent = label;
   const q = document.getElementById('q');
   if (q.value.trim().length >= 2) search(q.value);
+}
+function zipChange(v) {
+  setNear(v.trim().length >= 5 ? v.trim() : 'Charlotte, NC');
+}
+function editNear(e) {
+  e.preventDefault();
+  document.getElementById('nearchip').style.display = 'none';
+  const ed = document.getElementById('nearedit');
+  ed.style.display = 'inline-flex';
+  const inp = document.getElementById('nearinput');
+  inp.value = ''; inp.focus();
+}
+function applyNear() {
+  const v = document.getElementById('nearinput').value.trim();
+  document.getElementById('nearedit').style.display = 'none';
+  document.getElementById('nearchip').style.display = 'inline-flex';
+  if (!v) return;
+  if (/^\d{5}$/.test(v)) document.getElementById('zip').value = v;
+  setNear(v);
 }
 const DYN = {}; // synthetic Places-style results for unmatched queries
 function synth(q) {
