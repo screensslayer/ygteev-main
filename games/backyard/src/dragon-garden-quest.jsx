@@ -2158,12 +2158,24 @@ export default function DragonGardenQuest() {
         const mesh = makePlayer();
         applyOutfitTo(mesh, (meta && meta.outfit) || {});
         mesh.position.set(0, -60, 0); // parked underground until the first position arrives
-        mesh.add(makeNameTag((meta && meta.name) || "Gardener"));
+        const tag = makeNameTag((meta && meta.name) || "Gardener");
+        mesh.add(tag);
         scene.add(mesh);
-        lp = livePlayers[id] = { mesh, tgt: null, lastMsg: G.time, hopT: 0, dressed: !!(meta && meta.outfit) };
-      } else if (meta && meta.outfit && !lp.dressed) {
-        applyOutfitTo(lp.mesh, meta.outfit);
-        lp.dressed = true;
+        lp = livePlayers[id] = { mesh, tag, name: (meta && meta.name) || null, tgt: null, lastMsg: G.time, hopT: 0, dressed: !!(meta && meta.outfit) };
+      } else if (meta) {
+        if (meta.outfit && !lp.dressed) {
+          applyOutfitTo(lp.mesh, meta.outfit);
+          lp.dressed = true;
+        }
+        // a position packet can create the avatar before presence meta lands —
+        // swap the placeholder "Gardener" tag for the real name when it arrives
+        if (meta.name && meta.name !== lp.name) {
+          lp.mesh.remove(lp.tag);
+          lp.tag.material.map.dispose(); lp.tag.material.dispose();
+          lp.tag = makeNameTag(meta.name);
+          lp.mesh.add(lp.tag);
+          lp.name = meta.name;
+        }
       }
       return lp;
     }
