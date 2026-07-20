@@ -241,10 +241,15 @@
         <h1 class="rise">Find your <span class="hl">church.</span></h1>
         <p class="sub rise">Search the church, not the youth group — we'll handle the rest.</p>
         <div class="rise">
-          <div class="field"><label>CHURCH NAME</label>
-            <div class="box"><span>⛪</span><input id="q" placeholder="e.g. Elevation Church" oninput="search(this.value)" autocomplete="off" /></div>
-            <span class="chipnote dim">📍 Searching near <b style="color:var(--tx)">Charlotte, NC</b>&nbsp;·&nbsp;<a href="#" style="color:var(--violet-soft);text-decoration:none;font-weight:700">change</a></span>
+          <div style="display:flex;gap:9px">
+            <div class="field" style="flex:1"><label>CHURCH NAME</label>
+              <div class="box"><span>⛪</span><input id="q" placeholder="e.g. Elevation Church" oninput="search(this.value)" autocomplete="off" /></div>
+            </div>
+            <div class="field" style="flex:0 0 104px"><label>ZIP</label>
+              <div class="box"><input id="zip" placeholder="28277" inputmode="numeric" maxlength="5" oninput="zipChange(this.value)" /></div>
+            </div>
           </div>
+          <span class="chipnote dim" id="nearchip">📍 Searching near <b style="color:var(--tx)">Charlotte, NC</b></span>
         </div>
         <div class="results" id="results"></div>
       </div>
@@ -252,7 +257,8 @@
       <div id="claimPhase" style="display:none">
         <div class="wow rise" id="wowline">We already made your page</div>
         <div class="claim rise" id="claimCard"></div>
-        <div class="rise" style="margin-top:16px">
+        <div class="rise" style="margin:10px 0 0"><span class="chipnote dim" id="domainCheck"></span></div>
+        <div class="rise" style="margin-top:12px">
           <div class="field"><label>YOUR GROUP'S NAME</label>
             <div class="box"><span>👥</span><input id="gname" /></div>
           </div>
@@ -362,7 +368,7 @@ function emailCheck() {
   S.emailDomain = at || null;
   if (at && at.includes('.') && !FREE_MAIL.includes(at)) {
     S.branded = true;
-    hint.className = 'chipnote ok'; hint.textContent = '✓ Church email — instant verification';
+    hint.className = 'chipnote ok'; hint.textContent = '✓ Looks like a church email — we\'ll confirm it matches your church';
   } else if (at && FREE_MAIL.includes(at)) {
     S.branded = false;
     hint.className = 'chipnote dim'; hint.textContent = 'Personal email works too — you can verify your church later';
@@ -379,6 +385,15 @@ function acctCheck() {
 
 /* ============ step 2 · search ============ */
 let searchT = null;
+function zipChange(v) {
+  // production: recenter the Places locationBias on the ZIP's geocode
+  const chip = document.getElementById('nearchip');
+  chip.innerHTML = v.trim().length >= 5
+    ? `📍 Searching near <b style="color:var(--tx)">${v.trim()}</b>`
+    : `📍 Searching near <b style="color:var(--tx)">Charlotte, NC</b>`;
+  const q = document.getElementById('q');
+  if (q.value.trim().length >= 2) search(q.value);
+}
 const DYN = {}; // synthetic Places-style results for unmatched queries
 function synth(q) {
   const t = q.trim().replace(/\s+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
@@ -439,6 +454,19 @@ function pick(key) {
       <span class="chipnote ok">✓ Address & map pin filled from your search</span>
       ${mapbox}
     </div>`;
+  // definitive email-vs-church-domain verdict (screen 1's hint was a guess;
+  // now we actually know the church's domain)
+  const dc = document.getElementById('domainCheck');
+  if (S.emailDomain && S.emailDomain === S.church.domain) {
+    S.branded = true;
+    dc.className = 'chipnote ok'; dc.textContent = `✓ Your email matches @${S.church.domain} — verified the moment you claim`;
+  } else if (S.emailDomain && S.branded) {
+    S.branded = false;
+    dc.className = 'chipnote dim'; dc.textContent = `Your email (@${S.emailDomain}) doesn't match @${S.church.domain} — quick verify after checkout`;
+  } else {
+    S.branded = false;
+    dc.className = 'chipnote dim'; dc.textContent = `You'll verify ${S.church.domain ? '@' + S.church.domain : 'your church'} after checkout — or request a review`;
+  }
   document.getElementById('gname').value = d ? d.yth : S.church.name.split('—')[0].split(' Church')[0].trim() + ' Youth';
   document.getElementById('sizes').innerHTML = TIERS.map((t, i) => `
     <button class="size" id="sz${i}" onclick="pickSize(${i})"><b>${t.label}</b><span>$${t.price}/mo</span></button>`).join('');

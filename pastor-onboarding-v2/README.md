@@ -17,6 +17,10 @@ Replaces the 8-step wizard with **4 screens, ~2 minutes, phone-first**:
 
 Verification gates **publicity, not payment**:
 
+- The email check is **two-stage**: screen 1 shows a soft hint ("looks like a
+  church email") since the church isn't known yet; screen 2, once the church is
+  selected, renders the definitive verdict by comparing the email domain to the
+  church's website domain (match / mismatch / no-domain states).
 - Branded email (`@elevationchurch.org`) → the standard account-confirmation
   email doubles as the claim proof. Group goes public immediately.
 - Personal email (gmail etc.) → signup + payment proceed normally; the group
