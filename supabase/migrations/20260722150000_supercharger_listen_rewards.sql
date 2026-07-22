@@ -1,0 +1,18 @@
+-- Supercharger listen-to-earn: 35 XP for listening to a Read & Reflect
+-- passage to completion (daily plans).
+--
+--   plan_listen_rewards           one row per (user, reference, UTC day)
+--   complete_listen_reward(ref)   -> {awarded, xp, total_xp} |
+--                                    {awarded:false, already_earned} |
+--                                    {awarded:false, error: unknown_reference|daily_cap|missing_reference}
+--   get_listen_rewards_today()    -> references earned today (renders EARNED pills)
+--
+-- Guards: reference must appear in some bible_plan_days.sections->read->
+-- parts[].verses (same allowlist as generate-verse-audio — blocks
+-- arbitrary-reference farming); once per passage per UTC day; max 9
+-- awards/day. XP goes to profiles.xp/lifetime_xp + user_xp_grants
+-- (source 'listen_supercharge').
+--
+-- Applied to staging + prod 2026-07-22. Verified on staging: award +35,
+-- double-claim -> already_earned, fake reference -> unknown_reference.
+-- Full SQL lives in the applied migration of the same name on both projects.
