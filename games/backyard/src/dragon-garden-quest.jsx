@@ -240,6 +240,10 @@ export default function DragonGardenQuest() {
   const [goldBagStep, setGoldBagStep] = useState(null);
   const reqGoldBagRef = useRef(() => {});
   reqGoldBagRef.current = () => setGoldBagStep("found");
+  // daily red-bag question card: { bagIdx, q, options, phase, picked, busy, result }
+  const [redBag, setRedBag] = useState(null);
+  const reqRedBagRef = useRef(() => {});
+  reqRedBagRef.current = (payload) => setRedBag(payload);
   // Eli's community-garden welcome — current page index (0..5) or null
   const [churchIntro, setChurchIntro] = useState(null);
   const reqChurchIntroRef = useRef(() => {});
@@ -1968,7 +1972,24 @@ export default function DragonGardenQuest() {
         try { G.pulse = await api.getPulse(myGid); } catch (e) { /* pulse is cosmetic */ }
       } catch (e) { /* standings are cosmetic between polls */ }
     }
-    if (window.YGTEEV_API) { syncLeague(); setInterval(syncLeague, 60000); }
+    // ---- YGTeeV backend: daily red bags (server decides spots + rewards) ----
+    async function syncRedBags() {
+      const api = window.YGTEEV_API;
+      if (!api || !api.getRedBags) return;
+      try {
+        const fresh = await api.getRedBags();
+        // UTC-day rollover mid-session: answered bags come back as fresh
+        // 'hidden' rows — drop yesterday's meshes so they respawn anew
+        const rolled = (G.redBags || []).some((o) => {
+          const n = fresh.find((x) => x.bag_idx === o.bag_idx);
+          return n && (o.status === "correct" || o.status === "wrong") && n.status === "hidden";
+        });
+        if (rolled) [0, 1, 2].forEach((i) => removeRedBag(i, false));
+        G.redBags = fresh;
+        if (G.map === "HOME") spawnRedBags();
+      } catch (e) { /* bags are a daily bonus — fail quiet */ }
+    }
+    if (window.YGTEEV_API) { syncLeague(); setInterval(syncLeague, 60000); syncRedBags(); setInterval(syncRedBags, 300000); }
 
     // ================= GAME STATE =================
     const G = {
@@ -1994,6 +2015,7 @@ export default function DragonGardenQuest() {
       introPage: null, introGave: false, introGiftClaimed: {},
       churchIntroPage: null, churchIntroDone: false,
       youthGroup: false, bridgeNoteShown: false, goldBagFound: false,
+      redBags: null, // today's server-issued bags: [{ bag_idx, status, spot }]
     };
     gameRef.current = G;
     loadWeekSave();
@@ -2008,11 +2030,14 @@ export default function DragonGardenQuest() {
     if (import.meta.env && import.meta.env.DEV) {
       window.__BY_G = G; // dev-only test hook
       G.__dev = () => ({ px: playerPos.x, pz: playerPos.z, prompt: currentPrompt ? currentPrompt.type : null, ac: AC ? AC.state : null, keeper: window.__BY_KEEPER ? !window.__BY_KEEPER.paused : false, live: liveCh ? Object.keys(livePlayers).length : null });
+      G.__redBags = { spawn: () => spawnRedBags(), sync: () => syncRedBags(), remove: (i) => removeRedBag(i, false) };
+      G.__tp = (x, z) => { playerPos.x = x; playerPos.z = z; };
     }
     G.reqCounter = (kind) => reqCounterRef.current(kind);
     G.reqSeedGift = (g) => reqSeedGiftRef.current(g);
     G.reqBridge = () => reqBridgeRef.current();
     G.reqGoldBag = () => reqGoldBagRef.current();
+    G.reqRedBag = (p) => reqRedBagRef.current(p);
     G.reqChurchIntro = (n) => reqChurchIntroRef.current(n);
     G.flyCoins = (n) => flyCoinsRef.current(n);
     G.doPendingMap = () => { if (G.pendingMap) { loadMap(G.pendingMap.to, G.pendingMap.spawn); G.pendingMap = null; } };
@@ -2046,6 +2071,7 @@ export default function DragonGardenQuest() {
     let plotNodes = [], exits = [], hotspots = [];
     let dragon = null, dragonHome = new THREE.Vector3();
     let goldBag = null; // one-time glowing pouch on the town road
+    let redBagMeshes = {}; // today's hidden question-pouches on HOME, by bag_idx
     let butterflies = [], glowNodes = [], embers = [], smokes = [], caveLight = null, npcs = [], zzz = [];
     let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, winsSprite = null, water = null, foams = [], swayers = [], petals = [], fountainFx = null;
     let buildCells = [], ghostMesh = null, buildMarkers = null, counterKeeper = null;
@@ -2546,7 +2572,7 @@ export default function DragonGardenQuest() {
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
-      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; swayers = []; petals = []; fountainFx = null; goldBag = null;
+      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; swayers = []; petals = []; fountainFx = null; goldBag = null; redBagMeshes = {};
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
       colliders = [];
     }
@@ -3169,7 +3195,93 @@ export default function DragonGardenQuest() {
         addCircleCol(8.5, 3.9, 0.62); // solid until picked up
         goldBag.userData.col = colliders[colliders.length - 1];
       }
+
+      spawnRedBags(); // today's hidden question-pouches (if the server list is in)
     }
+
+    // ---- daily red bags: hidden Bible-question pouches on the HOME map ----
+    // 12 hiding places in the grass near trees/bushes — clear of the road,
+    // the path, the max-tier garden fence, the cave mouth, and the river.
+    // The server picks 3 spot indexes per day; we just dress the set.
+    const RED_BAG_SPOTS = [
+      [19.4, -4.6], [12.8, -12.2], [-7.6, -6.2], [17.6, 15.8],
+      [-6.0, 22.6], [5.2, 23.8], [23.0, 18.5], [27.5, -9.0],
+      [26.8, 9.4], [-4.5, 26.5], [11.5, -17.5], [-7.8, 27.0],
+    ];
+    function makeRedBag() {
+      const bag = new THREE.Group();
+      const sack = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32, 0), flat(0xa83232, { roughness: 0.9 }));
+      sack.scale.set(1, 0.82, 1); sack.position.y = 0.27; sack.castShadow = true;
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.15, 0.15, 6), flat(0x7a2424));
+      neck.position.y = 0.56;
+      const tie = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.028, 5, 8), flat(0x5c1c1c));
+      tie.rotation.x = Math.PI / 2; tie.position.y = 0.52;
+      bag.add(sack, neck, tie);
+      const bagGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xff6a5a), transparent: true, opacity: 0.38, depthWrite: false, blending: THREE.AdditiveBlending }));
+      bagGlow.scale.set(1.4, 1.4, 1);
+      bagGlow.position.y = 0.4;
+      bag.add(bagGlow);
+      bag.userData.glow = bagGlow;
+      // small floating "!" — subtler than the gold find, but spottable
+      const mark = new THREE.Group();
+      const markMat = new THREE.MeshStandardMaterial({ color: SRGB(0xe0483a), emissive: SRGB(0xb02a20), emissiveIntensity: 0.9, roughness: 0.4 });
+      const markBar = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.105, 0.5, 6), markMat);
+      markBar.position.y = 0.42;
+      const markDot = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6), markMat);
+      mark.add(markBar, markDot);
+      mark.position.y = 0.92;
+      bag.add(mark);
+      bag.userData.mark = mark;
+      bag.scale.setScalar(1.15);
+      return bag;
+    }
+    function spawnRedBags() {
+      if (G.map !== "HOME" || !worldGroup) return;
+      (G.redBags || []).forEach((b) => {
+        if (b.status !== "hidden" && b.status !== "opened") return; // answered = gone
+        if (redBagMeshes[b.bag_idx]) return;
+        const [x, z] = RED_BAG_SPOTS[b.spot % RED_BAG_SPOTS.length];
+        const bag = makeRedBag();
+        bag.position.set(x, terrainY ? terrainY(x, z) : 0, z);
+        worldGroup.add(bag);
+        hotspots.push({ x, z, r: 1.9, type: "redbag", bagIdx: b.bag_idx, label: "A little red pouch hides in the grass…" });
+        addCircleCol(x, z, 0.5);
+        bag.userData.col = colliders[colliders.length - 1];
+        redBagMeshes[b.bag_idx] = bag;
+      });
+    }
+    function removeRedBag(bagIdx, burst) {
+      const m = redBagMeshes[bagIdx];
+      if (m) {
+        if (burst) spawnBurst(m.position.x, m.position.z, 0xe05a4a, 8, { glow: true, vy: 2.0, y0: 0.4 });
+        const ci = colliders.indexOf(m.userData.col);
+        if (ci >= 0) colliders.splice(ci, 1);
+        worldGroup.remove(m);
+        delete redBagMeshes[bagIdx];
+      }
+      hotspots = hotspots.filter((h) => !(h.type === "redbag" && h.bagIdx === bagIdx));
+    }
+    // Called by the question card after the server grades the answer.
+    // The reward was already granted server-side (xp) or is client-owned
+    // (gold, lives in the garden save) — this applies it to the session.
+    G.redBagResolve = (bagIdx, r) => {
+      const b = (G.redBags || []).find((x) => x.bag_idx === bagIdx);
+      if (b) b.status = r.correct ? "correct" : "wrong";
+      removeRedBag(bagIdx, true);
+      if (r.correct) {
+        if (r.reward_kind === "gold") {
+          G.gold += r.reward_amount;
+          SFX.coin(2);
+          if (G.flyCoins) G.flyCoins(Math.min(2 + r.reward_amount, 8));
+        } else {
+          if (typeof r.total_xp === "number") G.xp = r.total_xp;
+          else G.xp += r.reward_amount;
+          SFX.sparkle();
+          spawnFloatie(playerPos.x, playerPos.z, `+${r.reward_amount} ✨`, 2.2);
+        }
+        G.playerHopT = 0.32;
+      }
+    };
 
     // -------- TOWN --------
     function buildTown() {
@@ -4002,6 +4114,24 @@ export default function DragonGardenQuest() {
         hotspots = hotspots.filter((h) => h.type !== "goldbag");
         G.playerHopT = 0.32;
         if (G.reqGoldBag) G.reqGoldBag();
+      }
+      else if (type === "redbag") {
+        const api = window.YGTEEV_API;
+        const bi = currentPrompt.bagIdx;
+        if (!api || !api.openRedBag) { toast("The pouch is knotted tight…", "warn"); return; }
+        SFX.click();
+        api.openRedBag(bi)
+          .then((r) => {
+            if (r && r.q) {
+              const b = (G.redBags || []).find((x) => x.bag_idx === bi);
+              if (b && b.status === "hidden") b.status = "opened";
+              G.reqRedBag({ bagIdx: bi, q: r.q, options: r.options, phase: "q", picked: null, busy: false, result: null });
+            } else {
+              removeRedBag(bi, false); // already answered elsewhere — clear it
+              toast("This pouch has already been opened.", "warn");
+            }
+          })
+          .catch(() => toast("⚠️ The pouch won't budge — try again.", "warn"));
       }
       else if (type === "seedshop") setShop("seeds");
       else if (type === "market") setShop("market");
@@ -4850,6 +4980,11 @@ export default function DragonGardenQuest() {
         goldBag.rotation.y = Math.sin(G.time * 0.9) * 0.12;
         goldBag.userData.mark.position.y = 1.0 + Math.sin(G.time * 2.2) * 0.09;
       }
+      for (const rk in redBagMeshes) {
+        const m = redBagMeshes[rk];
+        m.userData.glow.material.opacity = 0.3 + Math.sin(G.time * 2.2 + m.position.x) * 0.14;
+        m.userData.mark.position.y = 0.92 + Math.sin(G.time * 2.0 + m.position.z) * 0.08;
+      }
       if (sparkles) {
         sparkles.rotation.y = G.time * 0.08;
         sparkles.position.y = Math.sin(G.time * 1.2) * 0.15;
@@ -4900,7 +5035,7 @@ export default function DragonGardenQuest() {
         }
         const d = Math.hypot(playerPos.x - hx, playerPos.z - hz);
         if (d < h.r && d < best + 1) {
-          currentPrompt = { type: h.type, kind: h.kind };
+          currentPrompt = { type: h.type, kind: h.kind, bagIdx: h.bagIdx };
           promptText = h.type === "dragon" && G.dragonState === "prowl"
             ? "Ember is hangry — offer him a berry!"
             : h.type === "dragon" && G.sleepBlend > 0.6 ? "Ember is asleep 💤 — feed him a snack?" : h.label;
@@ -5137,7 +5272,7 @@ export default function DragonGardenQuest() {
   }, [started]);
 
   const shopOpenRef = useRef(false);
-  useEffect(() => { shopOpenRef.current = !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!seedGift || churchIntro != null || board; }, [shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, seedGift, churchIntro, board]);
+  useEffect(() => { shopOpenRef.current = !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!redBag || !!seedGift || churchIntro != null || board; }, [shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, redBag, seedGift, churchIntro, board]);
   useEffect(() => { const g = gameRef.current; if (g) g.styleActive = shop === "style"; }, [shop]);
   useEffect(() => { const g = gameRef.current; if (g) g.buildActive = buildMode; }, [buildMode]);
   useEffect(() => { if (hud.map !== "HOME" && buildMode) setBuildMode(false); }, [hud.map, buildMode]);
@@ -5212,7 +5347,7 @@ export default function DragonGardenQuest() {
   const seedKeys = Object.keys(SEEDS);
   const hungerPct = Math.max(0, Math.min(100, hud.hunger));
   const FRUIT_EMOJI = { strawberry: "🍓", blueberry: "🫐", sunfruit: "🍑", glowberry: "✨" };
-  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", bridge: "🌉", goldbag: "💰" };
+  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", bridge: "🌉", goldbag: "💰", redbag: "🎒" };
   const marketTotal = seedKeys.reduce((t, k) => t + hud.inv.fruit[k] * SEEDS[k].sell, 0);
   const actionAvailable = !!ACTION_ICON[hud.promptType];
   const actionIcon = ACTION_ICON[hud.promptType] || "🌾";
@@ -5880,6 +6015,82 @@ export default function DragonGardenQuest() {
             </div>
             <div style={{ fontSize: 12, fontStyle: "italic", opacity: 0.8, marginBottom: 14 }}>— Marta, Berry Market counter</div>
             <button onClick={() => setGoldBagStep(null)} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 14, width: "70%", fontFamily: "inherit" }}>OK</button>
+          </div>
+        </div>
+      )}
+
+      {/* daily red bag: one Bible question, one attempt, hidden reward */}
+      {redBag && (
+        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: "calc(16px + env(safe-area-inset-bottom, 0px))", width: "min(560px, 94vw)", zIndex: 30 }}>
+          <div style={{ ...S.panel, background: WOOD_TEX, padding: "12px 14px", display: "flex", gap: 12, alignItems: "flex-start", textAlign: "left", position: "relative" }}>
+            <Corners />
+            <div style={{ width: 54, height: 54, flex: "0 0 54px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #e88a7a, #8a2a20)", border: `2px solid ${GOLD}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, boxShadow: "0 3px 8px rgba(0,0,0,0.5)" }}>🎒</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <b style={{ ...S.goldText, fontSize: 12.5, letterSpacing: 1.5 }}>A HIDDEN RED POUCH</b>
+                {redBag.phase === "q" && (
+                  <span style={{ fontSize: 10.5, opacity: 0.65, letterSpacing: 1 }}>ONE TRY</span>
+                )}
+              </div>
+              {redBag.phase === "reveal" ? (
+                <>
+                  <div style={{ fontSize: 14, marginTop: 7, lineHeight: 1.45 }}>
+                    {redBag.result?.correct
+                      ? redBag.result.reward_kind === "gold"
+                        ? <span>✅ <b style={{ color: "#8ee07a" }}>Right you are!</b> Inside the pouch: <b style={S.goldText}>{redBag.result.reward_amount} gold</b> 💰</span>
+                        : <span>✅ <b style={{ color: "#8ee07a" }}>Right you are!</b> The pouch glows: <b style={S.goldText}>+{redBag.result.reward_amount} XP</b> ✨</span>
+                      : <span>❌ <b style={{ color: "#f08a6a" }}>Not this time…</b> the pouch crumbles away. Tomorrow brings new ones!</span>}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
+                    {redBag.options.map((opt, i) => {
+                      const isA = i === redBag.result?.correct_idx;
+                      const bg = isA ? "linear-gradient(180deg,#8ee07a,#3fa04f)"
+                        : redBag.picked === i ? "linear-gradient(180deg,#f08a6a,#c94a34)"
+                        : "linear-gradient(180deg, #ffffff, #d8edfb)";
+                      return (
+                        <div key={i} style={{
+                          padding: "8px 10px", borderRadius: 8, border: `1px solid ${GOLD}`,
+                          fontFamily: "inherit", fontSize: 12.5, textAlign: "left",
+                          color: isA || redBag.picked === i ? "#1a1005" : PARCH,
+                          background: bg, fontWeight: isA ? 800 : 600,
+                        }}>{opt}</div>
+                      );
+                    })}
+                  </div>
+                  <button onClick={() => setRedBag(null)} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, width: "100%", marginTop: 10 }}>OK</button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13.5, marginTop: 5, marginBottom: 8, lineHeight: 1.45 }}>
+                    {redBag.q}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                    {redBag.options.map((opt, i) => (
+                      <button key={i} disabled={redBag.busy} onClick={async () => {
+                        if (redBag.busy) return;
+                        gameRef.current?.SFX?.click();
+                        setRedBag({ ...redBag, busy: true, picked: i });
+                        try {
+                          const r = await window.YGTEEV_API.answerRedBag(redBag.bagIdx, i);
+                          if (!r || r.error) { setRedBag(null); return; }
+                          gameRef.current?.redBagResolve(redBag.bagIdx, r);
+                          setRedBag({ ...redBag, busy: false, picked: i, phase: "reveal", result: r });
+                        } catch (e) {
+                          setRedBag(null); // dropped connection — bag stays 'opened', tap it again
+                        }
+                      }} style={{
+                        padding: "8px 10px", borderRadius: 8, border: `1px solid ${GOLD}`,
+                        cursor: redBag.busy ? "default" : "pointer",
+                        fontFamily: "inherit", fontSize: 12.5, textAlign: "left",
+                        color: redBag.picked === i ? "#1a1005" : PARCH,
+                        background: redBag.picked === i ? "linear-gradient(180deg,#ffe9a8,#c9963c)" : "linear-gradient(180deg, #ffffff, #d8edfb)",
+                        fontWeight: 600, opacity: redBag.busy && redBag.picked !== i ? 0.6 : 1,
+                      }}>{opt}</button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

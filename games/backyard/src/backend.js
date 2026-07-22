@@ -70,6 +70,33 @@ export function createApi() {
       return data ?? {};
     },
 
+    // Daily red bags: 3 hidden question-pouches per player per UTC day.
+    // First call of the day creates them server-side (spot = index into the
+    // client's 12-spot hiding pool). Question level (ms/hs) and rewards are
+    // decided by the server — nothing to cheat client-side.
+    async getRedBags() {
+      const { data, error } = await supabase.rpc("by_get_red_bags");
+      if (error) throw error;
+      return data ?? []; // [{ bag_idx, status: hidden|opened|correct|wrong, spot }]
+    },
+
+    async openRedBag(bagIdx) {
+      const { data, error } = await supabase.rpc("by_open_red_bag", { _bag_idx: bagIdx });
+      if (error) throw error;
+      return data; // { q, options } | { error: no_bag|already_answered }
+    },
+
+    // One attempt, no retry. Gold is applied client-side into the garden
+    // save; XP is granted server-side (total_xp = new profiles.xp).
+    async answerRedBag(bagIdx, answerIdx) {
+      const { data, error } = await supabase.rpc("by_answer_red_bag", {
+        _bag_idx: bagIdx,
+        _answer_idx: answerIdx,
+      });
+      if (error) throw error;
+      return data; // { correct, correct_idx, reward_kind, reward_amount, total_xp } | { error }
+    },
+
     // Live players: presence + position broadcasts on the private per-group
     // channel by:garden:{gid}. RLS policies on realtime.messages gate both
     // reading and sending to members of that youth group.

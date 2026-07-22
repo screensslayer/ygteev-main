@@ -1,0 +1,35 @@
+-- Red bags: 3 hidden bags per player per day on the Backyard HOME map.
+-- Tap a bag -> Bible question (level-matched) -> correct = reward.
+-- One attempt, no retry. Server-authoritative: question selection,
+-- grading, and reward rolls all live in SECURITY DEFINER RPCs.
+--
+--   by_bag_questions   question bank; level 'ms' | 'hs'; options jsonb[4];
+--                      answer_idx 0-3. RLS on, NO policies (server-only).
+--   by_red_bags        one row per (user, UTC day, bag_idx 0-2); spot =
+--                      index into the client's 12-spot hiding pool;
+--                      reward rolled at creation (uniform over 9 outcomes:
+--                      gold 1/3/5/10 or xp 5/10/15/25/50); status
+--                      hidden -> opened -> correct|wrong. RLS: select own.
+--
+--   by_question_level_for(uid) -> 'ms' when grade_year 6-8, else 'hs' when
+--     grade_year known; no grade -> dob age <= 13 -> 'ms'; default 'hs'.
+--   by_get_red_bags() -> table(bag_idx, status, spot). Creates today's 3
+--     bags on first call (distinct spots, prefers never-answered
+--     questions; empty bank = no bags). Idempotent. NOTE: body needs
+--     "#variable_conflict use_column" — the bag_idx out-param collides
+--     with the ON CONFLICT column reference otherwise (42702).
+--   by_open_red_bag(bag_idx) -> {q, options} | {error: no_bag|already_answered}.
+--     hidden -> opened (row locked FOR UPDATE).
+--   by_answer_red_bag(bag_idx, answer_idx) -> {correct, correct_idx,
+--     reward_kind, reward_amount, total_xp} | {error: no_bag|not_open}.
+--     Grades once; wrong reveals correct_idx with no retry. Correct + xp
+--     reward -> profiles.xp/lifetime_xp + user_xp_grants source 'red_bag'
+--     (total_xp = new profiles.xp). Gold rewards are applied client-side
+--     into the garden save (gold lives in by_saves, not profiles).
+--
+-- Applied to staging (by_red_bags + by_red_bags_fix_ambiguity) and prod
+-- (by_red_bags, corrected version) 2026-07-22. Verified on both: 3 bags
+-- with distinct spots, open returns question, wrong answer -> no reward +
+-- correct_idx + status 'wrong', retry -> not_open, correct answer ->
+-- reward, xp path bumps profiles.xp and writes the grant row.
+-- Full SQL lives in the applied migrations on both projects.
