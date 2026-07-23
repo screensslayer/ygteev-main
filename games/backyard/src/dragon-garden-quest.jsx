@@ -4023,11 +4023,12 @@ export default function DragonGardenQuest() {
       }
       G.inv.seeds[key]++;
     };
-    G.sellAll = () => {
+    // Sell chosen quantities per fruit (clamped to what's actually held).
+    G.sellFruit = (counts) => {
       let total = 0, count = 0;
       Object.keys(SEEDS).forEach((k) => {
-        const n = G.inv.fruit[k];
-        if (n > 0) { total += n * SEEDS[k].sell; count += n; G.inv.fruit[k] = 0; }
+        const n = Math.max(0, Math.min(G.inv.fruit[k], Math.floor(counts?.[k] || 0)));
+        if (n > 0) { total += n * SEEDS[k].sell; count += n; G.inv.fruit[k] -= n; }
       });
       if (!count) { toast("No fruit to sell — go harvest!", "warn"); return; }
       G.gold += total;
@@ -4035,6 +4036,7 @@ export default function DragonGardenQuest() {
       SFX.coin(3);
       if (G.flyCoins) G.flyCoins(Math.min(3 + Math.floor(count / 2), 10));
     };
+    G.sellAll = () => G.sellFruit({ ...G.inv.fruit });
 
     function doAction() {
       if (G.quizActive) return;
@@ -5354,6 +5356,32 @@ export default function DragonGardenQuest() {
   const FRUIT_EMOJI = { strawberry: "🍓", blueberry: "🫐", sunfruit: "🍑", glowberry: "✨" };
   const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", bridge: "🌉", goldbag: "💰", redbag: "🎒" };
   const marketTotal = seedKeys.reduce((t, k) => t + hud.inv.fruit[k] * SEEDS[k].sell, 0);
+  // Berry Market sell selection: fruit key -> qty to sell. Defaults to the
+  // full basket when the market opens (one tap still sells everything);
+  // steppers let the player hold some fruit back for Ember.
+  const [sellQty, setSellQty] = useState({});
+  useEffect(() => {
+    if (shop === "market") setSellQty({ ...(gameRef.current?.inv.fruit || hud.inv.fruit) });
+  }, [shop]);
+  const sellSel = (k) => Math.max(0, Math.min(hud.inv.fruit[k], sellQty[k] ?? 0));
+  const bumpSell = (k, d) => {
+    gameRef.current?.SFX?.click();
+    setSellQty((q) => ({ ...q, [k]: Math.max(0, Math.min(hud.inv.fruit[k], (q[k] ?? 0) + d)) }));
+  };
+  const sellSelCount = seedKeys.reduce((t, k) => t + sellSel(k), 0);
+  const sellSelTotal = seedKeys.reduce((t, k) => t + sellSel(k) * SEEDS[k].sell, 0);
+  const sellingEverything = sellSelCount === seedKeys.reduce((t, k) => t + hud.inv.fruit[k], 0);
+  const doSell = () => {
+    if (sellSelTotal <= 0) return;
+    const counts = {};
+    seedKeys.forEach((k) => { counts[k] = sellSel(k); });
+    gameRef.current?.sellFruit(counts);
+    setSellQty((q) => {
+      const left = {};
+      seedKeys.forEach((k) => { left[k] = Math.max(0, hud.inv.fruit[k] - counts[k]); });
+      return left; // whatever remains is selected again — ready for a quick follow-up sale
+    });
+  };
   const actionAvailable = !!ACTION_ICON[hud.promptType];
   const actionIcon = ACTION_ICON[hud.promptType] || "🌾";
 
@@ -5634,7 +5662,17 @@ export default function DragonGardenQuest() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   {seedKeys.map((k) => {
-                    const n = hud.inv.fruit[k], R = RARITY[k], line = n * SEEDS[k].sell;
+                    const n = hud.inv.fruit[k], R = RARITY[k], sel = sellSel(k), line = sel * SEEDS[k].sell;
+                    const stepBtn = (label, act, on) => (
+                      <button onClick={act} disabled={!on} style={{
+                        width: 30, height: 30, borderRadius: 8, padding: 0,
+                        border: `1px solid ${on ? R.c : "rgba(120,100,70,0.35)"}`,
+                        fontFamily: "inherit", fontWeight: 800, fontSize: label.length > 1 ? 9.5 : 16, lineHeight: 1,
+                        cursor: on ? "pointer" : "default",
+                        background: on ? "linear-gradient(180deg,#ffffff,#d8edfb)" : "#e6eef4",
+                        color: on ? "#173a63" : "#9fb0be",
+                      }}>{label}</button>
+                    );
                     return (
                       <div key={k} style={{
                         borderRadius: 12, padding: "9px 10px",
@@ -5642,28 +5680,39 @@ export default function DragonGardenQuest() {
                         border: `1.5px solid ${n > 0 ? R.c : "rgba(120,100,70,0.4)"}`,
                         opacity: n > 0 ? 1 : 0.55,
                         boxShadow: "inset 0 1px 3px rgba(0,0,0,0.6)",
-                        display: "flex", alignItems: "center", gap: 9,
                       }}>
-                        <div style={{ width: 36, height: 36, flex: "0 0 36px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #f2fafe, #b8dcf2)", border: `2px solid ${n > 0 ? R.c : "#5a4a34"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>{FRUIT_EMOJI[k]}</div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: 12.5, color: n > 0 ? R.t : PARCH }}>{SEEDS[k].name}</div>
-                          <div style={{ fontSize: 10, opacity: 0.75 }}>×{n} · {SEEDS[k].sell}g ea</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                          <div style={{ width: 34, height: 34, flex: "0 0 34px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #f2fafe, #b8dcf2)", border: `2px solid ${n > 0 ? R.c : "#5a4a34"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>{FRUIT_EMOJI[k]}</div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: 12.5, color: n > 0 ? R.t : PARCH }}>{SEEDS[k].name}</div>
+                            <div style={{ fontSize: 10, opacity: 0.75 }}>have ×{n} · {SEEDS[k].sell}g ea</div>
+                          </div>
+                          <b style={{ ...S.goldText, fontSize: 12.5 }}>{line}g</b>
                         </div>
-                        <b style={{ ...S.goldText, fontSize: 12.5 }}>{line}g</b>
+                        {n > 0 && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}>
+                            {stepBtn("−", () => bumpSell(k, -1), sel > 0)}
+                            <div style={{ flex: 1, textAlign: "center", fontWeight: 800, fontSize: 13, color: "#173a63", fontVariantNumeric: "tabular-nums" }}>
+                              {sel}<span style={{ opacity: 0.55, fontWeight: 600 }}> / {n}</span>
+                            </div>
+                            {stepBtn("+", () => bumpSell(k, 1), sel < n)}
+                            {stepBtn("ALL", () => bumpSell(k, n), sel < n)}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
-                <button onClick={() => G?.sellAll()} style={{
+                <button onClick={doSell} style={{
                   width: "100%", marginTop: 12, padding: "11px", borderRadius: 10,
                   border: "1px solid #155a9c", fontFamily: "inherit", fontWeight: 800, fontSize: 15,
-                  cursor: marketTotal > 0 ? "pointer" : "default",
+                  cursor: sellSelTotal > 0 ? "pointer" : "default",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                  background: marketTotal > 0 ? "linear-gradient(180deg,#8ee07a,#3fa04f)" : "#d7e5ef",
-                  color: marketTotal > 0 ? "#0e2a12" : "#8fa3b4",
-                  boxShadow: marketTotal > 0 ? "inset 0 1px 2px rgba(255,255,255,0.4), 0 4px 8px rgba(0,0,0,0.4)" : "none",
+                  background: sellSelTotal > 0 ? "linear-gradient(180deg,#8ee07a,#3fa04f)" : "#d7e5ef",
+                  color: sellSelTotal > 0 ? "#0e2a12" : "#8fa3b4",
+                  boxShadow: sellSelTotal > 0 ? "inset 0 1px 2px rgba(255,255,255,0.4), 0 4px 8px rgba(0,0,0,0.4)" : "none",
                 }}>
-                  💰 Sell everything · +{marketTotal}g
+                  💰 {marketTotal <= 0 ? "Nothing to sell — go harvest!" : sellingEverything ? `Sell everything · +${sellSelTotal}g` : `Sell ${sellSelCount} fruit · +${sellSelTotal}g`}
                 </button>
               </>
             ) : shop === "tools" ? (
