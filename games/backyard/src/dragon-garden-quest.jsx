@@ -3291,7 +3291,7 @@ export default function DragonGardenQuest() {
       terrainY = makeTerrain(
         [{ x: 14, z: -13, r: 6, h: 1.2 }, { x: -14, z: 13, r: 6, h: 1.3 }, { x: 16, z: 12, r: 6, h: 1.2 }, { x: -16, z: -12, r: 7, h: 1.4 }],
         [{ x1: -22, z1: -1.7, x2: 18, z2: 1.7, f: 3 }, { x1: -1.5, z1: -11, x2: 1.5, z2: 1, f: 3 },
-         { c: 1, x: 15.5, z: -7, r: 4.2, f: 3 }, { c: 1, x: -15, z: -8.5, r: 4, f: 3 }, { c: 1, x: -12.3, z: -3.6, r: 4, f: 3 },
+         { c: 1, x: 11, z: 19, r: 4.2, f: 3 }, { c: 1, x: -13.5, z: 18.5, r: 4, f: 3 }, { c: 1, x: -4.5, z: 20.5, r: 4, f: 3 },
          { x1: -8.6, z1: -10.4, x2: 8.6, z2: -3, f: 3 }, { c: 1, x: 0, z: 5, r: 3.6, f: 3 },
          { x1: -16.1, z1: -11.5, x2: 11.9, z2: 12.9, f: 3 }]
       );
@@ -3340,11 +3340,12 @@ export default function DragonGardenQuest() {
         addBoxCol(x, z, w / 2 + 0.1, d / 2 + 0.1, rotY);
         return b;
       }
-      // dressing houses flank the square east/west — never south-center, where
-      // they'd sit between the follow-camera and the player and fill the frame
-      worldGroup.add(makeBuilding(15.5, -7, 4.5, 4, 2.6, 0xd8b482, 0xa8503a, -0.25));
-      worldGroup.add(makeBuilding(-15, -8.5, 4, 4, 2.4, 0xbcccdc, 0x40639c, 0.3));
-      worldGroup.add(makeBuilding(-12.3, -3.6, 4, 3.6, 2.3, 0xd8b6c8, 0x7d4270, 0.25));
+      // dressing houses arc along the BOTTOM of town, well past the pavement —
+      // the follow-camera trails ~7 units south of the player, so anything
+      // closer would put the camera inside a roof on the south plaza strip
+      worldGroup.add(makeBuilding(11, 19, 4.5, 4, 2.6, 0xd8b482, 0xa8503a, -0.2));
+      worldGroup.add(makeBuilding(-13.5, 18.5, 4, 4, 2.4, 0xbcccdc, 0x40639c, 0.2));
+      worldGroup.add(makeBuilding(-4.5, 20.5, 4, 3.6, 2.3, 0xd8b6c8, 0x7d4270, -0.1));
 
       // ---- three branded shops you can actually walk into ----
       function shopFront(x, z, brand) {
@@ -3450,7 +3451,7 @@ export default function DragonGardenQuest() {
       }
       fountainFx = { drops, dropData, jet, ripple, ripBase, rings: splashRings, cx: 0, cz: 5 };
 
-      [[-15, -12, 1.2], [14, -13, 1.3], [-16, 10, 1.1], [15, 9, 1.2], [10, 14, 1.0], [-13, 14, 1.3]]
+      [[-15, -12, 1.2], [14, -13, 1.3], [-16, 10, 1.1], [15, 9, 1.2], [15.5, 16, 1.0], [-17, 13.5, 1.3]]
         .forEach(([x, z, s]) => worldGroup.add(makeTree(x, z, s)));
       [[12.8, -5, 0.6, false], [-16.5, -5.5, 0.7, false], [13, 3, 0.55, true]]
         .forEach(([x, z, s, d]) => worldGroup.add(makeRock(x, z, s, d)));
