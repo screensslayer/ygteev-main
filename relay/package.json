@@ -1,0 +1,16 @@
+{
+  "name": "ygteev-backyard-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Flat-cost WebSocket relay for YGTeeV Backyard live-player position streaming",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
