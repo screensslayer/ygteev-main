@@ -3291,8 +3291,8 @@ export default function DragonGardenQuest() {
       terrainY = makeTerrain(
         [{ x: 14, z: -13, r: 6, h: 1.2 }, { x: -14, z: 13, r: 6, h: 1.3 }, { x: 16, z: 12, r: 6, h: 1.2 }, { x: -16, z: -12, r: 7, h: 1.4 }],
         [{ x1: -22, z1: -1.7, x2: 18, z2: 1.7, f: 3 }, { x1: -1.5, z1: -11, x2: 1.5, z2: 1, f: 3 },
-         { c: 1, x: -6, z: -8, r: 4.2, f: 3 }, { c: 1, x: 6, z: -8, r: 4, f: 3 }, { c: 1, x: -12.3, z: -3.6, r: 4, f: 3 },
-         { x1: -8.6, z1: 2.4, x2: 8.6, z2: 9.8, f: 3 }, { c: 1, x: 0, z: -5, r: 3.6, f: 3 },
+         { c: 1, x: 15.5, z: -7, r: 4.2, f: 3 }, { c: 1, x: -15, z: -8.5, r: 4, f: 3 }, { c: 1, x: -12.3, z: -3.6, r: 4, f: 3 },
+         { x1: -8.6, z1: -10.4, x2: 8.6, z2: -3, f: 3 }, { c: 1, x: 0, z: 5, r: 3.6, f: 3 },
          { x1: -16.1, z1: -11.5, x2: 11.9, z2: 12.9, f: 3 }]
       );
       worldGroup.add(makeGround(66, 0x72ad4a, (x, z, c) => {
@@ -3340,8 +3340,10 @@ export default function DragonGardenQuest() {
         addBoxCol(x, z, w / 2 + 0.1, d / 2 + 0.1, rotY);
         return b;
       }
-      worldGroup.add(makeBuilding(-6, -8, 4.5, 4, 2.6, 0xd8b482, 0xa8503a));
-      worldGroup.add(makeBuilding(6, -8, 4, 4, 2.4, 0xbcccdc, 0x40639c, 0.15));
+      // dressing houses flank the square east/west — never south-center, where
+      // they'd sit between the follow-camera and the player and fill the frame
+      worldGroup.add(makeBuilding(15.5, -7, 4.5, 4, 2.6, 0xd8b482, 0xa8503a, -0.25));
+      worldGroup.add(makeBuilding(-15, -8.5, 4, 4, 2.4, 0xbcccdc, 0x40639c, 0.3));
       worldGroup.add(makeBuilding(-12.3, -3.6, 4, 3.6, 2.3, 0xd8b6c8, 0x7d4270, 0.25));
 
       // ---- three branded shops you can actually walk into ----
@@ -3385,30 +3387,32 @@ export default function DragonGardenQuest() {
           worldGroup.add(anv, anvB);
         }
       }
-      shopFront(-8.2, 4.8, "market");
-      shopFront(0, 4.8, "seeds");
-      shopFront(8.2, 4.8, "tools");
+      // the three main shops line the TOP (north) of the square, fronts facing
+      // south — the player sees them the moment they walk in from the west road
+      shopFront(-8.2, -8, "market");
+      shopFront(0, -8, "seeds");
+      shopFront(8.2, -8, "tools");
 
       // ---- street life on the plaza ----
       makeVillager(2.6, -2.6, -2.3, { shirt: 0x5a86c9 });
       makeVillager(3.5, -3.3, 0.9, { shirt: 0xd06a8a, hair: 0x8a5f2e });
-      makeVillager(-3.4, -7, 0.5, { shirt: 0xe0a03a, scale: 0.72 });
+      makeVillager(-3.9, -4.4, 0.5, { shirt: 0xe0a03a, scale: 0.72 });
       makeVillager(-11.5, 0.8, 1.7, { shirt: 0x8a5f9a, hat: "hood", hood: 0x6a4a8a });
       makeVillager(0, -1.4, 0, { shirt: 0x6ab8a0, hair: 0x4a3a2a, scale: 0.82, solid: false,
         walk: { a: [-7, -1.4], b: [7, -1.4], speed: 0.24 } });
 
       const fBase = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2, 0.5, 9), flat(0xaeb4bd));
-      fBase.position.set(0, 0.25, -5); fBase.castShadow = true;
+      fBase.position.set(0, 0.25, 5); fBase.castShadow = true;
       const fWater = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.2, 9),
         smooth(0x5ab8e8, { roughness: 0.15, emissive: 0x2a6a9a, emissiveIntensity: 0.25 }));
-      fWater.position.set(0, 0.5, -5);
+      fWater.position.set(0, 0.5, 5);
       const foam = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.07, 5, 14),
         smooth(0xdff4ff, { emissive: 0xbfe8ff, emissiveIntensity: 0.4 }));
-      foam.rotation.x = -Math.PI / 2; foam.position.set(0, 0.62, -5);
+      foam.rotation.x = -Math.PI / 2; foam.position.set(0, 0.62, 5);
       const fSpire = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.1, 6), flat(0xaeb4bd));
-      fSpire.position.set(0, 1.05, -5);
+      fSpire.position.set(0, 1.05, 5);
       worldGroup.add(fBase, fWater, foam, fSpire);
-      addCircleCol(0, -5, 2.2);
+      addCircleCol(0, 5, 2.2);
       glowNodes.push(foam);
 
       // ---- living fountain: droplet spray, jet core, rippling surface, splash rings ----
@@ -3426,7 +3430,7 @@ export default function DragonGardenQuest() {
       worldGroup.add(drops);
       const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.12, 0.7, 7),
         smooth(0xd8f2ff, { transparent: true, opacity: 0.7, roughness: 0.1, emissive: 0x9fd8f0, emissiveIntensity: 0.5 }));
-      jet.position.set(0, 1.5, -5);
+      jet.position.set(0, 1.5, 5);
       worldGroup.add(jet);
       const ripGeo = new THREE.CircleGeometry(1.46, 28);
       ripGeo.rotateX(-Math.PI / 2);
@@ -3434,7 +3438,7 @@ export default function DragonGardenQuest() {
       const rpAttr = ripGeo.attributes.position;
       for (let ri = 0; ri < rpAttr.count; ri++) ripBase.push(Math.hypot(rpAttr.getX(ri), rpAttr.getZ(ri)));
       const ripple = new THREE.Mesh(ripGeo, smooth(0x8fd4f0, { transparent: true, opacity: 0.75, roughness: 0.1, emissive: 0x3a8ab8, emissiveIntensity: 0.3 }));
-      ripple.position.set(0, 0.615, -5);
+      ripple.position.set(0, 0.615, 5);
       worldGroup.add(ripple);
       const splashRings = [];
       for (let ri = 0; ri < 4; ri++) {
@@ -3444,7 +3448,7 @@ export default function DragonGardenQuest() {
         rg.userData = { ph: ri / 4, lx: 0, lz: 0, br: 1, prev: 1 };
         worldGroup.add(rg); splashRings.push(rg);
       }
-      fountainFx = { drops, dropData, jet, ripple, ripBase, rings: splashRings, cx: 0, cz: -5 };
+      fountainFx = { drops, dropData, jet, ripple, ripBase, rings: splashRings, cx: 0, cz: 5 };
 
       [[-15, -12, 1.2], [14, -13, 1.3], [-16, 10, 1.1], [15, 9, 1.2], [10, 14, 1.0], [-13, 14, 1.3]]
         .forEach(([x, z, s]) => worldGroup.add(makeTree(x, z, s)));
@@ -3472,9 +3476,9 @@ export default function DragonGardenQuest() {
         { x: -20, z: 0, r: 2.2, to: "HOME", spawn: [21, 3] },
         // spawn well inside the shop (not at the doorway) so turning around
         // doesn't walk the player out through the door gap into the void
-        { x: -8.2, z: 7.75, r: 1.3, to: "SHOP_MARKET", spawn: [0, 2] },
-        { x: 0, z: 7.75, r: 1.3, to: "SHOP_SEEDS", spawn: [0, 2] },
-        { x: 8.2, z: 7.75, r: 1.3, to: "SHOP_TOOLS", spawn: [0, 2] },
+        { x: -8.2, z: -5.05, r: 1.3, to: "SHOP_MARKET", spawn: [0, 2] },
+        { x: 0, z: -5.05, r: 1.3, to: "SHOP_SEEDS", spawn: [0, 2] },
+        { x: 8.2, z: -5.05, r: 1.3, to: "SHOP_TOOLS", spawn: [0, 2] },
       ];
       hotspots = [];
     }
@@ -3484,9 +3488,9 @@ export default function DragonGardenQuest() {
       clearWorld();
       const kind = name === "SHOP_SEEDS" ? "seeds" : name === "SHOP_MARKET" ? "market" : "tools";
       const CFG = {
-        seeds: { floor: 0x8a9a6a, wall: 0xdfe8c8, trim: 0x4da34a, keeper: { shirt: 0x4da34a, hat: "straw" }, sign: "ROSIE'S RARE SEEDS", fg: "#1d5a2a", bg: "#eaf6d8", lamp: 0xd8ffc0, back: [0, 9.5] },
-        market: { floor: 0x9a8a72, wall: 0xf2e2c2, trim: 0xd8842f, keeper: { shirt: 0xc9963c, hair: 0x2a1a0e }, sign: "THE BERRY MARKET", fg: "#7a3a10", bg: "#ffedc8", lamp: 0xffd9a0, back: [-8.2, 9.5] },
-        tools: { floor: 0x6a6472, wall: 0xcfcadd, trim: 0x6a5a9a, keeper: { shirt: 0x8a6fd0, hair: 0x2a1a0e, beard: true }, sign: "GRIMBLE'S TOOLWORKS", fg: "#2f2a4a", bg: "#e8e2f6", lamp: 0xffc890, back: [8.2, 9.5] },
+        seeds: { floor: 0x8a9a6a, wall: 0xdfe8c8, trim: 0x4da34a, keeper: { shirt: 0x4da34a, hat: "straw" }, sign: "ROSIE'S RARE SEEDS", fg: "#1d5a2a", bg: "#eaf6d8", lamp: 0xd8ffc0, back: [0, -3.3] },
+        market: { floor: 0x9a8a72, wall: 0xf2e2c2, trim: 0xd8842f, keeper: { shirt: 0xc9963c, hair: 0x2a1a0e }, sign: "THE BERRY MARKET", fg: "#7a3a10", bg: "#ffedc8", lamp: 0xffd9a0, back: [-8.2, -3.3] },
+        tools: { floor: 0x6a6472, wall: 0xcfcadd, trim: 0x6a5a9a, keeper: { shirt: 0x8a6fd0, hair: 0x2a1a0e, beard: true }, sign: "GRIMBLE'S TOOLWORKS", fg: "#2f2a4a", bg: "#e8e2f6", lamp: 0xffc890, back: [8.2, -3.3] },
       }[kind];
       setAtmosphere(0x241f33, 0x35304a, 0x4a4460, 0x2a2438, 0xffd9a0, 0.55, 0x8a84a8, 0x4a4458, 8, 42);
       terrainY = () => 0;
