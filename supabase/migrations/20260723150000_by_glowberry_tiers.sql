@@ -1,0 +1,25 @@
+-- Glowberry tier ladder + 24h tree lifespan.
+--
+-- Three premium glow seeds above Glowberry in by_rare_seeds (yield rate
+-- is driven by yield_interval_seconds — the 5-min accrual cron credits
+-- 1 league berry per interval, so shorter interval = more per 5 min):
+--
+--   seed_key    gold  interval  = berries/5m  sort
+--   glowberry    120    300s        1          10   (existing row)
+--   starberry    200    150s        2          11
+--   dawnberry    350    100s        3          12
+--   gloryberry   550     75s        4          13
+--
+-- All tiers: base_grow 300s, boost 2s/gold capped 50%, lifespan_seconds
+-- 86400 (24h, was 43200 for glowberry). Currently-active by_plots rows
+-- also got expires_at + 12h so live trees inherit the longer life.
+-- by_plant_rare needed no changes — it validates seed_key against
+-- by_rare_seeds.active and snapshots interval/lifespan per plot.
+--
+-- Client pairing (games/backyard): per-tier leaf/berry/halo colors on
+-- the church trees, seed shop cards, chip rows, church intro text.
+-- NOTE: the recorded church-intro narration (church-5.mp3) still SAYS
+-- "12 hours"; the on-screen text now says 24.
+--
+-- Applied to staging + prod 2026-07-23. Full SQL in the applied
+-- migration of the same name on both projects.

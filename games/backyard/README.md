@@ -98,13 +98,22 @@ For a staging build, swap both values to the ygteev-staging project.
 | Strawberry | 50 XP | 20s | 3:00 | 2 fruit × 3 harvests | 6g |
 | Blueberry | 120 XP | 30s | 5:00 | 2 × 3 | 15g |
 | Sunfruit | 300 XP | 45s | 8:00 | 2 × 3 | 45g |
-| Glowberry | 120 gold | — | — | church plots only, quiz-gated | league berries |
+| Glowberry (Legendary) | 120 gold | — | — | church plots, quiz-gated · 1 berry / 5m | league berries |
+| Starberry (Epic) | 200 gold | — | — | church plots, quiz-gated · 2 berries / 5m | league berries |
+| Dawnberry (Mythic) | 350 gold | — | — | church plots, quiz-gated · 3 berries / 5m | league berries |
+| Gloryberry (Celestial) | 550 gold | — | — | church plots, quiz-gated · 4 berries / 5m | league berries |
 
 After the third harvest the plant is spent and the plot frees up. A
-floating pill over each regrowing plant shows the countdown. Glowberry
+floating pill over each regrowing plant shows the countdown. Glow-tier
 ripenings credit **group berries only** — no personal gold (gold enters
-the game exclusively by selling home-grown fruit). Entering the
-community garden auto-selects the glowberry seed.
+the game exclusively by selling home-grown fruit). All glow trees live
+**24 hours** and each tier has its own leaf/berry/halo colors (teal,
+silver-blue, rose-gold, violet). Yield rates mirror
+`by_rare_seeds.yield_interval_seconds` server-side — the berry cron pays
+1 berry per interval, so the client visuals and the authoritative league
+totals agree. Entering the community garden auto-selects the best glow
+seed the player owns. Premium glow tiers hide from pouch/basket/market
+chip rows until owned so phone layouts don't overflow.
 
 ### Ember the dragon
 
