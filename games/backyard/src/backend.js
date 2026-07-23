@@ -3,6 +3,10 @@
 // throws on error; game-side call sites degrade gracefully.
 import { supabase } from "./supabaseClient";
 
+// Dedicated live-position relay (relay/ in this repo, deployed on Fly).
+// Empty string disables it and every garden falls back to Supabase Realtime.
+const RELAY_URL = "wss://ygteev-relay.fly.dev";
+
 export function createApi() {
   return {
     // Atomic wallet spend against profiles.xp (server checks balance).
@@ -97,26 +101,104 @@ export function createApi() {
       return data; // { correct, correct_idx, reward_kind, reward_amount, total_xp } | { error }
     },
 
-    // Live players: presence + position broadcasts on the private per-group
-    // channel by:garden:{gid}. RLS policies on realtime.messages gate both
-    // reading and sending to members of that youth group.
+    // Live players. Two transports behind one facade:
+    //
+    //  1. RELAY (default): dedicated WebSocket relay on Fly. Supabase
+    //     Realtime bills per message DELIVERED and position broadcasts grow
+    //     N² with garden size; the relay snapshot-ticks at 10 Hz (linear)
+    //     for a flat ~$2/mo. Auth: the relay verifies our Supabase JWT and
+    //     garden membership on join — see relay/README.md.
+    //  2. SUPABASE (fallback): presence + broadcasts on the private channel
+    //     by:garden:{gid}, RLS-gated. Used automatically when the relay is
+    //     unreachable or refuses the join, so live avatars degrade
+    //     gracefully instead of vanishing on relay outages.
     joinGarden(groupId, { me, onSync, onPos, onAct }) {
       const gid = groupId || window.YGTEEV?.profile?.groupId;
       if (!gid || !me?.id) return null;
-      supabase.realtime.setAuth(); // private channel needs the user JWT on the socket
-      const ch = supabase.channel("by:garden:" + gid, {
-        config: { private: true, broadcast: { self: false }, presence: { key: me.id } },
-      });
-      ch.on("presence", { event: "sync" }, () => { if (onSync) onSync(ch.presenceState()); });
-      ch.on("broadcast", { event: "pos" }, ({ payload }) => { if (onPos) onPos(payload); });
-      ch.on("broadcast", { event: "act" }, ({ payload }) => { if (onAct) onAct(payload); });
-      ch.subscribe((status) => {
-        if (status === "SUBSCRIBED") ch.track(me);
-      });
+
+      const supabaseJoin = () => {
+        supabase.realtime.setAuth(); // private channel needs the user JWT on the socket
+        const ch = supabase.channel("by:garden:" + gid, {
+          config: { private: true, broadcast: { self: false }, presence: { key: me.id } },
+        });
+        ch.on("presence", { event: "sync" }, () => { if (onSync) onSync(ch.presenceState()); });
+        ch.on("broadcast", { event: "pos" }, ({ payload }) => { if (onPos) onPos(payload); });
+        ch.on("broadcast", { event: "act" }, ({ payload }) => { if (onAct) onAct(payload); });
+        ch.subscribe((status) => {
+          if (status === "SUBSCRIBED") ch.track(me);
+        });
+        return {
+          sendPos: (p) => ch.send({ type: "broadcast", event: "pos", payload: p }),
+          sendAct: (p) => ch.send({ type: "broadcast", event: "act", payload: p }),
+          leave: () => supabase.removeChannel(ch),
+        };
+      };
+
+      if (!RELAY_URL) return supabaseJoin();
+
+      // Relay transport with a swappable impl: the facade the game holds is
+      // stable; internally we connect async, retry twice on drops, and swap
+      // to the Supabase path if the relay stays unreachable.
+      let impl = { sendPos: () => {}, sendAct: () => {}, leave: () => {} };
+      let closed = false, attempts = 0;
+
+      const useFallback = () => {
+        if (closed) return;
+        const h = supabaseJoin();
+        if (h) impl = h;
+      };
+
+      const connect = async () => {
+        if (closed) return;
+        let token = null;
+        try { token = (await supabase.auth.getSession()).data.session?.access_token; } catch (e) {}
+        if (closed) return;
+        if (!token) return useFallback();
+        let ws;
+        try { ws = new WebSocket(RELAY_URL); } catch (e) { return useFallback(); }
+        let acked = false;
+        const ackTimer = setTimeout(() => { if (!acked) { try { ws.close(); } catch (e) {} } }, 6000);
+        ws.onopen = () => ws.send(JSON.stringify({ t: "join", gid, token, me }));
+        ws.onmessage = (ev) => {
+          let m;
+          try { m = JSON.parse(ev.data); } catch (e) { return; }
+          if (m.t === "ack") {
+            acked = true;
+            attempts = 0;
+            clearTimeout(ackTimer);
+            impl = {
+              sendPos: (p) => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: "pos", ...p })); },
+              sendAct: (p) => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: "act", ...p })); },
+              leave: () => { try { ws.close(1000); } catch (e) {} },
+            };
+          } else if (m.t === "roster") {
+            const state = {};
+            for (const pl of m.players) state[pl.id] = [pl.meta];
+            if (onSync) onSync(state);
+          } else if (m.t === "snap") {
+            if (onPos) for (const p of m.p) onPos(p);
+          } else if (m.t === "act") {
+            if (onAct) onAct(m);
+          } else if (m.t === "err") {
+            attempts = 99; // relay said no (unauthorized/full) — don't retry it
+          }
+        };
+        ws.onclose = () => {
+          clearTimeout(ackTimer);
+          impl = { sendPos: () => {}, sendAct: () => {}, leave: () => {} };
+          if (closed) return;
+          attempts++;
+          if (attempts >= 3) return useFallback();
+          setTimeout(connect, attempts * 1500);
+        };
+        ws.onerror = () => {};
+      };
+      connect();
+
       return {
-        sendPos: (p) => ch.send({ type: "broadcast", event: "pos", payload: p }),
-        sendAct: (p) => ch.send({ type: "broadcast", event: "act", payload: p }),
-        leave: () => supabase.removeChannel(ch),
+        sendPos: (p) => impl.sendPos(p),
+        sendAct: (p) => impl.sendAct(p),
+        leave: () => { closed = true; impl.leave(); },
       };
     },
 

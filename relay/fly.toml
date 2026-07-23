@@ -1,0 +1,23 @@
+# YGTeeV Backyard position relay — Fly.io config
+# Auto-stop economics: the machine stops itself when no WebSocket is
+# connected (empty gardens = ~$0) and cold-starts in under a second when
+# the next player joins. Both env values are publishable (already shipped
+# in the game bundle), so they can live here in plain text.
+
+app = "ygteev-relay"
+primary_region = "iad"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[env]
+  SUPABASE_URL = "https://tkesywmshaicjmywbovn.supabase.co"
+  SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRrZXN5d21zaGFpY2pteXdib3ZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNTYyNzQsImV4cCI6MjA5MzgzMjI3NH0.fp3kWDVnqOeJ--UpBiXArWf6zuinxeBYE3Y6YL12RAk"

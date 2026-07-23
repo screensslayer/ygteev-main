@@ -4,11 +4,17 @@ Flat-cost WebSocket relay for the community garden's live-player
 position stream. Supabase Realtime bills per message *delivered* and
 position broadcasts grow N² with garden size (50 walking players ≈
 20,000 deliveries/sec ≈ ~$180/hr); this relay makes that traffic linear
-via 10 Hz snapshot ticking and its cost flat (~$5/mo on Railway).
-Everything durable — plots sync, league, chat, saves, auth — stays on
-Supabase. If the relay is down, the game auto-falls back to the
-Supabase Realtime path, so live avatars degrade gracefully and nothing
-else is affected.
+via 10 Hz snapshot ticking and its cost flat (~$2/mo on Fly, near-zero
+while gardens are empty thanks to auto-stop). Everything durable —
+plots sync, league, chat, saves, auth — stays on Supabase. If the relay
+is down, the game auto-falls back to the Supabase Realtime path, so
+live avatars degrade gracefully and nothing else is affected.
+
+**Live at `wss://ygteev-relay.fly.dev`** (app `ygteev-relay`, region
+`iad`, single shared-cpu-1x 256MB machine, deployed 2026-07-23 under
+jim@storybutton.com's personal Fly org). The game's transport selection
+lives in `games/backyard/src/backend.js` (`RELAY_URL` — empty string
+disables the relay entirely).
 
 ## How auth works (no secrets on this box)
 
@@ -20,19 +26,23 @@ On join the client presents its Supabase JWT. The relay:
 
 Env holds only publishable values: `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
 
-## Railway setup
+## Deploying (Fly.io)
 
-1. Railway → **New Project → Deploy from GitHub repo** → pick this repo.
-2. Service → **Settings → Root Directory** → `relay`  (Nixpacks
-   auto-detects Node and runs `npm start`).
-3. Service → **Variables**: add `SUPABASE_URL` and `SUPABASE_ANON_KEY`
-   (the same publishable values as `games/backyard/.env`).
-4. Service → **Settings → Networking → Generate Domain** (accept the
-   suggested port). The `https://…up.railway.app` domain is the relay;
-   the game connects to `wss://<domain>`.
-5. Health check: `GET /` returns `{ ok, rooms, players, uptime_s }`.
+Config is `fly.toml` (auto-stop machine, env baked in — both values are
+publishable) + `Dockerfile`. From this directory:
 
-Deploys are automatic on every push to `main` that touches `relay/`.
+```sh
+fly deploy --ha=false     # --ha=false keeps it to ONE machine
+```
+
+Deploys are manual (`fly deploy`), not push-triggered. Other useful
+commands: `fly logs`, `fly status`, `fly apps restart ygteev-relay`.
+Health check: `GET https://ygteev-relay.fly.dev/` returns
+`{ ok, rooms, players, uptime_s }`.
+
+The server itself is host-agnostic — any Node host works (Railway:
+root dir `relay`, env `SUPABASE_URL` + `SUPABASE_ANON_KEY`, generate a
+domain, then point `RELAY_URL` at it).
 
 ## Protocol
 
