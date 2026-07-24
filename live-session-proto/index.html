@@ -106,6 +106,9 @@
   .msg.sys{justify-content:center}
   .msg.sys .tx{font-size:11px;color:var(--txt-dim);text-shadow:0 1px 4px rgba(0,0,0,.8)}
   .msg.self .bubble{background:rgba(91,140,255,.28);border:1px solid rgba(91,140,255,.35)}
+  .msg.held .bubble{background:rgba(255,184,69,.1);border:1px dashed rgba(255,184,69,.45);opacity:.9}
+  .msg.held .tx{color:var(--txt-dim)}
+  .heldnote{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--gold);margin-top:4px;line-height:1.35}
 
   /* ── reaction rail + floaters ── */
   .rail{position:absolute;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 138px);z-index:6;display:flex;flex-direction:column;gap:10px}
@@ -397,10 +400,30 @@
   document.querySelectorAll(".rx").forEach(b => b.addEventListener("click", () => float(b.dataset.em)));
   $("phone").addEventListener("dblclick", () => { float("❤️"); float("❤️"); });
 
+  /* ── moderation: the live chat IS the group thread, so every message runs
+     through the same moderate-message screen. Flagged = held from the room,
+     visible only to the sender, routed to the pastor's review queue.
+     (Demo filter — the real one is the OpenAI moderation pipeline.) ── */
+  const FLAGGED = /\b(stupid|dumb|idiot|hate you|shut up|kys|kill|ugly|loser)\b/i;
   const inEl = $("msgIn");
   function sendMine(){
     const v = inEl.value.trim(); if (!v) return;
-    say(you, v); inEl.value = "";
+    inEl.value = "";
+    if (FLAGGED.test(v)) {
+      const m = document.createElement("div");
+      m.className = "msg self held";
+      const a = avaSpan(you); m.appendChild(a);
+      const b = document.createElement("div"); b.className = "bubble";
+      const nm = document.createElement("div"); nm.className = "nm"; nm.style.color = you.hue; nm.textContent = "You";
+      const tx = document.createElement("div"); tx.className = "tx"; tx.textContent = v;
+      const note = document.createElement("div"); note.className = "heldnote";
+      note.textContent = "🛡 Held for review — only you can see this. Pastor Mike was notified.";
+      b.appendChild(nm); b.appendChild(tx); b.appendChild(note); m.appendChild(b);
+      chatEl.appendChild(m);
+      while (chatEl.children.length > 18) chatEl.firstChild.remove();
+      return;
+    }
+    say(you, v);
   }
   $("sendBtn").addEventListener("click", sendMine);
   inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendMine(); });
@@ -549,6 +572,7 @@
   }
   let i = 0;
   say(null, "Pastor Mike started a live session", { sys:true });
+  say(null, "🛡 Chat is protected — messages are screened before the room sees them", { sys:true });
   setInterval(() => tick(i++), 1900);
   render();
 })();
