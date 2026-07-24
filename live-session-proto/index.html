@@ -206,7 +206,7 @@
     </div>
     <button class="ctl" id="handBtn" aria-label="Ask to join the conversation">✋</button>
     <button class="ctl off" id="micBtn" aria-label="Microphone">🎤</button>
-    <button class="ctl off" id="camBtn" aria-label="Camera">📷</button>
+    <button class="ctl off" id="camBtn" aria-label="Camera" style="opacity:.55">📷</button>
   </div>
 
   <div class="scrim" id="scrim"></div>
@@ -214,12 +214,11 @@
   <div class="sheet" id="inviteSheet" role="dialog" aria-label="Invited to join">
     <div class="invite-ava"><span class="ava lg" style="background:linear-gradient(135deg,#ffb845,#e07a2f)">M<span class="crown">👑</span></span></div>
     <h3>Pastor Mike invited you up</h3>
-    <p>Join the conversation with your voice, or turn your camera on too. The stage fits 4 — everyone else watches and chats.</p>
-    <div class="row" style="margin-bottom:8px">
-      <button class="btn pri" id="joinMicBtn">🎤 Voice only</button>
-      <button class="btn vid" id="joinCamBtn">📷 Camera on</button>
+    <p>Your mic goes live and the whole room hears you. The stage fits 4 — cameras are for Pastor Mike and leaders, so students join by voice.</p>
+    <div class="row">
+      <button class="btn ghost" id="declineBtn">Not now</button>
+      <button class="btn pri" id="joinMicBtn">🎤 Join with voice</button>
     </div>
-    <div class="row"><button class="btn ghost" id="declineBtn">Not now</button></div>
   </div>
 
   <div class="sheet" id="rosterSheet" role="dialog" aria-label="Everyone here">
@@ -451,19 +450,18 @@
     scrim.classList.remove("show"); invite.classList.remove("show");
     handRaised = false; you.hand = false; $("handBtn").classList.remove("raised"); render();
   }
-  function joinStage(withVideo){
+  // Students join the stage voice-only — camera publishing is a pastor/
+  // leader permission (enforced server-side in the real LiveKit token).
+  function joinStage(){
     scrim.classList.remove("show"); invite.classList.remove("show");
     handRaised = false; you.hand = false; $("handBtn").classList.remove("raised");
-    you.stage = true; you.mic = true; you.video = withVideo;
+    you.stage = true; you.mic = true; you.video = false;
     $("micBtn").classList.add("on"); $("micBtn").classList.remove("off");
-    $("camBtn").classList.toggle("on", withVideo);
-    $("camBtn").classList.toggle("off", !withVideo);
-    say(null, withVideo ? "You're on stage — camera and mic are live" : "You're on stage — everyone can hear you", { sys:true });
+    say(null, "You're on stage — everyone can hear you", { sys:true });
     speakAs("You", 2600);
     render();
   }
-  $("joinMicBtn").addEventListener("click", () => joinStage(false));
-  $("joinCamBtn").addEventListener("click", () => joinStage(true));
+  $("joinMicBtn").addEventListener("click", joinStage);
 
   $("micBtn").addEventListener("click", () => {
     if (!you.stage) return tip("Ask to join the conversation first ✋");
@@ -474,13 +472,7 @@
     if (you.mic) speakAs("You", 2200);
     render();
   });
-  $("camBtn").addEventListener("click", () => {
-    if (!you.stage) return tip("Ask to join the conversation first ✋");
-    you.video = !you.video;
-    $("camBtn").classList.toggle("on", you.video);
-    $("camBtn").classList.toggle("off", !you.video);
-    render();
-  });
+  $("camBtn").addEventListener("click", () => tip("Cameras are for pastors & leaders — students join by voice 🎤"));
 
   const tipEl = $("tip");
   let tipT;
