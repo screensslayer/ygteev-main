@@ -4,17 +4,16 @@
 <style>
   /* ── tokens: committed dark "night youth room" — this is a live video UI ── */
   :root{
-    --ink:#0b0d14;            /* deep blue-black ground */
+    --ink:#0b0d14;
     --glass:rgba(20,24,36,.66);
-    --glass-hi:rgba(30,36,54,.72);
     --line:rgba(255,255,255,.09);
     --txt:#f2f4fa;
     --txt-dim:#969db2;
     --gold:#ffb845;           /* host / LIVE / brand */
-    --speak:#3ddc84;          /* speaking ring — semantic, not accent */
+    --speak:#3ddc84;          /* speaking — semantic */
     --self:#5b8cff;           /* "you" actions */
     --danger:#ff5a6a;
-    --r-lg:22px; --r-md:14px; --r-full:999px;
+    --r-md:14px; --r-full:999px;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%}
@@ -29,18 +28,54 @@
     .phone{width:393px;height:800px;max-height:94dvh;border-radius:44px;border:1px solid #232837;box-shadow:0 40px 90px rgba(0,0,0,.7)}
   }
 
-  /* ── the "camera feed" ── */
-  #feed{position:absolute;inset:0;width:100%;height:100%;display:block}
-  .vig{position:absolute;inset:0;pointer-events:none;
-    background:linear-gradient(180deg, rgba(5,6,10,.72) 0%, rgba(5,6,10,0) 22%, rgba(5,6,10,0) 55%, rgba(5,6,10,.88) 100%)}
+  /* ── the stage grid: 1 full / 2 stacked / 1+2 / 2×2 ── */
+  .grid{position:absolute;inset:0;display:grid;gap:4px;background:#05060a}
+  .grid.n1{grid-template:1fr / 1fr}
+  .grid.n2{grid-template:1fr 1fr / 1fr}
+  .grid.n3{grid-template:1.15fr 1fr / 1fr 1fr}
+  .grid.n3 .tile:first-child{grid-column:1/3}
+  .grid.n4{grid-template:1fr 1fr / 1fr 1fr}
+  .tile{position:relative;overflow:hidden;background:#0d0f18;border-radius:0;transition:box-shadow .25s}
+  .grid:not(.n1) .tile{border-radius:18px}
+  .tile.speaking{box-shadow:inset 0 0 0 2.5px var(--speak)}
+  .tile canvas{position:absolute;inset:0;width:100%;height:100%}
+  .tile .shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg, rgba(5,6,10,.35) 0%, rgba(5,6,10,0) 30%, rgba(5,6,10,0) 62%, rgba(5,6,10,.6) 100%)}
+
+  /* audio-only tile */
+  .tile.audio{display:flex;align-items:center;justify-content:center;background:radial-gradient(90% 90% at 50% 30%, #171b2a 0%, #0d0f18 100%)}
+  .tile.audio .bigava{position:relative}
+
+  /* name chip on every tile */
+  .chip{position:absolute;left:8px;bottom:8px;display:flex;align-items:center;gap:6px;background:rgba(10,12,20,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:var(--r-full);padding:4px 10px;max-width:calc(100% - 16px);z-index:2}
+  .chip b{font-size:11.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chip .role{font-size:8.5px;font-weight:800;letter-spacing:.8px;color:var(--gold)}
+  .chip .role.leader{color:var(--speak)}
+  .chip .mchip{font-size:10px}
+  .bars{display:flex;align-items:flex-end;gap:2px;height:12px}
+  .bars i{width:2.5px;border-radius:2px;background:var(--speak);height:3px}
+  .speaking .bars i{animation:eq .9s ease-in-out infinite}
+  .bars i:nth-child(2){animation-delay:.15s}.bars i:nth-child(3){animation-delay:.3s}
+  @keyframes eq{0%,100%{height:3px}50%{height:11px}}
+
+  .ava{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff;position:relative;flex:0 0 auto}
+  .ava.sm{width:34px;height:34px;font-size:12px}
+  .ava.lg{width:64px;height:64px;font-size:22px}
+  .ring{position:absolute;inset:-5px;border-radius:50%;border:2.5px solid transparent;transition:border-color .25s}
+  .speaking>.ring, .speaking .ring{border-color:var(--speak);animation:pulse 1.4s ease-out infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(61,220,132,.45)}100%{box-shadow:0 0 0 10px rgba(61,220,132,0)}}
+  .crown{position:absolute;top:-11px;left:50%;transform:translateX(-50%);font-size:12px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+  .micoff{position:absolute;right:-3px;bottom:-3px;width:17px;height:17px;border-radius:50%;background:#20242f;border:1.5px solid var(--ink);display:flex;align-items:center;justify-content:center;font-size:9px}
+  .hand{position:absolute;top:-7px;right:-7px;font-size:13px;animation:wave 1s ease-in-out infinite;transform-origin:70% 80%}
+  @keyframes wave{0%,100%{transform:rotate(0)}50%{transform:rotate(18deg)}}
+  .badge-leader{font-size:8px;font-weight:800;letter-spacing:.8px;color:#0b0d14;background:var(--speak);border-radius:4px;padding:1px 4px}
 
   /* ── top bar ── */
   .top{position:absolute;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 8px;display:flex;align-items:center;gap:8px;z-index:6}
   .live{display:flex;align-items:center;gap:6px;background:var(--danger);color:#fff;font-weight:800;font-size:11px;letter-spacing:1.2px;padding:5px 10px;border-radius:var(--r-full)}
   .live .dot{width:6px;height:6px;border-radius:50%;background:#fff;animation:blink 1.6s ease-in-out infinite}
   @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
-  .timer{font-variant-numeric:tabular-nums;font-size:12px;font-weight:700;color:var(--txt);background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);padding:5px 9px;border-radius:var(--r-full);border:1px solid var(--line)}
-  .title{flex:1;min-width:0;text-align:center}
+  .timer{font-variant-numeric:tabular-nums;font-size:12px;font-weight:700;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);padding:5px 9px;border-radius:var(--r-full);border:1px solid var(--line)}
+  .title{flex:1;min-width:0;text-align:center;text-shadow:0 1px 6px rgba(0,0,0,.8)}
   .title b{display:block;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .title span{display:block;font-size:10.5px;color:var(--txt-dim)}
   .viewers{display:flex;align-items:center;gap:5px;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);padding:4px 9px 4px 5px;border-radius:var(--r-full)}
@@ -50,54 +85,29 @@
   .viewers b{font-size:12px;font-variant-numeric:tabular-nums}
   .close{width:30px;height:30px;border-radius:50%;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:15px;line-height:1;color:var(--txt-dim)}
 
-  /* ── host name plate + on-stage strip ── */
-  .stage{position:absolute;left:14px;top:calc(env(safe-area-inset-top,0px) + 58px);z-index:5;display:flex;flex-direction:column;gap:8px}
-  .plate{display:flex;align-items:center;gap:8px;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:var(--r-full);padding:5px 12px 5px 5px;width:max-content}
-  .plate .ava{position:relative}
-  .plate .who b{display:block;font-size:12.5px;font-weight:800}
-  .plate .who span{display:block;font-size:10px;color:var(--gold);font-weight:700;letter-spacing:.6px}
-  .bars{display:flex;align-items:flex-end;gap:2px;height:14px;margin-left:2px}
-  .bars i{width:3px;border-radius:2px;background:var(--speak);height:4px}
-  .speaking .bars i{animation:eq .9s ease-in-out infinite}
-  .bars i:nth-child(2){animation-delay:.15s}.bars i:nth-child(3){animation-delay:.3s}
-  @keyframes eq{0%,100%{height:4px}50%{height:13px}}
-  .muted-chip{font-size:10px;color:var(--txt-dim)}
-
-  .onstage{display:flex;gap:10px}
-  .spk{display:flex;flex-direction:column;align-items:center;gap:3px;width:56px}
-  .spk .name{font-size:9.5px;color:var(--txt);opacity:.9;max-width:56px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,.8)}
-  .ava{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff;position:relative;flex:0 0 auto}
-  .ava.sm{width:34px;height:34px;font-size:12px}
-  .ava.lg{width:52px;height:52px;font-size:18px}
-  .ring{position:absolute;inset:-4px;border-radius:50%;border:2.5px solid transparent;transition:border-color .25s}
-  .speaking>.ring, .speaking .ring{border-color:var(--speak);animation:pulse 1.4s ease-out infinite}
-  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(61,220,132,.45)}100%{box-shadow:0 0 0 9px rgba(61,220,132,0)}}
-  .crown{position:absolute;top:-11px;left:50%;transform:translateX(-50%);font-size:12px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
-  .micoff{position:absolute;right:-3px;bottom:-3px;width:17px;height:17px;border-radius:50%;background:#20242f;border:1.5px solid var(--ink);display:flex;align-items:center;justify-content:center;font-size:9px}
-  .hand{position:absolute;top:-7px;right:-7px;font-size:13px;animation:wave 1s ease-in-out infinite;transform-origin:70% 80%}
-  @keyframes wave{0%,100%{transform:rotate(0)}50%{transform:rotate(18deg)}}
-  .badge-leader{font-size:8px;font-weight:800;letter-spacing:.8px;color:#0b0d14;background:var(--speak);border-radius:4px;padding:1px 4px}
+  .stagecount{position:absolute;left:14px;top:calc(env(safe-area-inset-top,0px) + 56px);z-index:6;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:var(--r-full);padding:4px 11px;font-size:10.5px;font-weight:800;letter-spacing:.8px;color:var(--txt-dim)}
+  .stagecount b{color:var(--txt)}
 
   /* ── join toasts ── */
-  .toasts{position:absolute;right:12px;top:calc(env(safe-area-inset-top,0px) + 60px);z-index:5;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+  .toasts{position:absolute;right:12px;top:calc(env(safe-area-inset-top,0px) + 56px);z-index:6;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
   .jt{display:flex;align-items:center;gap:7px;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);padding:5px 11px 5px 6px;border-radius:var(--r-full);font-size:11.5px;color:var(--txt-dim);animation:jtIn .35s cubic-bezier(.2,.9,.3,1.2)}
   .jt b{color:var(--txt);font-weight:700}
   @keyframes jtIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
   .jt.out{opacity:0;transform:translateX(20px);transition:all .4s}
 
   /* ── chat stream ── */
-  .chat{position:absolute;left:12px;right:86px;bottom:calc(env(safe-area-inset-bottom,0px) + 158px);z-index:5;display:flex;flex-direction:column;justify-content:flex-end;gap:7px;height:210px;overflow:hidden;
+  .chat{position:absolute;left:12px;right:86px;bottom:calc(env(safe-area-inset-bottom,0px) + 158px);z-index:5;display:flex;flex-direction:column;justify-content:flex-end;gap:7px;height:196px;overflow:hidden;
     -webkit-mask-image:linear-gradient(180deg,transparent 0%,#000 26%);mask-image:linear-gradient(180deg,transparent 0%,#000 26%)}
   .msg{display:flex;gap:8px;align-items:flex-start;animation:msgIn .3s cubic-bezier(.2,.9,.3,1.15)}
   @keyframes msgIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-  .msg .bubble{background:rgba(10,12,20,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:4px 14px 14px 14px;padding:6px 11px;max-width:100%}
-  .msg .nm{font-size:10.5px;font-weight:800;letter-spacing:.2px}
-  .msg .tx{font-size:13px;line-height:1.35;color:var(--txt)}
+  .msg .bubble{background:rgba(10,12,20,.6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:4px 14px 14px 14px;padding:6px 11px;max-width:100%}
+  .msg .nm{font-size:10.5px;font-weight:800}
+  .msg .tx{font-size:13px;line-height:1.35}
   .msg.sys{justify-content:center}
-  .msg.sys .tx{font-size:11px;color:var(--txt-dim);background:none}
-  .msg.self .bubble{background:rgba(91,140,255,.24);border:1px solid rgba(91,140,255,.35)}
+  .msg.sys .tx{font-size:11px;color:var(--txt-dim);text-shadow:0 1px 4px rgba(0,0,0,.8)}
+  .msg.self .bubble{background:rgba(91,140,255,.28);border:1px solid rgba(91,140,255,.35)}
 
-  /* ── reaction rail ── */
+  /* ── reaction rail + floaters ── */
   .rail{position:absolute;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 138px);z-index:6;display:flex;flex-direction:column;gap:10px}
   .rx{width:44px;height:44px;border-radius:50%;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:20px;transition:transform .12s}
   .rx:active{transform:scale(1.25)}
@@ -111,7 +121,8 @@
   .shelf{display:flex;gap:12px;overflow-x:auto;padding:6px 4px 4px;scrollbar-width:none}
   .shelf::-webkit-scrollbar{display:none}
   .aud{display:flex;flex-direction:column;align-items:center;gap:3px;flex:0 0 auto;width:44px}
-  .aud .name{font-size:9px;color:var(--txt);opacity:.85;max-width:46px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,.8)}
+  .aud .name{font-size:9px;opacity:.85;max-width:46px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,.8)}
+  .aud .sm{width:36px;height:36px}
 
   /* ── bottom bar ── */
   .bottom{position:absolute;left:0;right:0;bottom:0;z-index:7;padding:8px 12px calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;gap:8px;align-items:center}
@@ -122,35 +133,33 @@
   .ctl{width:44px;height:44px;border-radius:50%;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);font-size:18px;position:relative;transition:background .2s,transform .12s}
   .ctl:active{transform:scale(1.12)}
   .ctl.raised{background:var(--self);border-color:var(--self)}
-  .ctl.on{background:var(--speak);border-color:var(--speak);color:#0b0d14}
-  .ctl.blocked{opacity:.55}
-  .ctl .off{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-  .ctl .off::after{content:"";position:absolute;width:2.5px;height:26px;background:var(--danger);border-radius:2px;transform:rotate(45deg)}
+  .ctl.on{background:var(--speak);border-color:var(--speak)}
+  .ctl.off::after{content:"";position:absolute;left:50%;top:50%;width:2.5px;height:27px;background:var(--danger);border-radius:2px;transform:translate(-50%,-50%) rotate(45deg);box-shadow:0 0 0 1.5px rgba(11,13,20,.7)}
 
   /* ── sheets ── */
   .scrim{position:absolute;inset:0;background:rgba(5,6,10,.5);z-index:9;opacity:0;pointer-events:none;transition:opacity .25s}
   .scrim.show{opacity:1;pointer-events:auto}
-  .sheet{position:absolute;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:10;background:rgba(26,30,44,.92);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);border:1px solid var(--line);border-radius:28px;padding:20px 18px;transform:translateY(115%);transition:transform .34s cubic-bezier(.2,.9,.25,1)}
+  .sheet{position:absolute;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:10;background:rgba(26,30,44,.94);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);border:1px solid var(--line);border-radius:28px;padding:20px 18px;transform:translateY(115%);transition:transform .34s cubic-bezier(.2,.9,.25,1)}
   .sheet.show{transform:none}
   .sheet h3{font-size:16px;font-weight:800;text-align:center;margin-bottom:4px;text-wrap:balance}
   .sheet p{font-size:12.5px;color:var(--txt-dim);text-align:center;line-height:1.45;margin-bottom:14px;text-wrap:balance}
   .sheet .row{display:flex;gap:8px}
-  .btn{flex:1;height:46px;border-radius:var(--r-md);font-size:14.5px;font-weight:700;transition:transform .12s}
+  .btn{flex:1;height:46px;border-radius:var(--r-md);font-size:14px;font-weight:700;transition:transform .12s;display:flex;align-items:center;justify-content:center;gap:6px}
   .btn:active{transform:scale(.97)}
   .btn.pri{background:var(--speak);color:#0b0d14}
-  .btn.ghost{background:rgba(255,255,255,.08);color:var(--txt)}
+  .btn.vid{background:var(--self);color:#fff}
+  .btn.ghost{background:rgba(255,255,255,.08)}
   .invite-ava{display:flex;justify-content:center;margin-bottom:10px}
 
-  /* roster sheet */
-  .roster{max-height:64%;overflow-y:auto}
+  .roster{max-height:60vh;overflow-y:auto}
   .roster h4{font-size:10px;font-weight:800;letter-spacing:1.4px;color:var(--txt-dim);margin:14px 4px 8px}
   .roster h4:first-child{margin-top:2px}
   .rgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 6px}
   .rp{display:flex;flex-direction:column;align-items:center;gap:4px}
-  .rp .name{font-size:10px;color:var(--txt);max-width:74px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .rp .sub{font-size:8.5px;color:var(--txt-dim)}
+  .rp .name{font-size:10px;max-width:74px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rp .sub{font-size:8.5px;color:var(--txt-dim);text-align:center}
 
-  .tip{position:absolute;left:50%;transform:translateX(-50%) translateY(8px);bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:11;background:rgba(26,30,44,.95);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 14px;font-size:12px;color:var(--txt);opacity:0;pointer-events:none;transition:all .25s;white-space:nowrap}
+  .tip{position:absolute;left:50%;transform:translateX(-50%) translateY(8px);bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:11;background:rgba(26,30,44,.95);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 14px;font-size:12px;opacity:0;pointer-events:none;transition:all .25s;white-space:nowrap}
   .tip.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
   @media (prefers-reduced-motion: reduce){
@@ -159,8 +168,7 @@
 </style>
 
 <div class="wrap"><div class="phone" id="phone">
-  <canvas id="feed"></canvas>
-  <div class="vig"></div>
+  <div class="grid n1" id="grid"></div>
 
   <div class="top">
     <span class="live"><span class="dot"></span>LIVE</span>
@@ -171,15 +179,7 @@
     </button>
     <button class="close" aria-label="Leave session">✕</button>
   </div>
-
-  <div class="stage">
-    <div class="plate speaking" id="hostPlate">
-      <span class="ava" id="hostAva" style="background:linear-gradient(135deg,#ffb845,#e07a2f)">M<span class="ring"></span><span class="crown">👑</span></span>
-      <span class="who"><b>Pastor Mike</b><span>HOST</span></span>
-      <span class="bars"><i></i><i></i><i></i></span>
-    </div>
-    <div class="onstage" id="onstage"></div>
-  </div>
+  <div class="stagecount" id="stageCount">ON STAGE <b>1</b> / 4</div>
 
   <div class="toasts" id="toasts"></div>
   <div class="chat" id="chat" aria-live="polite"></div>
@@ -201,21 +201,22 @@
       <input id="msgIn" placeholder="Say something…" maxlength="120" />
       <button class="send" id="sendBtn" aria-label="Send">↑</button>
     </div>
-    <button class="ctl" id="handBtn" aria-label="Raise hand">✋</button>
-    <button class="ctl" id="micBtn" aria-label="Microphone"><span class="off">🎤</span></button>
-    <button class="ctl blocked" id="camBtn" aria-label="Camera"><span class="off">📷</span></button>
+    <button class="ctl" id="handBtn" aria-label="Ask to join the conversation">✋</button>
+    <button class="ctl off" id="micBtn" aria-label="Microphone">🎤</button>
+    <button class="ctl off" id="camBtn" aria-label="Camera">📷</button>
   </div>
 
   <div class="scrim" id="scrim"></div>
 
-  <div class="sheet" id="inviteSheet" role="dialog" aria-label="Invited to speak">
+  <div class="sheet" id="inviteSheet" role="dialog" aria-label="Invited to join">
     <div class="invite-ava"><span class="ava lg" style="background:linear-gradient(135deg,#ffb845,#e07a2f)">M<span class="crown">👑</span></span></div>
-    <h3>Pastor Mike invited you to speak</h3>
-    <p>Your mic will turn on and everyone in the room will hear you. Your camera stays off — only leaders are on video.</p>
-    <div class="row">
-      <button class="btn ghost" id="declineBtn">Not now</button>
-      <button class="btn pri" id="acceptBtn">🎤 Join with mic</button>
+    <h3>Pastor Mike invited you up</h3>
+    <p>Join the conversation with your voice, or turn your camera on too. The stage fits 4 — everyone else watches and chats.</p>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn pri" id="joinMicBtn">🎤 Voice only</button>
+      <button class="btn vid" id="joinCamBtn">📷 Camera on</button>
     </div>
+    <div class="row"><button class="btn ghost" id="declineBtn">Not now</button></div>
   </div>
 
   <div class="sheet" id="rosterSheet" role="dialog" aria-label="Everyone here">
@@ -232,57 +233,28 @@
   const $ = (id) => document.getElementById(id);
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* ── fake host camera: warm dim youth-room light, slow drift ── */
-  const cv = $("feed"), ctx = cv.getContext("2d");
-  const blobs = [
-    { x:.30, y:.34, r:.55, c:[64,52,96],  s:.00016 },
-    { x:.72, y:.28, r:.42, c:[150,84,40], s:.00022 },
-    { x:.55, y:.75, r:.60, c:[28,34,66],  s:.00013 },
-    { x:.18, y:.80, r:.38, c:[96,40,70],  s:.00019 },
-  ];
-  function sizeCanvas(){
-    const p = $("phone"), d = Math.min(devicePixelRatio || 1, 2);
-    cv.width = p.clientWidth * d; cv.height = p.clientHeight * d;
-  }
-  addEventListener("resize", sizeCanvas); sizeCanvas();
-  let t0 = performance.now();
-  function draw(now){
-    const t = now - t0;
-    const w = cv.width, h = cv.height;
-    ctx.fillStyle = "#0d0f18"; ctx.fillRect(0,0,w,h);
-    blobs.forEach((b,i) => {
-      const bx = (b.x + Math.sin(t*b.s + i*2.1)*.06) * w;
-      const by = (b.y + Math.cos(t*b.s*1.3 + i)*.05) * h;
-      const g = ctx.createRadialGradient(bx,by,0,bx,by,b.r*w);
-      g.addColorStop(0, `rgba(${b.c[0]},${b.c[1]},${b.c[2]},.55)`);
-      g.addColorStop(1, "rgba(13,15,24,0)");
-      ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
-    });
-    // silhouette of the host: soft head-and-shoulders shadow center-frame
-    const hx = w*.5 + Math.sin(t*.0004)*w*.012, hy = h*.46 + Math.cos(t*.0006)*h*.008;
-    const sg = ctx.createRadialGradient(hx,hy,0,hx,hy,w*.34);
-    sg.addColorStop(0,"rgba(6,7,12,.42)"); sg.addColorStop(.55,"rgba(6,7,12,.22)"); sg.addColorStop(1,"rgba(6,7,12,0)");
-    ctx.fillStyle = sg;
-    ctx.beginPath(); ctx.ellipse(hx, hy - h*.02, w*.13, w*.155, 0, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(hx, hy + h*.16, w*.24, w*.19, 0, 0, 7); ctx.fill();
-    if (!reduced) requestAnimationFrame(draw);
-  }
-  requestAnimationFrame(draw);
-
   /* ── cast ── */
   const HUES = ["#e0564f","#4f8fe0","#42b06a","#b05ae0","#e09a3f","#3fbcd8","#d8558f","#7a6ae0","#5aa85a","#c9793f","#4a7ab8","#a04ab8"];
-  const mk = (n, i, o={}) => ({ name:n, init:n[0], hue:HUES[i%HUES.length], hand:false, stage:false, mic:false, ...o });
+  const mk = (n, i, o={}) => ({ name:n, init:n[0], hue:HUES[i%HUES.length], hand:false, stage:false, mic:false, video:false, ...o });
+  const HOST = mk("Pastor Mike", 4, { host:true, stage:true, mic:true, video:true, hue:"#ffb845",
+    feed:[[64,52,96],[150,84,40],[28,34,66],[96,40,70]] });
   const cast = [
-    mk("Sarah", 2, { leader:true }),
+    mk("Sarah", 2, { leader:true, feed:[[30,70,60],[40,90,120],[24,40,52],[60,90,50]] }),
     mk("Maya", 0), mk("Jaylen", 1), mk("Sofia", 6), mk("Marcus", 3),
-    mk("Grace", 4), mk("Noah", 5), mk("Zoe", 7), mk("Caleb", 8),
+    mk("Zoe", 7), mk("Grace", 4), mk("Noah", 5), mk("Caleb", 8),
     mk("Ava", 9), mk("Eli T.", 10), mk("Lily", 11), mk("Dre", 1), mk("Hannah", 6),
   ];
-  const you = mk("You", 1, { you:true, hue:"#5b8cff" });
-  let present = [cast[0]];              // Sarah's already in
+  const you = mk("You", 1, { you:true, hue:"#5b8cff", feed:[[46,66,140],[90,60,130],[30,44,90],[60,80,150]] });
+  let present = [cast[0]];
   let arriving = cast.slice(1);
-  let handRaised = false, onStage = false, micOn = false, speakingNow = "host";
+  let handRaised = false, speakingNow = HOST.name;
+  const MAX_STAGE = 4;
+  const stagers = () => [HOST, ...[you, ...present].filter(p => p.stage && !p.host)];
 
+  const shade = (hex) => {
+    const n = parseInt(hex.slice(1),16), r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+    return `rgb(${r*.55|0},${g*.55|0},${b*.55|0})`;
+  };
   const avaSpan = (p, cls="ava sm") => {
     const s = document.createElement("span");
     s.className = cls;
@@ -291,37 +263,92 @@
     const ring = document.createElement("span"); ring.className = "ring"; s.appendChild(ring);
     return s;
   };
-  function shade(hex){
-    const n = parseInt(hex.slice(1),16), r=(n>>16)&255,g=(n>>8)&255,b=n&255;
-    return `rgb(${r*.55|0},${g*.55|0},${b*.55|0})`;
-  }
 
-  /* ── shelf + stage + viewers render ── */
-  function render(){
-    const shelf = $("shelf"); shelf.innerHTML = "";
-    const stage = $("onstage"); stage.innerHTML = "";
-    const audience = [you, ...present].filter(p => !p.stage);
-    const stagers  = [you, ...present].filter(p => p.stage);
-    stagers.forEach(p => {
-      const d = document.createElement("div");
-      d.className = "spk" + (speakingNow === p.name ? " speaking" : "");
-      const a = avaSpan(p, "ava");
-      if (!p.mic) { const m = document.createElement("span"); m.className="micoff"; m.textContent="🔇"; a.appendChild(m); }
-      d.appendChild(a);
-      const nm = document.createElement("span"); nm.className = "name"; nm.textContent = p.you ? "You" : p.name; d.appendChild(nm);
-      stage.appendChild(d);
+  /* ── stage grid ── */
+  const grid = $("grid");
+  const tileCanvases = [];   // { cv, ctx, feed, seed }
+  function renderStage(){
+    const S = stagers();
+    grid.className = "grid n" + S.length;
+    grid.innerHTML = "";
+    tileCanvases.length = 0;
+    S.forEach((p) => {
+      const t = document.createElement("div");
+      t.className = "tile" + (p.video ? "" : " audio") + (speakingNow === p.name && p.mic ? " speaking" : "");
+      if (p.video) {
+        const cv = document.createElement("canvas");
+        t.appendChild(cv);
+        tileCanvases.push({ cv, ctx: cv.getContext("2d"), feed: p.feed || [[50,50,80],[90,60,50],[30,30,60],[70,50,90]], seed: p.name.length });
+        const sh = document.createElement("div"); sh.className = "shade"; t.appendChild(sh);
+      } else {
+        const a = avaSpan(p, "ava lg");
+        const wrapA = document.createElement("div"); wrapA.className = "bigava" + (speakingNow === p.name && p.mic ? " speaking" : "");
+        wrapA.appendChild(a); t.appendChild(wrapA);
+      }
+      const c = document.createElement("div"); c.className = "chip" + (speakingNow === p.name && p.mic ? " speaking" : "");
+      const nm = document.createElement("b"); nm.textContent = p.you ? "You" : p.name; c.appendChild(nm);
+      if (p.host) { const r = document.createElement("span"); r.className = "role"; r.textContent = "HOST 👑"; c.appendChild(r); }
+      else if (p.leader) { const r = document.createElement("span"); r.className = "role leader"; r.textContent = "LEADER"; c.appendChild(r); }
+      if (p.mic) { const b = document.createElement("span"); b.className = "bars"; b.innerHTML = "<i></i><i></i><i></i>"; c.appendChild(b); }
+      else { const m = document.createElement("span"); m.className = "mchip"; m.textContent = "🔇"; c.appendChild(m); }
+      t.appendChild(c);
+      grid.appendChild(t);
     });
+    sizeTiles();
+    $("stageCount").innerHTML = `ON STAGE <b>${S.length}</b> / ${MAX_STAGE}`;
+  }
+  function sizeTiles(){
+    const d = Math.min(devicePixelRatio || 1, 2);
+    tileCanvases.forEach((t) => {
+      t.cv.width = t.cv.clientWidth * d;
+      t.cv.height = t.cv.clientHeight * d;
+    });
+  }
+  addEventListener("resize", () => sizeTiles());
+
+  /* fake camera feeds: dim warm room, slow drifting light + silhouette */
+  let t0 = performance.now();
+  function draw(now){
+    const t = now - t0;
+    tileCanvases.forEach((tc) => {
+      const { ctx, cv, feed, seed } = tc;
+      const w = cv.width, h = cv.height;
+      if (!w) return;
+      ctx.fillStyle = "#0d0f18"; ctx.fillRect(0,0,w,h);
+      feed.forEach((c, i) => {
+        const bx = (.28 + (i%2)*.45 + Math.sin(t*.00017 + i*2.1 + seed)*.07) * w;
+        const by = (.3 + ((i/2)|0)*.42 + Math.cos(t*.00021 + i + seed)*.06) * h;
+        const g = ctx.createRadialGradient(bx,by,0,bx,by,.55*w);
+        g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},.5)`);
+        g.addColorStop(1, "rgba(13,15,24,0)");
+        ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
+      });
+      const hx = w*.5 + Math.sin(t*.0004 + seed)*w*.015, hy = h*.5 + Math.cos(t*.0006 + seed)*h*.01;
+      const sg = ctx.createRadialGradient(hx,hy,0,hx,hy,w*.4);
+      sg.addColorStop(0,"rgba(6,7,12,.4)"); sg.addColorStop(.6,"rgba(6,7,12,.18)"); sg.addColorStop(1,"rgba(6,7,12,0)");
+      ctx.fillStyle = sg;
+      ctx.beginPath(); ctx.ellipse(hx, hy - h*.06, w*.15, w*.18, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(hx, hy + h*.26, w*.28, w*.22, 0, 0, 7); ctx.fill();
+    });
+    if (!reduced) requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+
+  /* ── audience shelf + viewers ── */
+  function render(){
+    renderStage();
+    const shelf = $("shelf"); shelf.innerHTML = "";
+    const audience = [you, ...present].filter(p => !p.stage);
     audience.forEach(p => {
       const d = document.createElement("div"); d.className = "aud";
       const a = avaSpan(p);
       if (p.hand) { const h = document.createElement("span"); h.className="hand"; h.textContent="✋"; a.appendChild(h); }
-      if (p.leader) { /* leaders get a chip under name instead */ }
       d.appendChild(a);
       const nm = document.createElement("span"); nm.className="name"; nm.textContent = p.you ? "You" : p.name; d.appendChild(nm);
       if (p.leader) { const b = document.createElement("span"); b.className="badge-leader"; b.textContent="LEADER"; d.appendChild(b); }
       shelf.appendChild(d);
     });
-    $("viewerCount").textContent = present.length + 2; // host + you
+    $("viewerCount").textContent = present.length + 2;
     const faces = $("viewerFaces"); faces.innerHTML = "";
     present.slice(0,3).forEach(p => {
       const i = document.createElement("i");
@@ -349,11 +376,9 @@
     while (chatEl.children.length > 18) chatEl.firstChild.remove();
   }
 
-  /* ── join toasts ── */
   function joined(p){
     const t = document.createElement("div"); t.className = "jt";
-    const a = avaSpan(p); a.classList.remove("sm"); a.className = "ava sm";
-    t.appendChild(a);
+    t.appendChild(avaSpan(p));
     const s = document.createElement("span"); s.innerHTML = `<b></b> joined`;
     s.querySelector("b").textContent = p.name; t.appendChild(s);
     $("toasts").appendChild(t);
@@ -361,7 +386,6 @@
     setTimeout(() => t.remove(), 2900);
   }
 
-  /* ── reactions ── */
   function float(em){
     const f = document.createElement("span"); f.className = "fl"; f.textContent = em;
     f.style.setProperty("--dx", (Math.random()*44 - 22) + "px");
@@ -373,7 +397,6 @@
   document.querySelectorAll(".rx").forEach(b => b.addEventListener("click", () => float(b.dataset.em)));
   $("phone").addEventListener("dblclick", () => { float("❤️"); float("❤️"); });
 
-  /* ── input ── */
   const inEl = $("msgIn");
   function sendMine(){
     const v = inEl.value.trim(); if (!v) return;
@@ -382,17 +405,18 @@
   $("sendBtn").addEventListener("click", sendMine);
   inEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendMine(); });
 
-  /* ── raise hand → invite → on stage ── */
+  /* ── join-the-conversation flow ── */
   const scrim = $("scrim"), invite = $("inviteSheet");
   $("handBtn").addEventListener("click", () => {
-    if (onStage) return tip("You're already on stage 🎤");
+    if (you.stage) return tip("You're already in the conversation 🎤");
+    if (stagers().length >= MAX_STAGE) return tip(`Stage is full — ${MAX_STAGE} of ${MAX_STAGE}`);
     handRaised = !handRaised; you.hand = handRaised;
     $("handBtn").classList.toggle("raised", handRaised);
     render();
     if (handRaised) {
-      say(null, "You raised your hand", { sys:true });
+      say(null, "You asked to join the conversation", { sys:true });
       setTimeout(() => {
-        if (!handRaised) return;
+        if (!handRaised || stagers().length >= MAX_STAGE) return;
         closeRoster();
         scrim.classList.add("show"); invite.classList.add("show");
       }, 2600);
@@ -404,55 +428,67 @@
     scrim.classList.remove("show"); invite.classList.remove("show");
     handRaised = false; you.hand = false; $("handBtn").classList.remove("raised"); render();
   }
-  $("acceptBtn").addEventListener("click", () => {
+  function joinStage(withVideo){
     scrim.classList.remove("show"); invite.classList.remove("show");
     handRaised = false; you.hand = false; $("handBtn").classList.remove("raised");
-    onStage = true; micOn = true; you.stage = true; you.mic = true;
-    $("micBtn").classList.add("on");
-    say(null, "You're on stage — everyone can hear you", { sys:true });
+    you.stage = true; you.mic = true; you.video = withVideo;
+    $("micBtn").classList.add("on"); $("micBtn").classList.remove("off");
+    $("camBtn").classList.toggle("on", withVideo);
+    $("camBtn").classList.toggle("off", !withVideo);
+    say(null, withVideo ? "You're on stage — camera and mic are live" : "You're on stage — everyone can hear you", { sys:true });
     speakAs("You", 2600);
     render();
-  });
+  }
+  $("joinMicBtn").addEventListener("click", () => joinStage(false));
+  $("joinCamBtn").addEventListener("click", () => joinStage(true));
+
   $("micBtn").addEventListener("click", () => {
-    if (!onStage) return tip("Raise your hand ✋ and the host can bring you on stage");
-    micOn = !micOn; you.mic = micOn;
-    $("micBtn").classList.toggle("on", micOn);
-    if (!micOn && speakingNow === "You") setSpeaking("host");
-    if (micOn) speakAs("You", 2200);
+    if (!you.stage) return tip("Ask to join the conversation first ✋");
+    you.mic = !you.mic;
+    $("micBtn").classList.toggle("on", you.mic);
+    $("micBtn").classList.toggle("off", !you.mic);
+    if (!you.mic && speakingNow === "You") setSpeaking(HOST.name);
+    if (you.mic) speakAs("You", 2200);
     render();
   });
-  $("camBtn").addEventListener("click", () => tip("Cameras are host &amp; leader only — students join by voice", true));
+  $("camBtn").addEventListener("click", () => {
+    if (!you.stage) return tip("Ask to join the conversation first ✋");
+    you.video = !you.video;
+    $("camBtn").classList.toggle("on", you.video);
+    $("camBtn").classList.toggle("off", !you.video);
+    render();
+  });
 
   const tipEl = $("tip");
   let tipT;
-  function tip(msg, html){
-    if (html) tipEl.innerHTML = msg; else tipEl.textContent = msg;
+  function tip(msg){
+    tipEl.textContent = msg;
     tipEl.classList.add("show");
     clearTimeout(tipT); tipT = setTimeout(() => tipEl.classList.remove("show"), 2600);
   }
 
-  /* ── roster sheet ── */
+  /* ── roster ── */
   $("viewersBtn").addEventListener("click", () => {
     const body = $("rosterBody"); body.innerHTML = "";
     const sec = (label, people) => {
       const h = document.createElement("h4"); h.textContent = label; body.appendChild(h);
       const g = document.createElement("div"); g.className = "rgrid";
       people.forEach(p => {
-        const d = document.createElement("div"); d.className = "rp" + ((speakingNow === p.name) || (p.host && speakingNow === "host") ? " speaking" : "");
+        const d = document.createElement("div"); d.className = "rp" + (speakingNow === p.name && p.mic ? " speaking" : "");
         const a = avaSpan(p, "ava");
         if (p.host) { const c = document.createElement("span"); c.className = "crown"; c.textContent = "👑"; a.appendChild(c); }
         if (p.hand) { const hh = document.createElement("span"); hh.className="hand"; hh.textContent="✋"; a.appendChild(hh); }
+        if (p.stage && !p.mic) { const m = document.createElement("span"); m.className="micoff"; m.textContent="🔇"; a.appendChild(m); }
         d.appendChild(a);
         const nm = document.createElement("div"); nm.className = "name"; nm.textContent = p.you ? "You" : p.name; d.appendChild(nm);
         const sub = document.createElement("div"); sub.className = "sub";
-        sub.textContent = p.host ? "Host" : p.leader ? "Leader" : p.stage ? (p.mic ? "On stage · mic on" : "On stage · muted") : p.hand ? "Hand raised" : "Listening";
+        sub.textContent = p.host ? "Host" : p.stage ? (p.video ? "On stage · camera" : "On stage · voice") : p.leader ? "Leader" : p.hand ? "Hand raised" : "Listening";
         d.appendChild(sub);
         g.appendChild(d);
       });
       body.appendChild(g);
     };
-    const host = { name:"Pastor Mike", init:"M", hue:"#ffb845", host:true };
-    sec("ON STAGE", [host, ...[you, ...present].filter(p => p.stage)]);
+    sec("ON STAGE", stagers());
     sec("AUDIENCE", [you, ...present].filter(p => !p.stage));
     invite.classList.remove("show");
     scrim.classList.add("show"); $("rosterSheet").classList.add("show");
@@ -461,17 +497,12 @@
   function closeRoster(){ scrim.classList.remove("show"); $("rosterSheet").classList.remove("show"); }
 
   /* ── who's speaking ── */
-  function setSpeaking(name){
-    speakingNow = name;
-    $("hostPlate").classList.toggle("speaking", name === "host");
-    render();
-  }
+  function setSpeaking(name){ speakingNow = name; render(); }
   function speakAs(name, ms){
     setSpeaking(name);
-    setTimeout(() => { if (speakingNow === name) setSpeaking("host"); }, ms);
+    setTimeout(() => { if (speakingNow === name) setSpeaking(HOST.name); }, ms);
   }
 
-  /* ── timer ── */
   let secs = 0;
   setInterval(() => {
     secs++;
@@ -492,31 +523,33 @@
   let li = 0;
 
   function tick(i){
-    // arrivals: front-load, then trickle
     if (arriving.length && (i < 10 ? i % 2 === 0 : i % 7 === 0)) {
       const p = arriving.shift(); present.push(p); joined(p); render();
     }
-    // chat
     if (i > 1 && i % 2 === 1) {
       const [n, tx] = LINES[li % LINES.length]; li++;
       const p = byName(n);
       if (p && present.includes(p)) say(p, tx);
     }
-    // ambient reactions
     if (i > 3 && Math.random() < .5) float(["❤️","🔥","🙏"][Math.random()*3|0]);
-    // Sarah the leader hops on stage early and chimes in sometimes
-    if (i === 8) {
-      const s = byName("Sarah"); s.stage = true; s.mic = true;
-      say(null, "Sarah joined the stage", { sys:true }); render();
+    // Sarah (leader) joins the stage on camera — the first split
+    if (i === 7) {
+      const s = byName("Sarah"); s.stage = true; s.mic = true; s.video = true;
+      say(null, "Sarah joined the conversation", { sys:true }); render();
     }
-    if (i > 9 && i % 11 === 0) speakAs("Sarah", 2400);
-    // a student raises a hand now and then (and drops it)
-    if (i === 14) { byName("Zoe").hand = true; render(); }
-    if (i === 20) { byName("Zoe").hand = false; render(); }
+    if (i > 8 && i % 11 === 0) speakAs("Sarah", 2400);
+    // Zoe asks and hops on by voice once she's actually in the room (third seat)
+    const z = byName("Zoe");
+    if (i >= 14 && !z.hand && !z.stage && present.includes(z)) { z.hand = true; render(); }
+    if (i >= 17 && z.hand && !z.stage && present.includes(z) && stagers().length < MAX_STAGE) {
+      z.hand = false; z.stage = true; z.mic = true; z.video = false;
+      say(null, "Zoe joined the conversation", { sys:true }); render();
+    }
+    if (i > 20 && i % 13 === 0) speakAs("Zoe", 2000);
   }
   let i = 0;
   say(null, "Pastor Mike started a live session", { sys:true });
-  const loop = setInterval(() => tick(i++), 1900);
+  setInterval(() => tick(i++), 1900);
   render();
 })();
 </script>
