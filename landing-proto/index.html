@@ -151,7 +151,6 @@
   <!-- HERO -->
   <section id="s0" class="on">
     <div class="card">
-      <span class="eyebrow gold">▸ PRESS START</span>
       <h1>Run the youth group they <span class="g">can't put down.</span></h1>
       <p class="flavor">YGTeeV turns daily Bible reading into a living multiplayer world — with the <b>safest chat in youth ministry</b> wired straight to you.</p>
       <button class="cta" onclick="document.getElementById('launch').scrollIntoView({behavior:'smooth'})">
@@ -281,7 +280,7 @@
     const n=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
     const m=Math.hypot(...n)||1;
     const d=Math.abs((n[0]*LGT[0]+n[1]*LGT[1]+n[2]*LGT[2])/m);
-    return .58 + .5*d;
+    return .7 + .38*d;
   }
   function tri(a,b,c,col,e){ faces.push({p:[a,b,c],c:col,e,sh:shadeOf(a,b,c)}); }
   function quad(a,b,c,d,col,e){ tri(a,b,c,col,e); tri(a,c,d,col,e); }
@@ -613,7 +612,7 @@
     drawList.sort((a,b) => b.depth - a.depth);
 
     for (const d of drawList){
-      const fog = Math.min(1, Math.max(0, (d.depth - 20) / 130));
+      const fog = Math.min(.82, Math.max(0, (d.depth - 55) / 210));
       const sh = d.sh;
       const r = d.c[0]*sh*(1-fog) + NIGHT_BOT[0]*fog + d.e*40;
       const gg = d.c[1]*sh*(1-fog) + NIGHT_BOT[1]*fog + d.e*30;
