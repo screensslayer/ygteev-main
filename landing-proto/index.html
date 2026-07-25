@@ -274,8 +274,17 @@
   const faces = [];   // static world: {p:[[x,y,z]..], c:[r,g,b], e?:emissiveBoost, glow?}
   const sprites = []; // glow dots: {x,y,z,r,c,tw}
 
-  function quad(a,b,c,d,col,e){ faces.push({p:[a,b,c],c:col,e}); faces.push({p:[a,c,d],c:col,e}); }
-  function tri(a,b,c,col,e){ faces.push({p:[a,b,c],c:col,e}); }
+  // moonlight: every face gets a baked shade factor from its normal
+  const LGT = (() => { const l=[-.35,.85,.42], m=Math.hypot(...l); return l.map(v=>v/m); })();
+  function shadeOf(a,b,c){
+    const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    const n=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+    const m=Math.hypot(...n)||1;
+    const d=Math.abs((n[0]*LGT[0]+n[1]*LGT[1]+n[2]*LGT[2])/m);
+    return .58 + .5*d;
+  }
+  function tri(a,b,c,col,e){ faces.push({p:[a,b,c],c:col,e,sh:shadeOf(a,b,c)}); }
+  function quad(a,b,c,d,col,e){ tri(a,b,c,col,e); tri(a,c,d,col,e); }
 
   // deterministic pseudo-random
   let seed = 7;
@@ -298,69 +307,174 @@
   /* ── props ── */
   function pine(x,z,s,col){
     const y = hills(x,z);
-    const tiers = 3;
-    for (let t = 0; t < tiers; t++){
-      const r = s*(1.6 - t*.42), h0 = y + s*(.8 + t*1.05), h1 = h0 + s*1.25;
-      tri([x-r,h0,z+r*.2],[x+r,h0,z+r*.2],[x,h1,z],col);
-      tri([x-r*.85,h0,z-r*.6],[x+r*.85,h0,z-r*.6],[x,h1,z],[col[0]*.8,col[1]*.8,col[2]*.8]);
+    // tapered trunk with root flare
+    quad([x-s*.2,y,z+s*.06],[x+s*.2,y,z+s*.06],[x+s*.1,y+s*1.1,z],[x-s*.1,y+s*1.1,z],[82,58,40]);
+    tri([x-s*.34,y,z+s*.1],[x-s*.08,y,z+s*.1],[x-s*.14,y+s*.3,z+s*.06],[68,48,34]);
+    // four tiers, each a shallow 4-sided cone so moonlight rakes across it
+    for (let t = 0; t < 4; t++){
+      const k = t/4, r = s*(1.7 - k*1.15), h0 = y + s*(.7 + t*.92), h1 = h0 + s*(1.25 - k*.3);
+      const dk = 1 - k*.18;
+      tri([x-r,h0,z+r*.55],[x+r,h0,z+r*.55],[x,h1,z],[col[0]*dk,col[1]*dk,col[2]*dk]);
+      tri([x+r,h0,z+r*.55],[x+r*.7,h0,z-r*.7],[x,h1,z],[col[0]*.72*dk,col[1]*.72*dk,col[2]*.72*dk]);
+      tri([x-r,h0,z+r*.55],[x-r*.7,h0,z-r*.7],[x,h1,z],[col[0]*.88*dk,col[1]*.88*dk,col[2]*.88*dk]);
     }
-    quad([x-s*.16,y,z],[x+s*.16,y,z],[x+s*.16,y+s*.9,z],[x-s*.16,y+s*.9,z],[74,52,38]);
   }
   function glowTree(x,z,s,leaf,berry){
     const y = hills(x,z);
-    quad([x-s*.14,y,z],[x+s*.14,y,z],[x+s*.14,y+s*1.15,z],[x-s*.14,y+s*1.15,z],[86,66,110]);
-    const cy = y + s*1.6;
-    // icosa-ish canopy: 6 tris fanned
+    // rune ring: sacred ground marker
+    sprites.push({x, y:y+.25, z, r:s*1.5, c:[berry[0]*.7|0,berry[1]*.7|0,berry[2]*.7|0], halo:true, tw:rnd()*7});
+    for (let i = 0; i < 4; i++){
+      const a = (i/4)*Math.PI*2 + .5;
+      quad([x+Math.cos(a)*s*1.15-.12,y+.02,z+Math.sin(a)*s*.8-.12],[x+Math.cos(a)*s*1.15+.12,y+.02,z+Math.sin(a)*s*.8-.12],
+           [x+Math.cos(a)*s*1.15+.12,y+.02,z+Math.sin(a)*s*.8+.12],[x+Math.cos(a)*s*1.15-.12,y+.02,z+Math.sin(a)*s*.8+.12],
+           [berry[0]*.6,berry[1]*.6,berry[2]*.6],.8);
+    }
+    // twisting violet trunk with a branch fork
+    quad([x-s*.17,y,z],[x+s*.17,y,z],[x+s*.09,y+s*1.2,z],[x-s*.05,y+s*1.2,z],[92,70,118]);
+    quad([x-s*.05,y+s*1.2,z],[x+s*.09,y+s*1.2,z],[x+s*.34,y+s*1.7,z],[x+s*.2,y+s*1.72,z],[80,60,104]);
+    quad([x-s*.05,y+s*1.2,z],[x+s*.02,y+s*1.2,z],[x-s*.4,y+s*1.66,z],[x-s*.5,y+s*1.6,z],[80,60,104]);
+    const cy = y + s*1.85;
+    // two stacked canopy crowns, offset for depth
+    for (let L = 0; L < 2; L++){
+      const r = s*(1.05 - L*.34), oy = cy + L*s*.62, n = 6;
+      for (let i = 0; i < n; i++){
+        const a0 = (i/n)*Math.PI*2 + L*.5, a1 = ((i+1)/n)*Math.PI*2 + L*.5;
+        const tone = .74 + .5*((i+L)%2);
+        tri([x+Math.cos(a0)*r, oy+Math.sin(a0*2)*.16*s, z+Math.sin(a0)*r*.62],
+            [x+Math.cos(a1)*r, oy+Math.sin(a1*2)*.16*s, z+Math.sin(a1)*r*.62],
+            [x, oy+s*.8, z], [leaf[0]*tone, leaf[1]*tone, leaf[2]*tone], .3);
+      }
+    }
     for (let i = 0; i < 6; i++){
-      const a0 = (i/6)*Math.PI*2, a1 = ((i+1)/6)*Math.PI*2, r = s*.95;
-      tri([x+Math.cos(a0)*r, cy+Math.sin(a0*2)*.2*s, z+Math.sin(a0)*r*.6],
-          [x+Math.cos(a1)*r, cy+Math.sin(a1*2)*.2*s, z+Math.sin(a1)*r*.6],
-          [x, cy+s*.95, z], [leaf[0]*(0.8+.4*(i%2)), leaf[1]*(0.8+.4*(i%2)), leaf[2]*(0.8+.4*(i%2))], .35);
+      const a = rnd()*Math.PI*2, rr = s*(.55+rnd()*.55);
+      sprites.push({x:x+Math.cos(a)*rr, y:cy+(rnd()-.15)*s*1.1, z:z+Math.sin(a)*rr*.6, r:s*.15, c:berry, tw:rnd()*7});
     }
-    for (let i = 0; i < 5; i++){
-      const a = rnd()*Math.PI*2;
-      sprites.push({x:x+Math.cos(a)*s*.8, y:cy+ (rnd()-.3)*s, z:z+Math.sin(a)*s*.5, r:s*.16, c:berry, tw:rnd()*7});
-    }
-    sprites.push({x, y:cy+s*.4, z, r:s*1.9, c:berry, halo:true, tw:rnd()*7});
+    sprites.push({x, y:cy+s*.55, z, r:s*2.1, c:berry, halo:true, tw:rnd()*7});
   }
   function plotRow(x,z,n){
     for (let i = 0; i < n; i++){
       const px = x + i*3.2, y = hills(px,z);
-      quad([px-1.2,y+.12,z+1.2],[px+1.2,y+.12,z+1.2],[px+1.2,y+.12,z-1.2],[px-1.2,y+.12,z-1.2],[92,62,40]);
-      quad([px-1.4,y+.02,z+1.4],[px+1.4,y+.02,z+1.4],[px+1.4,y+.02,z-1.4],[px-1.4,y+.02,z-1.4],[120,88,54]);
+      quad([px-1.4,y+.03,z+1.4],[px+1.4,y+.03,z+1.4],[px+1.4,y+.03,z-1.4],[px-1.4,y+.03,z-1.4],[124,92,58]);  // rim
+      quad([px-1.15,y+.16,z+1.15],[px+1.15,y+.16,z+1.15],[px+1.15,y+.16,z-1.15],[px-1.15,y+.16,z-1.15],[88,60,38]); // soil
+      // little sprout rows on some plots
+      if (i % 2 === 0){
+        for (let ss = 0; ss < 3; ss++){
+          const sx = px - .7 + ss*.7;
+          tri([sx-.12,y+.16,z],[sx+.12,y+.16,z],[sx,y+.62,z],[96,190,120]);
+        }
+      }
     }
   }
   function chapel(x,z,s){
     const y = hills(x,z);
     const w=s*2.2, d=s*1.6, h=s*2.1;
-    quad([x-w,y,z+d],[x+w,y,z+d],[x+w,y+h,z+d],[x-w,y+h,z+d],[214,205,182]);       // front
-    quad([x+w,y,z+d],[x+w,y,z-d],[x+w,y+h,z-d],[x+w,y+h,z+d],[176,168,148]);       // side
-    tri([x-w,y+h,z+d],[x+w,y+h,z+d],[x,y+h+s*1.15,z+d],[188,92,74]);               // gable
-    quad([x-w*1.08,y+h,z+d*1.1],[x,y+h+s*1.2,z+d*1.05],[x,y+h+s*1.2,z-d*1.05],[x-w*1.08,y+h,z-d*1.1],[168,80,64]); // roof L
-    quad([x,y+h+s*1.2,z+d*1.05],[x+w*1.08,y+h,z+d*1.1],[x+w*1.08,y+h,z-d*1.1],[x,y+h+s*1.2,z-d*1.05],[148,70,56]); // roof R
-    quad([x-s*.22,y+h+s*1.15,z],[x+s*.22,y+h+s*1.15,z],[x+s*.22,y+h+s*2.2,z],[x-s*.22,y+h+s*2.2,z],[214,205,182]); // steeple
-    tri([x-s*.34,y+h+s*2.2,z],[x+s*.34,y+h+s*2.2,z],[x,y+h+s*2.75,z],[168,80,64]);
-    quad([x-s*.3,y,z+d+.02],[x+s*.3,y,z+d+.02],[x+s*.3,y+s*.95,z+d+.02],[x-s*.3,y+s*.95,z+d+.02],[96,70,46]);      // door
-    sprites.push({x, y:y+h+s*2.95, z, r:s*.32, c:[255,214,120], tw:2});             // steeple light
+    // stone plinth
+    quad([x-w*1.12,y,z+d*1.12],[x+w*1.12,y,z+d*1.12],[x+w*1.12,y+s*.18,z+d*1.12],[x-w*1.12,y+s*.18,z+d*1.12],[142,134,120]);
+    quad([x+w*1.12,y,z+d*1.12],[x+w*1.12,y,z-d*1.12],[x+w*1.12,y+s*.18,z-d*1.12],[x+w*1.12,y+s*.18,z+d*1.12],[118,112,100]);
+    // walls
+    quad([x-w,y,z+d],[x+w,y,z+d],[x+w,y+h,z+d],[x-w,y+h,z+d],[216,207,184]);
+    quad([x+w,y,z+d],[x+w,y,z-d],[x+w,y+h,z-d],[x+w,y+h,z+d],[172,164,146]);
+    quad([x-w,y,z-d],[x-w,y,z+d],[x-w,y+h,z+d],[x-w,y+h,z-d],[190,182,162]);
+    tri([x-w,y+h,z+d],[x+w,y+h,z+d],[x,y+h+s*1.15,z+d],[204,196,174]); // gable face
+    // roof slabs with eave overhang + ridge cap
+    quad([x-w*1.14,y+h-s*.06,z+d*1.16],[x,y+h+s*1.24,z+d*1.08],[x,y+h+s*1.24,z-d*1.08],[x-w*1.14,y+h-s*.06,z-d*1.16],[172,84,66]);
+    quad([x,y+h+s*1.24,z+d*1.08],[x+w*1.14,y+h-s*.06,z+d*1.16],[x+w*1.14,y+h-s*.06,z-d*1.16],[x,y+h+s*1.24,z-d*1.08],[142,68,54]);
+    // steeple tower + spire + cross
+    quad([x-s*.26,y+h+s*1.05,z+s*.26],[x+s*.26,y+h+s*1.05,z+s*.26],[x+s*.26,y+h+s*2.25,z+s*.26],[x-s*.26,y+h+s*2.25,z+s*.26],[216,207,184]);
+    quad([x+s*.26,y+h+s*1.05,z+s*.26],[x+s*.26,y+h+s*1.05,z-s*.26],[x+s*.26,y+h+s*2.25,z-s*.26],[x+s*.26,y+h+s*2.25,z+s*.26],[176,168,150]);
+    tri([x-s*.4,y+h+s*2.25,z+s*.3],[x+s*.4,y+h+s*2.25,z+s*.3],[x,y+h+s*2.95,z],[150,72,58]);
+    quad([x-s*.045,y+h+s*2.95,z],[x+s*.045,y+h+s*2.95,z],[x+s*.045,y+h+s*3.6,z],[x-s*.045,y+h+s*3.6,z],[236,222,190],.5);
+    quad([x-s*.24,y+h+s*3.32,z],[x+s*.24,y+h+s*3.32,z],[x+s*.24,y+h+s*3.41,z],[x-s*.24,y+h+s*3.41,z],[236,222,190],.5);
+    // arched door + warm windows + rose window
+    quad([x-s*.34,y+s*.18,z+d+.02],[x+s*.34,y+s*.18,z+d+.02],[x+s*.34,y+s*1.05,z+d+.02],[x-s*.34,y+s*1.05,z+d+.02],[92,66,44]);
+    tri([x-s*.34,y+s*1.05,z+d+.02],[x+s*.34,y+s*1.05,z+d+.02],[x,y+s*1.32,z+d+.02],[92,66,44]);
+    [[-1.25,-.62],[.62,1.25]].forEach(([w0,w1]) => {
+      quad([x+s*w0,y+s*.8,z+d+.02],[x+s*w1,y+s*.8,z+d+.02],[x+s*w1,y+s*1.55,z+d+.02],[x+s*w0,y+s*1.55,z+d+.02],[255,206,120],.85);
+      tri([x+s*w0,y+s*1.55,z+d+.02],[x+s*w1,y+s*1.55,z+d+.02],[x+s*(w0+w1)/2,y+s*1.85,z+d+.02],[255,206,120],.85);
+    });
+    sprites.push({x, y:y+h+s*.55, z:z+d+.05, r:s*.34, c:[255,190,110], tw:5});       // rose window glow
+    sprites.push({x, y:y+h+s*3.45, z, r:s*.4, c:[255,224,150], halo:true, tw:2});     // cross glow
+    // lamp posts flanking the door
+    [-1,1].forEach((sd) => {
+      const lx = x + sd*w*.8, lz = z + d*1.35, ly = hills(lx,lz);
+      quad([lx-.07,ly,lz],[lx+.07,ly,lz],[lx+.07,ly+1.7,lz],[lx-.07,ly+1.7,lz],[52,48,60]);
+      sprites.push({x:lx, y:ly+1.85, z:lz, r:.42, c:[255,214,130], tw:sd+3});
+    });
   }
   function trophy(x,z,s){
-    const y = hills(x,z) + 1.2;
-    quad([x-s*.9,y,z],[x+s*.9,y,z],[x+s*.55,y+s*.5,z],[x-s*.55,y+s*.5,z],[255,184,69],.6);
-    quad([x-s*.55,y+s*.5,z],[x+s*.55,y+s*.5,z],[x+s*.85,y+s*1.5,z],[x-s*.85,y+s*1.5,z],[255,206,110],.7);
-    tri([x-s*1.25,y+s*1.4,z],[x-s*.85,y+s*1.5,z],[x-s*.9,y+s*.8,z],[230,160,60],.5);
-    tri([x+s*1.25,y+s*1.4,z],[x+s*.85,y+s*1.5,z],[x+s*.9,y+s*.8,z],[230,160,60],.5);
-    sprites.push({x, y:y+s*1.9, z, r:s*1.6, c:[255,206,110], halo:true, tw:1});
+    const y = hills(x,z);
+    // three-step plinth
+    [[1.7,.3,[104,86,128]],[1.35,.58,[122,100,150]],[1.0,.85,[142,118,172]]].forEach(([pw,ph,pc]) => {
+      quad([x-s*pw/2,y,z+s*pw/2],[x+s*pw/2,y,z+s*pw/2],[x+s*pw/2,y+s*ph,z+s*pw/2],[x-s*pw/2,y+s*ph,z+s*pw/2],pc);
+      quad([x+s*pw/2,y,z+s*pw/2],[x+s*pw/2,y,z-s*pw/2],[x+s*pw/2,y+s*ph,z-s*pw/2],[x+s*pw/2,y+s*ph,z+s*pw/2],[pc[0]*.75,pc[1]*.75,pc[2]*.75]);
+    });
+    const by = y + s*.85;
+    // cup: stem, bowl, lip, handles
+    quad([x-s*.14,by,z],[x+s*.14,by,z],[x+s*.09,by+s*.42,z],[x-s*.09,by+s*.42,z],[214,150,52],.45);
+    quad([x-s*.5,by+s*.42,z],[x+s*.5,by+s*.42,z],[x+s*.72,by+s*1.28,z],[x-s*.72,by+s*1.28,z],[255,196,84],.6);
+    quad([x-s*.78,by+s*1.28,z],[x+s*.78,by+s*1.28,z],[x+s*.72,by+s*1.44,z],[x-s*.72,by+s*1.44,z],[255,216,120],.75);
+    [[-1,1],[1,-1]].forEach(([sd]) => {
+      tri([x+sd*s*.72,by+s*1.3,z],[x+sd*s*1.18,by+s*1.18,z],[x+sd*s*.78,by+s*.72,z],[236,170,64],.5);
+      tri([x+sd*s*1.18,by+s*1.18,z],[x+sd*s*1.02,by+s*.86,z],[x+sd*s*.78,by+s*.72,z],[204,144,52],.4);
+    });
+    sprites.push({x, y:by+s*1.7, z, r:s*1.7, c:[255,208,110], halo:true, tw:1});
+    sprites.push({x:x-s*.9, y:by+s*1.9, z, r:s*.16, c:[255,236,180], tw:2});
+    sprites.push({x:x+s*1.05, y:by+s*1.45, z, r:s*.12, c:[255,236,180], tw:5});
+    // pennant poles on the plinth corners
+    [-1,1].forEach((sd) => {
+      const px2 = x + sd*s*1.6, py = y + s*.35;
+      quad([px2-.06,py,z],[px2+.06,py,z],[px2+.06,py+s*2.6,z],[px2-.06,py+s*2.6,z],[70,60,90]);
+      tri([px2,py+s*2.6,z],[px2,py+s*2.25,z],[px2+sd*s*.85,py+s*2.45,z],sd<0?[125,252,208]:[255,184,69],.4);
+    });
   }
   function phoneMonolith(x,z,s){
-    const y = hills(x,z) + .4;
-    const w=s*.85, h=s*1.8, d=.35;
-    quad([x-w,y,z+d],[x+w,y,z+d],[x+w,y+h,z+d],[x-w,y+h,z+d],[26,34,58],.25);
-    quad([x+w,y,z+d],[x+w,y,z-d],[x+w,y+h,z-d],[x+w,y+h,z+d],[16,22,40]);
-    quad([x-w*.82,y+h*.08,z+d+.02],[x+w*.82,y+h*.08,z+d+.02],[x+w*.82,y+h*.92,z+d+.02],[x-w*.82,y+h*.92,z+d+.02],[64,120,190],.8);
-    sprites.push({x, y:y+h*.55, z:z+d+.4, r:s*.5, c:[125,200,255], halo:true, tw:3});
+    const y = hills(x,z) + .35;
+    const w=s*.8, h=s*1.9, d=.34;
+    // stone-slab body with bevel edge
+    quad([x-w,y,z+d],[x+w,y,z+d],[x+w,y+h,z+d],[x-w,y+h,z+d],[30,38,64],.2);
+    quad([x+w,y,z+d],[x+w,y,z-d],[x+w,y+h,z-d],[x+w,y+h,z+d],[18,24,44]);
+    quad([x-w,y,z-d],[x-w,y,z+d],[x-w,y+h,z+d],[x-w,y+h,z-d],[24,30,52]);
+    quad([x-w,y+h,z+d],[x+w,y+h,z+d],[x+w,y+h,z-d],[x-w,y+h,z-d],[38,48,78]);
+    // glowing screen with app-row "UI"
+    quad([x-w*.8,y+h*.07,z+d+.02],[x+w*.8,y+h*.07,z+d+.02],[x+w*.8,y+h*.93,z+d+.02],[x-w*.8,y+h*.93,z+d+.02],[38,64,110],.55);
+    for (let r = 0; r < 4; r++){
+      const ry = y + h*(.16 + r*.19);
+      quad([x-w*.62,ry,z+d+.04],[x+w*(r===0?.2:.62),ry,z+d+.04],[x+w*(r===0?.2:.62),ry+h*.07,z+d+.04],[x-w*.62,ry+h*.07,z+d+.04],
+        r===0 ? [255,184,69] : [96,164,235], .85);
+    }
+    sprites.push({x, y:y+h*1.02, z, r:s*.35, c:[125,200,255], tw:3});
+    sprites.push({x, y:y-.15, z:z+d+.6, r:s*.9, c:[80,140,220], halo:true, tw:1});
+  }
+  function mountains(){
+    // distant ridge lines flanking the whole flight, violet against the sky
+    for (let side = -1; side <= 1; side += 2){
+      for (let i = 0; i < 12; i++){
+        const mz = -20 - i*28 + rnd()*10;
+        const mx = side * (58 + rnd()*26);
+        const mw = 26 + rnd()*20, mh = 16 + rnd()*14;
+        tri([mx-mw,0,mz],[mx+mw,0,mz],[mx,mh,mz-8],[34+rnd()*8,32,64+rnd()*10]);
+        tri([mx-mw*.3,mh*.62,mz-4.9],[mx+mw*.3,mh*.62,mz-4.9],[mx,mh,mz-8],[92,96,132]); // moonlit cap
+      }
+    }
+  }
+  function goldPath(){
+    // winding stone path the camera follows — leads the eye through the levels
+    for (let z = 4; z > -335; z -= 3.4){
+      const px = Math.sin(z*.045)*7.5;
+      const y0 = hills(px, z), r = 1.15 + Math.sin(z*.7)*.18;
+      const c = (z/3.4|0) % 2 ? [176,148,104] : [156,128,92];
+      quad([px-r,y0+.06,z+1.35],[px+r,y0+.06,z+1.35],[px+r*.88,y0+.06,z-1.35],[px-r*.88,y0+.06,z-1.35],c);
+    }
+  }
+  function fireflies(){
+    for (let i = 0; i < 34; i++){
+      const fz = -8 - rnd()*315, fx = (rnd()-.5)*46;
+      sprites.push({x:fx, y:hills(fx,fz)+1.2+rnd()*2.6, z:fz, r:.14+rnd()*.1, c:[212,255,170], tw:rnd()*9, fly:true, fp:rnd()*9});
+    }
   }
 
   /* ── scene dressing along the flight path (camera flies toward -z) ── */
+  mountains(); goldPath(); fireflies();
   // HERO field (z 0..-40): pines + a couple glow trees far
   pine(-16,-16,2.4,[44,96,62]); pine(19,-22,3,[38,86,58]); pine(-24,-34,2.6,[50,102,60]);
   pine(26,-38,2.2,[44,96,62]); pine(8,-30,1.7,[56,110,64]);
@@ -382,7 +496,7 @@
   pine(24,-150,2.4,[44,96,62]); pine(-26,-128,2.2,[38,86,58]);
 
   // L3 LEAGUE (z -180..-215): trophy hill + banner trees
-  trophy(0,-198,4);
+  trophy(0,-206,3.2);
   glowTree(-13,-206,2.4,[80,37,122],[201,154,255]);
   glowTree(14,-204,2.4,[32,106,90],[125,252,208]);
   pine(-24,-192,2.6,[50,102,60]); pine(25,-194,2.8,[44,96,62]);
@@ -458,12 +572,28 @@
     }
     ctx.restore();
 
-    // moon
+    // moon with crater detail
     ctx.save();
     ctx.globalAlpha = .9; ctx.fillStyle = "#f2ead2";
     ctx.beginPath(); ctx.arc(W*.78, H*.16, 26*DPR, 0, 7); ctx.fill();
-    ctx.globalAlpha = .12; ctx.beginPath(); ctx.arc(W*.78, H*.16, 60*DPR, 0, 7); ctx.fill();
+    ctx.globalAlpha = .18; ctx.fillStyle = "#c9bfa2";
+    ctx.beginPath(); ctx.arc(W*.78 - 8*DPR, H*.16 - 5*DPR, 6*DPR, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(W*.78 + 7*DPR, H*.16 + 8*DPR, 4*DPR, 0, 7); ctx.fill();
+    ctx.globalAlpha = .12; ctx.fillStyle = "#f2ead2";
+    ctx.beginPath(); ctx.arc(W*.78, H*.16, 60*DPR, 0, 7); ctx.fill();
     ctx.restore();
+
+    // occasional shooting star
+    const meteorT = (t % 9) / 9;
+    if (meteorT < .12){
+      const mp = meteorT / .12;
+      const mx = W*(.15 + mp*.3), my = H*(.08 + mp*.14);
+      ctx.save();
+      ctx.globalAlpha = Math.sin(mp*Math.PI)*.85;
+      ctx.strokeStyle = "#fff8e0"; ctx.lineWidth = 1.6*DPR; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(mx - 46*DPR, my - 20*DPR); ctx.stroke();
+      ctx.restore();
+    }
 
     // visible faces window (cull by camera z)
     const drawList = [];
@@ -478,15 +608,16 @@
         pts.push(pr); depth += pr[2];
       }
       if (!ok) continue;
-      drawList.push({ pts, c: f.c, e: f.e || 0, depth: depth/3 });
+      drawList.push({ pts, c: f.c, e: f.e || 0, sh: f.sh || 1, depth: depth/3 });
     }
     drawList.sort((a,b) => b.depth - a.depth);
 
     for (const d of drawList){
       const fog = Math.min(1, Math.max(0, (d.depth - 20) / 130));
-      const r = d.c[0]*(1-fog) + NIGHT_BOT[0]*fog + d.e*40;
-      const gg = d.c[1]*(1-fog) + NIGHT_BOT[1]*fog + d.e*30;
-      const b = d.c[2]*(1-fog) + NIGHT_BOT[2]*fog + d.e*20;
+      const sh = d.sh;
+      const r = d.c[0]*sh*(1-fog) + NIGHT_BOT[0]*fog + d.e*40;
+      const gg = d.c[1]*sh*(1-fog) + NIGHT_BOT[1]*fog + d.e*30;
+      const b = d.c[2]*Math.min(1.08,sh+.1)*(1-fog) + NIGHT_BOT[2]*fog + d.e*20;
       ctx.fillStyle = `rgb(${r|0},${gg|0},${b|0})`;
       ctx.beginPath();
       ctx.moveTo(d.pts[0][0], d.pts[0][1]);
@@ -500,7 +631,9 @@
     ctx.globalCompositeOperation = "lighter";
     for (const s of sprites){
       if (s.z > cam.z + 4 || s.z < cam.z - 150) continue;
-      const pr = project(s.x, s.y + Math.sin(t*1.6 + s.tw)*.25, s.z, cam);
+      const fx = s.fly ? Math.sin(t*.5 + s.fp)*1.6 : 0;
+      const fy = s.fly ? Math.sin(t*.8 + s.fp*2)*.7 : Math.sin(t*1.6 + s.tw)*.25;
+      const pr = project(s.x + fx, s.y + fy, s.z, cam);
       if (!pr) continue;
       const rad = Math.max(1.5, s.r * (H*.9) / pr[2]);
       const al = (s.halo ? .1 : .55) * (.75 + Math.sin(t*2 + s.tw)*.25);
