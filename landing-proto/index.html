@@ -1,0 +1,567 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>YGTeeV — Launch Your Youth Group</title>
+<style>
+  /* ── tokens: night-garden launch world ── */
+  :root{
+    --ink:#070a13;
+    --ink2:#0c1120;
+    --parch:#f4efe2;
+    --dim:#8f97ad;
+    --gold:#ffb845;
+    --gold-deep:#c9822f;
+    --glow:#7dfcd0;
+    --violet:#8a6dbd;
+    --alert:#ff5a6a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html{scroll-behavior:smooth}
+  body{background:var(--ink);color:var(--parch);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif;overflow-x:hidden}
+  button{font-family:inherit;border:0;cursor:pointer}
+  ::selection{background:var(--gold);color:#231303}
+
+  #world{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0}
+  .grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;
+    background:radial-gradient(120% 90% at 50% 0%, rgba(10,14,26,0) 40%, rgba(4,6,12,.55) 100%)}
+
+  /* ── HUD chrome ── */
+  .hud-top{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:10px;
+    padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 10px;
+    background:linear-gradient(180deg, rgba(7,10,19,.85), rgba(7,10,19,0))}
+  .logo{font-weight:900;font-size:18px;letter-spacing:1px;color:var(--parch)}
+  .logo b{color:var(--gold)}
+  .hud-pill{font-size:9.5px;font-weight:800;letter-spacing:1.6px;color:var(--glow);border:1px solid rgba(125,252,208,.35);border-radius:999px;padding:4px 10px}
+  .hud-cta{margin-left:auto;background:var(--gold);color:#231303;font-weight:800;font-size:12.5px;border-radius:999px;padding:9px 16px;box-shadow:0 4px 18px rgba(255,184,69,.35);transition:transform .15s}
+  .hud-cta:active{transform:scale(.95)}
+
+  /* XP rail */
+  .rail{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:0 0 calc(env(safe-area-inset-bottom,0px));
+    background:linear-gradient(0deg, rgba(7,10,19,.9), rgba(7,10,19,0))}
+  .rail-inner{display:flex;align-items:center;gap:10px;padding:10px 18px 12px}
+  .xp-label{font-size:9px;font-weight:900;letter-spacing:1.6px;color:var(--gold);white-space:nowrap}
+  .xp-bar{flex:1;height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;position:relative}
+  .xp-fill{position:absolute;inset:0 100% 0 0;background:linear-gradient(90deg,var(--gold),#ffd98a);border-radius:999px;transition:inset-inline-end .15s linear}
+  .lvl{font-size:10px;font-weight:900;letter-spacing:1px;color:var(--parch);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  /* level-up toast */
+  .lvlup{position:fixed;top:calc(env(safe-area-inset-top,0px) + 64px);left:50%;transform:translateX(-50%) translateY(-16px);z-index:21;
+    background:rgba(12,17,32,.92);border:1px solid rgba(255,184,69,.5);border-radius:999px;padding:8px 18px;
+    font-size:11px;font-weight:900;letter-spacing:2px;color:var(--gold);opacity:0;pointer-events:none;transition:all .35s cubic-bezier(.2,.9,.3,1.3)}
+  .lvlup.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* ── scroll sections ── */
+  main{position:relative;z-index:10}
+  section{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:90px 20px 110px;position:relative}
+  .card{max-width:560px;width:100%;opacity:0;transform:translateY(46px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.8,.25,1)}
+  section.on .card{opacity:1;transform:none}
+
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:10px;font-weight:900;letter-spacing:2.4px;margin-bottom:14px;padding:6px 12px;border-radius:999px;border:1px solid}
+  .eyebrow.gold{color:var(--gold);border-color:rgba(255,184,69,.4);background:rgba(255,184,69,.07)}
+  .eyebrow.glow{color:var(--glow);border-color:rgba(125,252,208,.35);background:rgba(125,252,208,.06)}
+  .eyebrow.violet{color:#c9b3f0;border-color:rgba(138,109,189,.5);background:rgba(138,109,189,.1)}
+  .eyebrow.alert{color:#ff8a95;border-color:rgba(255,90,106,.4);background:rgba(255,90,106,.07)}
+
+  h1{font-size:clamp(38px,9vw,68px);line-height:.98;font-weight:900;letter-spacing:-1.5px;text-wrap:balance;margin-bottom:18px}
+  h1 .g{color:var(--gold)}
+  h2{font-size:clamp(30px,7vw,50px);line-height:1.02;font-weight:900;letter-spacing:-1px;text-wrap:balance;margin-bottom:14px}
+  .flavor{font-family:Georgia,"Times New Roman",serif;font-style:italic;font-size:clamp(15px,3.6vw,18px);color:var(--dim);line-height:1.55;margin-bottom:22px;max-width:46ch}
+  .flavor b{color:var(--parch);font-style:normal}
+  .facts{display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
+  .fact{display:flex;gap:12px;align-items:flex-start;background:rgba(12,17,32,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.07);border-radius:16px;padding:13px 15px}
+  .fact .ic{font-size:19px;line-height:1.2}
+  .fact b{display:block;font-size:14px;margin-bottom:2px}
+  .fact span{font-size:12.5px;color:var(--dim);line-height:1.5}
+
+  .cta{display:inline-flex;align-items:center;gap:10px;background:linear-gradient(180deg,#ffcf6b,var(--gold) 55%,var(--gold-deep));color:#231303;font-weight:900;font-size:16px;letter-spacing:.3px;border-radius:18px;padding:17px 30px;
+    box-shadow:0 6px 0 #8a5a14, 0 16px 40px rgba(255,184,69,.35), inset 0 1.5px 0 rgba(255,255,255,.65);transition:transform .12s, box-shadow .12s}
+  .cta:active{transform:translateY(4px);box-shadow:0 2px 0 #8a5a14, 0 8px 24px rgba(255,184,69,.3), inset 0 1.5px 0 rgba(255,255,255,.65)}
+  .cta small{display:block;font-size:9.5px;letter-spacing:1.6px;font-weight:800;opacity:.75;text-align:left}
+  .sub-cta{display:block;margin-top:14px;font-size:12px;color:var(--dim)}
+  .sub-cta b{color:var(--glow)}
+
+  .scroll-cue{position:absolute;bottom:66px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;font-size:9.5px;font-weight:900;letter-spacing:2.4px;color:var(--dim);animation:cueFloat 2s ease-in-out infinite}
+  .scroll-cue i{width:1.5px;height:26px;background:linear-gradient(180deg,var(--gold),transparent);display:block;border-radius:2px}
+  @keyframes cueFloat{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(7px)}}
+
+  /* chat demo (level 1) */
+  .chatdemo{background:rgba(12,17,32,.8);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:14px;margin-bottom:24px;display:flex;flex-direction:column;gap:9px}
+  .cmsg{display:flex;gap:8px;align-items:flex-start}
+  .cmsg .cava{width:26px;height:26px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:900;color:#fff}
+  .cmsg .cb{background:rgba(255,255,255,.06);border-radius:4px 12px 12px 12px;padding:7px 11px;font-size:12.5px;line-height:1.4}
+  .cmsg .cb .cn{font-size:10px;font-weight:900;margin-bottom:1px}
+  .cmsg.flag .cb{border:1.5px dashed rgba(255,90,106,.55);background:rgba(255,90,106,.07)}
+  .cmsg.flag .note{margin-top:5px;font-size:10px;color:#ff8a95;font-weight:700;display:flex;gap:5px;align-items:center}
+  .palert{display:flex;gap:10px;align-items:center;background:rgba(255,184,69,.1);border:1px solid rgba(255,184,69,.45);border-radius:14px;padding:10px 13px;font-size:12px}
+  .palert b{color:var(--gold)}
+  .palert .bell{font-size:17px;animation:ringbell 2.4s ease-in-out infinite;transform-origin:top center}
+  @keyframes ringbell{0%,72%,100%{transform:rotate(0)}76%{transform:rotate(14deg)}82%{transform:rotate(-11deg)}88%{transform:rotate(6deg)}94%{transform:rotate(-3deg)}}
+
+  /* league podium (level 3) */
+  .podium{display:flex;align-items:flex-end;gap:8px;margin-bottom:22px;height:120px}
+  .pod{flex:1;border-radius:12px 12px 0 0;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:8px;
+    background:linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.08);border-bottom:0}
+  .pod .pn{font-size:9px;font-weight:900;letter-spacing:.5px;text-align:center;line-height:1.25;padding:0 4px}
+  .pod .pb{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .pod.first{background:linear-gradient(180deg, rgba(255,184,69,.28), rgba(255,184,69,.05));border-color:rgba(255,184,69,.5)}
+  .pod .medal{font-size:18px;margin-bottom:2px}
+  .pod.first .medal{animation:champ 1.6s ease-in-out infinite}
+  @keyframes champ{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+
+  /* OS chips (level 4) */
+  .oschips{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:24px}
+  .oschip{background:rgba(12,17,32,.72);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:12px 13px}
+  .oschip b{display:flex;align-items:center;gap:7px;font-size:12.5px;margin-bottom:3px}
+  .oschip span{font-size:11px;color:var(--dim);line-height:1.45}
+
+  /* final launch */
+  .launch-wrap{text-align:center}
+  .launch-count{font-size:11px;font-weight:900;letter-spacing:3px;color:var(--glow);margin-bottom:14px}
+  .bigcta{display:inline-flex;flex-direction:column;align-items:center;gap:2px;background:linear-gradient(180deg,#ffcf6b,var(--gold) 55%,var(--gold-deep));color:#231303;border-radius:24px;padding:24px 48px;font-weight:900;font-size:clamp(19px,5vw,26px);letter-spacing:.4px;
+    box-shadow:0 8px 0 #8a5a14, 0 26px 70px rgba(255,184,69,.45), inset 0 2px 0 rgba(255,255,255,.7);transition:transform .12s, box-shadow .12s;position:relative;overflow:hidden}
+  .bigcta::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg, transparent 30%, rgba(255,255,255,.5) 48%, transparent 60%);transform:translateX(-120%);animation:sheen 3.2s ease-in-out infinite}
+  @keyframes sheen{0%,55%{transform:translateX(-120%)}80%,100%{transform:translateX(120%)}}
+  .bigcta:active{transform:translateY(5px);box-shadow:0 3px 0 #8a5a14, 0 12px 40px rgba(255,184,69,.4), inset 0 2px 0 rgba(255,255,255,.7)}
+  .bigcta small{font-size:10px;letter-spacing:2.2px;font-weight:800;opacity:.75}
+  .trial-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:20px;font-size:11.5px;color:var(--dim)}
+  .trial-row b{color:var(--parch)}
+  footer{position:relative;z-index:10;text-align:center;padding:30px 20px calc(env(safe-area-inset-bottom,0px) + 90px);font-size:11px;color:#5a6178}
+
+  @media (min-width:700px){
+    .card{max-width:600px}
+    .oschips{grid-template-columns:1fr 1fr 1fr}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:.001s !important;transition-duration:.001s !important}
+    html{scroll-behavior:auto}
+  }
+</style>
+
+<canvas id="world"></canvas>
+<div class="grain"></div>
+
+<div class="hud-top">
+  <span class="logo">YG<b>TeeV</b></span>
+  <span class="hud-pill">FOR YOUTH PASTORS</span>
+  <button class="hud-cta" onclick="document.getElementById('launch').scrollIntoView({behavior:'smooth'})">Launch free</button>
+</div>
+
+<div class="lvlup" id="lvlup">⭐ LEVEL UP</div>
+
+<main id="main">
+  <!-- HERO -->
+  <section id="s0" class="on">
+    <div class="card">
+      <span class="eyebrow gold">▸ PRESS START</span>
+      <h1>Run the youth group they <span class="g">can't put down.</span></h1>
+      <p class="flavor">YGTeeV turns daily Bible reading into a living multiplayer world — with the <b>safest chat in youth ministry</b> wired straight to you.</p>
+      <button class="cta" onclick="document.getElementById('launch').scrollIntoView({behavior:'smooth'})">
+        🚀 <span>Launch your youth group<small>FREE FOR 90 DAYS</small></span>
+      </button>
+      <span class="sub-cta">Scroll to explore the world your students will live in <b>▼</b></span>
+    </div>
+    <div class="scroll-cue">SCROLL<i></i></div>
+  </section>
+
+  <!-- LEVEL 1 · PROTECTION -->
+  <section id="s1">
+    <div class="card">
+      <span class="eyebrow alert">🛡 LEVEL 1 · PROTECTION</span>
+      <h2>Every message is screened before it lands.</h2>
+      <p class="flavor">Group chat, small-group chat, parent chat — all of it moderated by AI on every single message. <b>Nobody is exempt, not even you.</b></p>
+      <div class="chatdemo" aria-label="Moderated chat example">
+        <div class="cmsg"><span class="cava" style="background:#4f8fe0">J</span><div class="cb"><div class="cn" style="color:#7ab2ff">Jaylen</div>who's coming friday?? 🔥</div></div>
+        <div class="cmsg flag"><span class="cava" style="background:#b05ae0">?</span><div class="cb"><div class="cn" style="color:#c9a0f0">Anonymous</div><span style="color:var(--dim)">Message held before anyone saw it</span><div class="note">🛡 Flagged by moderation — routed to you</div></div></div>
+        <div class="palert"><span class="bell">🔔</span><span><b>Pastor alert:</b> a message in Wednesday Crew needs your eyes.</span></div>
+      </div>
+      <div class="facts">
+        <div class="fact"><span class="ic">⚡</span><div><b>Alerts find you, not the other way around</b><span>Flagged messages and concerning patterns ping your phone the moment they happen.</span></div></div>
+        <div class="fact"><span class="ic">👨‍👩‍👧</span><div><b>Parents get their own channel</b><span>Every parent is auto-connected to you and their student's leaders. No group texts.</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LEVEL 2 · THE GAME -->
+  <section id="s2">
+    <div class="card">
+      <span class="eyebrow glow">🌱 LEVEL 2 · THE GAME</span>
+      <h2>Scripture is the currency.</h2>
+      <p class="flavor">Students earn XP by finishing real Bible plans — then spend it in a 3D multiplayer garden with their friends. <b>No reading, no playing.</b></p>
+      <div class="facts">
+        <div class="fact"><span class="ic">📖</span><div><b>Daily plans pay XP</b><span>Read, reflect, answer — the game's entire economy starts in the Word.</span></div></div>
+        <div class="fact"><span class="ic">🐉</span><div><b>A world worth returning to</b><span>Grow rare Glowberry trees, feed Ember the dragon, and meet groupmates walking the same garden live.</span></div></div>
+        <div class="fact"><span class="ic">❓</span><div><b>Hidden Bible questions everywhere</b><span>Daily red pouches quiz them at their grade level and pay gold when they know their stuff.</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LEVEL 3 · THE LEAGUE -->
+  <section id="s3">
+    <div class="card">
+      <span class="eyebrow violet">🏆 LEVEL 3 · THE LEAGUE</span>
+      <h2>Your group vs. every group.</h2>
+      <p class="flavor">Every berry your students grow counts toward the weekly <b>Garden League</b>. A fairness multiplier means a 12-kid group can beat a megachurch.</p>
+      <div class="podium" aria-hidden="true">
+        <div class="pod" style="height:64%"><span class="medal">🥈</span><span class="pn">North Ridge YTH</span><span class="pb">18,204</span></div>
+        <div class="pod first" style="height:100%"><span class="medal">👑</span><span class="pn">YOUR GROUP</span><span class="pb">23,911</span></div>
+        <div class="pod" style="height:46%"><span class="medal">🥉</span><span class="pn">Living Hope SM</span><span class="pb">14,876</span></div>
+      </div>
+      <div class="facts">
+        <div class="fact"><span class="ic">🎉</span><div><b>Champions win real parties</b><span>League winners earn actual youth-night parties — pizza, prizes, bragging rights included.</span></div></div>
+        <div class="fact"><span class="ic">📣</span><div><b>Momentum you can preach on</b><span>"We're 400 berries behind Crossway" is the announcement that fills a room on Wednesday.</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LEVEL 4 · THE OS -->
+  <section id="s4">
+    <div class="card">
+      <span class="eyebrow gold">🖥 LEVEL 4 · THE OPERATING SYSTEM</span>
+      <h2>Everything else you juggle, in one place.</h2>
+      <p class="flavor">YGTeeV isn't an app your students download and forget. It's the <b>operating system for your whole ministry.</b></p>
+      <div class="oschips">
+        <div class="oschip"><b>📅 Events & RSVPs</b><span>Publish, push, and count heads without a spreadsheet.</span></div>
+        <div class="oschip"><b>👥 Small groups</b><span>Leaders, rosters, and a chat per group — auto-wired.</span></div>
+        <div class="oschip"><b>💬 Announcements</b><span>One tap reaches every student, leader, and parent.</span></div>
+        <div class="oschip"><b>📊 Engagement pulse</b><span>See who's reading, playing, and drifting — before they're gone.</span></div>
+        <div class="oschip"><b>🎥 Live sessions</b><span>Host moderated video hangouts; students join by voice.</span></div>
+        <div class="oschip"><b>🧾 Fair billing</b><span>Priced by active students, not your roster's wishful thinking.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LAUNCH -->
+  <section id="launch">
+    <div class="card launch-wrap">
+      <div class="launch-count" id="launchCount">◈ 3 … 2 … 1 …</div>
+      <h2>Your group goes live tonight.</h2>
+      <p class="flavor" style="margin-inline:auto">Ten minutes of setup. Invite by QR at youth group. By Friday they're planting Glowberries — <b>and reading Scripture to do it.</b></p>
+      <button class="bigcta" id="bigLaunch">PRESS LAUNCH<small>FREE FOR 90 DAYS · NO CARD TRICKS</small></button>
+      <div class="trial-row">
+        <span><b>90-day</b> free trial</span><span><b>10-min</b> setup</span><span>Cancel <b>anytime</b></span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>YGTeeV · Built for youth ministry · pastors.ygteev.com</footer>
+
+<div class="rail">
+  <div class="rail-inner">
+    <span class="xp-label">PASTOR XP</span>
+    <div class="xp-bar"><div class="xp-fill" id="xpFill"></div></div>
+    <span class="lvl" id="lvlTag">LV 0 / 5</span>
+  </div>
+</div>
+
+<script>
+(() => {
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ═══════════════ tiny flat-shaded 3D engine (painter's algorithm) ═══════════════ */
+  const cv = document.getElementById("world");
+  const ctx = cv.getContext("2d");
+  let W = 0, H = 0, DPR = 1;
+  function size(){
+    DPR = Math.min(devicePixelRatio || 1, 1.5); // capped — night scene hides it
+    W = cv.width = innerWidth * DPR;
+    H = cv.height = innerHeight * DPR;
+  }
+  addEventListener("resize", size); size();
+
+  // world palette
+  const NIGHT_TOP = [10,15,30], NIGHT_BOT = [22,30,54];
+  const GRASS = [[54,94,58],[48,84,64],[60,102,52],[44,78,56]];
+  const faces = [];   // static world: {p:[[x,y,z]..], c:[r,g,b], e?:emissiveBoost, glow?}
+  const sprites = []; // glow dots: {x,y,z,r,c,tw}
+
+  function quad(a,b,c,d,col,e){ faces.push({p:[a,b,c],c:col,e}); faces.push({p:[a,c,d],c:col,e}); }
+  function tri(a,b,c,col,e){ faces.push({p:[a,b,c],c:col,e}); }
+
+  // deterministic pseudo-random
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+  /* ── terrain: rolling meadow strip along -z, coarse triangles ── */
+  const hills = (x,z) => Math.sin(x*.09)*Math.cos(z*.05)*2.2 + Math.sin(z*.023+1)*1.6;
+  const GX = 9, DZ = 14, ZSEGS = 30, XW = 130;
+  for (let zi = 0; zi < ZSEGS; zi++){
+    for (let xi = 0; xi < GX; xi++){
+      const x0 = -XW/2 + (xi/GX)*XW, x1 = -XW/2 + ((xi+1)/GX)*XW;
+      const z0 = -zi*DZ, z1 = -(zi+1)*DZ;
+      const c = GRASS[(xi + zi) % GRASS.length];
+      const jitter = (rnd()-.5)*8;
+      quad([x0,hills(x0,z0),z0],[x1,hills(x1,z0),z0],[x1,hills(x1,z1),z1],[x0,hills(x0,z1),z1],
+        [c[0]+jitter, c[1]+jitter, c[2]+jitter]);
+    }
+  }
+
+  /* ── props ── */
+  function pine(x,z,s,col){
+    const y = hills(x,z);
+    const tiers = 3;
+    for (let t = 0; t < tiers; t++){
+      const r = s*(1.6 - t*.42), h0 = y + s*(.8 + t*1.05), h1 = h0 + s*1.25;
+      tri([x-r,h0,z+r*.2],[x+r,h0,z+r*.2],[x,h1,z],col);
+      tri([x-r*.85,h0,z-r*.6],[x+r*.85,h0,z-r*.6],[x,h1,z],[col[0]*.8,col[1]*.8,col[2]*.8]);
+    }
+    quad([x-s*.16,y,z],[x+s*.16,y,z],[x+s*.16,y+s*.9,z],[x-s*.16,y+s*.9,z],[74,52,38]);
+  }
+  function glowTree(x,z,s,leaf,berry){
+    const y = hills(x,z);
+    quad([x-s*.14,y,z],[x+s*.14,y,z],[x+s*.14,y+s*1.15,z],[x-s*.14,y+s*1.15,z],[86,66,110]);
+    const cy = y + s*1.6;
+    // icosa-ish canopy: 6 tris fanned
+    for (let i = 0; i < 6; i++){
+      const a0 = (i/6)*Math.PI*2, a1 = ((i+1)/6)*Math.PI*2, r = s*.95;
+      tri([x+Math.cos(a0)*r, cy+Math.sin(a0*2)*.2*s, z+Math.sin(a0)*r*.6],
+          [x+Math.cos(a1)*r, cy+Math.sin(a1*2)*.2*s, z+Math.sin(a1)*r*.6],
+          [x, cy+s*.95, z], [leaf[0]*(0.8+.4*(i%2)), leaf[1]*(0.8+.4*(i%2)), leaf[2]*(0.8+.4*(i%2))], .35);
+    }
+    for (let i = 0; i < 5; i++){
+      const a = rnd()*Math.PI*2;
+      sprites.push({x:x+Math.cos(a)*s*.8, y:cy+ (rnd()-.3)*s, z:z+Math.sin(a)*s*.5, r:s*.16, c:berry, tw:rnd()*7});
+    }
+    sprites.push({x, y:cy+s*.4, z, r:s*1.9, c:berry, halo:true, tw:rnd()*7});
+  }
+  function plotRow(x,z,n){
+    for (let i = 0; i < n; i++){
+      const px = x + i*3.2, y = hills(px,z);
+      quad([px-1.2,y+.12,z+1.2],[px+1.2,y+.12,z+1.2],[px+1.2,y+.12,z-1.2],[px-1.2,y+.12,z-1.2],[92,62,40]);
+      quad([px-1.4,y+.02,z+1.4],[px+1.4,y+.02,z+1.4],[px+1.4,y+.02,z-1.4],[px-1.4,y+.02,z-1.4],[120,88,54]);
+    }
+  }
+  function chapel(x,z,s){
+    const y = hills(x,z);
+    const w=s*2.2, d=s*1.6, h=s*2.1;
+    quad([x-w,y,z+d],[x+w,y,z+d],[x+w,y+h,z+d],[x-w,y+h,z+d],[214,205,182]);       // front
+    quad([x+w,y,z+d],[x+w,y,z-d],[x+w,y+h,z-d],[x+w,y+h,z+d],[176,168,148]);       // side
+    tri([x-w,y+h,z+d],[x+w,y+h,z+d],[x,y+h+s*1.15,z+d],[188,92,74]);               // gable
+    quad([x-w*1.08,y+h,z+d*1.1],[x,y+h+s*1.2,z+d*1.05],[x,y+h+s*1.2,z-d*1.05],[x-w*1.08,y+h,z-d*1.1],[168,80,64]); // roof L
+    quad([x,y+h+s*1.2,z+d*1.05],[x+w*1.08,y+h,z+d*1.1],[x+w*1.08,y+h,z-d*1.1],[x,y+h+s*1.2,z-d*1.05],[148,70,56]); // roof R
+    quad([x-s*.22,y+h+s*1.15,z],[x+s*.22,y+h+s*1.15,z],[x+s*.22,y+h+s*2.2,z],[x-s*.22,y+h+s*2.2,z],[214,205,182]); // steeple
+    tri([x-s*.34,y+h+s*2.2,z],[x+s*.34,y+h+s*2.2,z],[x,y+h+s*2.75,z],[168,80,64]);
+    quad([x-s*.3,y,z+d+.02],[x+s*.3,y,z+d+.02],[x+s*.3,y+s*.95,z+d+.02],[x-s*.3,y+s*.95,z+d+.02],[96,70,46]);      // door
+    sprites.push({x, y:y+h+s*2.95, z, r:s*.32, c:[255,214,120], tw:2});             // steeple light
+  }
+  function trophy(x,z,s){
+    const y = hills(x,z) + 1.2;
+    quad([x-s*.9,y,z],[x+s*.9,y,z],[x+s*.55,y+s*.5,z],[x-s*.55,y+s*.5,z],[255,184,69],.6);
+    quad([x-s*.55,y+s*.5,z],[x+s*.55,y+s*.5,z],[x+s*.85,y+s*1.5,z],[x-s*.85,y+s*1.5,z],[255,206,110],.7);
+    tri([x-s*1.25,y+s*1.4,z],[x-s*.85,y+s*1.5,z],[x-s*.9,y+s*.8,z],[230,160,60],.5);
+    tri([x+s*1.25,y+s*1.4,z],[x+s*.85,y+s*1.5,z],[x+s*.9,y+s*.8,z],[230,160,60],.5);
+    sprites.push({x, y:y+s*1.9, z, r:s*1.6, c:[255,206,110], halo:true, tw:1});
+  }
+  function phoneMonolith(x,z,s){
+    const y = hills(x,z) + .4;
+    const w=s*.85, h=s*1.8, d=.35;
+    quad([x-w,y,z+d],[x+w,y,z+d],[x+w,y+h,z+d],[x-w,y+h,z+d],[26,34,58],.25);
+    quad([x+w,y,z+d],[x+w,y,z-d],[x+w,y+h,z-d],[x+w,y+h,z+d],[16,22,40]);
+    quad([x-w*.82,y+h*.08,z+d+.02],[x+w*.82,y+h*.08,z+d+.02],[x+w*.82,y+h*.92,z+d+.02],[x-w*.82,y+h*.92,z+d+.02],[64,120,190],.8);
+    sprites.push({x, y:y+h*.55, z:z+d+.4, r:s*.5, c:[125,200,255], halo:true, tw:3});
+  }
+
+  /* ── scene dressing along the flight path (camera flies toward -z) ── */
+  // HERO field (z 0..-40): pines + a couple glow trees far
+  pine(-16,-16,2.4,[44,96,62]); pine(19,-22,3,[38,86,58]); pine(-24,-34,2.6,[50,102,60]);
+  pine(26,-38,2.2,[44,96,62]); pine(8,-30,1.7,[56,110,64]);
+  glowTree(-6,-26,2.2,[32,106,90],[125,252,208]);
+
+  // L1 PROTECTION (z -60..-95): chapel sanctuary + pines
+  chapel(0,-84,4.2);
+  pine(-16,-72,2.6,[44,96,62]); pine(15,-76,2.2,[38,86,58]);
+  pine(-26,-90,3,[50,102,60]); pine(27,-92,2.6,[44,96,62]);
+  sprites.push({x:-8,y:hills(-8,-70)+7,z:-70,r:.9,c:[255,120,132],tw:1});   // watchful lights
+  sprites.push({x:9,y:hills(9,-74)+9,z:-74,r:.7,c:[255,184,69],tw:4});
+
+  // L2 GAME (z -120..-155): plots + glow trees cluster
+  plotRow(-12,-132,8); plotRow(-10,-140,7);
+  glowTree(-14,-148,2.6,[32,106,90],[125,252,208]);
+  glowTree(6,-146,2.2,[42,74,122],[159,208,255]);
+  glowTree(16,-136,2,[138,68,50],[255,217,168]);
+  glowTree(-2,-152,2.9,[80,37,122],[201,154,255]);
+  pine(24,-150,2.4,[44,96,62]); pine(-26,-128,2.2,[38,86,58]);
+
+  // L3 LEAGUE (z -180..-215): trophy hill + banner trees
+  trophy(0,-198,4);
+  glowTree(-13,-206,2.4,[80,37,122],[201,154,255]);
+  glowTree(14,-204,2.4,[32,106,90],[125,252,208]);
+  pine(-24,-192,2.6,[50,102,60]); pine(25,-194,2.8,[44,96,62]);
+
+  // L4 OS (z -240..-275): phone monoliths like standing stones
+  phoneMonolith(-12,-258,4); phoneMonolith(0,-252,5); phoneMonolith(13,-260,4.2);
+  pine(-25,-266,2.4,[44,96,62]); pine(24,-270,2.4,[38,86,58]);
+
+  // LAUNCH (z -300..-330): glow-tree amphitheater
+  for (let i = 0; i < 7; i++){
+    const a = (i/7)*Math.PI - Math.PI*.0;
+    glowTree(Math.cos(a)*22, -318 - Math.sin(a)*8, 2.4 + (i%3)*.5,
+      [[32,106,90],[80,37,122],[138,68,50],[42,74,122]][i%4],
+      [[125,252,208],[201,154,255],[255,217,168],[159,208,255]][i%4]);
+  }
+
+  // stars
+  const stars = [];
+  for (let i = 0; i < 130; i++) stars.push({a:rnd()*Math.PI*2, e:rnd()*.5+.06, tw:rnd()*7, r:rnd()*1.4+.4});
+
+  /* ── camera path: driven by scroll progress ── */
+  const CAM_END = -300;
+  let scrollT = 0, targetT = 0, px = 0, py = 0, tpx = 0, tpy = 0;
+
+  addEventListener("scroll", () => {
+    const max = document.documentElement.scrollHeight - innerHeight;
+    targetT = max > 0 ? scrollY / max : 0;
+  }, { passive:true });
+  addEventListener("pointermove", (e) => {
+    tpx = (e.clientX / innerWidth - .5);
+    tpy = (e.clientY / innerHeight - .5);
+  }, { passive:true });
+  addEventListener("deviceorientation", (e) => {
+    if (e.gamma == null) return;
+    tpx = Math.max(-.5, Math.min(.5, e.gamma / 60));
+    tpy = Math.max(-.5, Math.min(.5, (e.beta - 40) / 90));
+  });
+
+  function project(x, y, z, cam){
+    const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z;
+    // slight yaw from parallax
+    const ca = Math.cos(cam.yaw), sa = Math.sin(cam.yaw);
+    const rx = dx*ca - dz*sa, rz = dx*sa + dz*ca;
+    if (rz > -2) return null; // behind camera
+    const f = (H * .9) / -rz;
+    return [W/2 + rx*f, H*.44 - (dy)*f, -rz];
+  }
+
+  function render(now){
+    const t = now * .001;
+    scrollT += (targetT - scrollT) * .09;
+    px += (tpx - px) * .06;
+    py += (tpy - py) * .06;
+
+    const camZ = 14 + scrollT * (CAM_END - 14);
+    const bob = Math.sin(scrollT * 26) * .6;
+    const cam = { x: px*6 + Math.sin(scrollT*9)*3, y: 7.5 + py*2.5 + bob, z: camZ, yaw: px * .14 };
+
+    // sky
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0, `rgb(${NIGHT_TOP.join(",")})`);
+    g.addColorStop(1, `rgb(${NIGHT_BOT.join(",")})`);
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+    // stars
+    ctx.save();
+    for (const s of stars){
+      const sx = ((s.a*997) % 1) * W, sy = s.e * H;
+      const al = .35 + Math.sin(t*1.4 + s.tw)*.3;
+      ctx.globalAlpha = Math.max(.05, al);
+      ctx.fillStyle = "#dfe8ff";
+      ctx.fillRect(sx, sy, s.r*DPR, s.r*DPR);
+    }
+    ctx.restore();
+
+    // moon
+    ctx.save();
+    ctx.globalAlpha = .9; ctx.fillStyle = "#f2ead2";
+    ctx.beginPath(); ctx.arc(W*.78, H*.16, 26*DPR, 0, 7); ctx.fill();
+    ctx.globalAlpha = .12; ctx.beginPath(); ctx.arc(W*.78, H*.16, 60*DPR, 0, 7); ctx.fill();
+    ctx.restore();
+
+    // visible faces window (cull by camera z)
+    const drawList = [];
+    for (const f of faces){
+      const zc = (f.p[0][2] + f.p[1][2] + f.p[2][2]) / 3;
+      if (zc > cam.z + 4 || zc < cam.z - 150) continue;
+      const pts = [];
+      let ok = true, depth = 0;
+      for (const v of f.p){
+        const pr = project(v[0], v[1], v[2], cam);
+        if (!pr){ ok = false; break; }
+        pts.push(pr); depth += pr[2];
+      }
+      if (!ok) continue;
+      drawList.push({ pts, c: f.c, e: f.e || 0, depth: depth/3 });
+    }
+    drawList.sort((a,b) => b.depth - a.depth);
+
+    for (const d of drawList){
+      const fog = Math.min(1, Math.max(0, (d.depth - 20) / 130));
+      const r = d.c[0]*(1-fog) + NIGHT_BOT[0]*fog + d.e*40;
+      const gg = d.c[1]*(1-fog) + NIGHT_BOT[1]*fog + d.e*30;
+      const b = d.c[2]*(1-fog) + NIGHT_BOT[2]*fog + d.e*20;
+      ctx.fillStyle = `rgb(${r|0},${gg|0},${b|0})`;
+      ctx.beginPath();
+      ctx.moveTo(d.pts[0][0], d.pts[0][1]);
+      ctx.lineTo(d.pts[1][0], d.pts[1][1]);
+      ctx.lineTo(d.pts[2][0], d.pts[2][1]);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // glow sprites — flat stacked circles, no per-frame gradient allocations
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const s of sprites){
+      if (s.z > cam.z + 4 || s.z < cam.z - 150) continue;
+      const pr = project(s.x, s.y + Math.sin(t*1.6 + s.tw)*.25, s.z, cam);
+      if (!pr) continue;
+      const rad = Math.max(1.5, s.r * (H*.9) / pr[2]);
+      const al = (s.halo ? .1 : .55) * (.75 + Math.sin(t*2 + s.tw)*.25);
+      ctx.fillStyle = `rgba(${s.c[0]},${s.c[1]},${s.c[2]},${al.toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(pr[0], pr[1], rad, 0, 7); ctx.fill();
+      if (!s.halo){
+        ctx.fillStyle = `rgba(255,255,255,${(al*.5).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(pr[0], pr[1], rad*.4, 0, 7); ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    if (!reduced) setTimeout(() => requestAnimationFrame(render), 33); // ~30fps is plenty for a night flight
+  }
+  requestAnimationFrame(render);
+  if (reduced) requestAnimationFrame(render);
+
+  /* ═══════════════ scroll game chrome ═══════════════ */
+  const sections = [...document.querySelectorAll("section")];
+  const xpFill = document.getElementById("xpFill");
+  const lvlTag = document.getElementById("lvlTag");
+  const lvlup = document.getElementById("lvlup");
+  let lastLvl = 0, lvlT;
+
+  const io = new IntersectionObserver((es) => {
+    es.forEach((e) => { if (e.isIntersecting) e.target.classList.add("on"); });
+  }, { threshold: .25 });
+  sections.forEach((s) => io.observe(s));
+
+  function chrome(){
+    const max = document.documentElement.scrollHeight - innerHeight;
+    const p = max > 0 ? scrollY / max : 0;
+    xpFill.style.insetInlineEnd = (100 - p*100) + "%";
+    const lvl = Math.min(5, Math.floor(p * 5.999));
+    lvlTag.textContent = `LV ${lvl} / 5`;
+    if (lvl > lastLvl){
+      lastLvl = lvl;
+      lvlup.textContent = lvl >= 5 ? "🚀 READY TO LAUNCH" : `⭐ LEVEL ${lvl} UNLOCKED`;
+      lvlup.classList.add("show");
+      clearTimeout(lvlT); lvlT = setTimeout(() => lvlup.classList.remove("show"), 1600);
+    }
+    requestAnimationFrame(chrome);
+  }
+  requestAnimationFrame(chrome);
+
+  /* launch button: confetti + point at the real funnel */
+  document.getElementById("bigLaunch").addEventListener("click", (e) => {
+    const b = e.currentTarget.getBoundingClientRect();
+    for (let i = 0; i < 26; i++){
+      const c = document.createElement("span");
+      c.textContent = ["🎉","⭐","🌱","✨","🔥"][i%5];
+      c.style.cssText = `position:fixed;left:${b.left+b.width/2}px;top:${b.top}px;font-size:${14+Math.random()*12}px;z-index:50;pointer-events:none;transition:all ${1.2+Math.random()}s cubic-bezier(.15,.8,.3,1);`;
+      document.body.appendChild(c);
+      requestAnimationFrame(() => {
+        c.style.transform = `translate(${(Math.random()-.5)*320}px, ${-(120+Math.random()*260)}px) rotate(${(Math.random()-.5)*260}deg)`;
+        c.style.opacity = "0";
+      });
+      setTimeout(() => c.remove(), 2400);
+    }
+    const cnt = document.getElementById("launchCount");
+    cnt.textContent = "◈ THIS BUTTON WIRES TO pastors.ygteev.com/create ◈";
+  });
+})();
+</script>
