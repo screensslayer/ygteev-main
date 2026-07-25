@@ -142,7 +142,7 @@
 <div class="hud-top">
   <span class="logo">YG<b>TeeV</b></span>
   <span class="hud-pill">FOR YOUTH PASTORS</span>
-  <button class="hud-cta" onclick="document.getElementById('launch').scrollIntoView({behavior:'smooth'})">Launch free</button>
+  <a class="hud-cta" style="text-decoration:none" href="https://pastors.ygteev.com/youth-group-registration">Launch free</a>
 </div>
 
 <div class="lvlup" id="lvlup">⭐ LEVEL UP</div>
@@ -153,9 +153,9 @@
     <div class="card">
       <h1>Run the youth group they <span class="g">can't put down.</span></h1>
       <p class="flavor">YGTeeV turns daily Bible reading into a living multiplayer world — with the <b>safest chat in youth ministry</b> wired straight to you.</p>
-      <button class="cta" onclick="document.getElementById('launch').scrollIntoView({behavior:'smooth'})">
+      <a class="cta" style="text-decoration:none" href="https://pastors.ygteev.com/youth-group-registration">
         🚀 <span>Launch your youth group<small>FREE FOR 90 DAYS</small></span>
-      </button>
+      </a>
       <span class="sub-cta">Scroll to explore the world your students will live in <b>▼</b></span>
     </div>
     <div class="scroll-cue">SCROLL<i></i></div>
@@ -692,8 +692,7 @@
       });
       setTimeout(() => c.remove(), 2400);
     }
-    const cnt = document.getElementById("launchCount");
-    cnt.textContent = "◈ THIS BUTTON WIRES TO pastors.ygteev.com/create ◈";
+    setTimeout(() => { location.href = "https://pastors.ygteev.com/youth-group-registration"; }, 750);
   });
 })();
 </script>
