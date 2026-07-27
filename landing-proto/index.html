@@ -1,6 +1,19 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>YGTeeV — Launch Your Youth Group</title>
+<!-- Meta Pixel -->
+<script>
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '770329684625319');
+fbq('track', 'PageView');
+fbq('track', 'ViewContent', { content_name: 'pastor_landing', content_category: 'youth_group_launch' });
+</script>
+<noscript><img height="1" width="1" style="display:none" alt=""
+src="https://www.facebook.com/tr?id=770329684625319&ev=PageView&noscript=1"/></noscript>
 <style>
   /* ── tokens: night-garden launch world ── */
   :root{
@@ -142,7 +155,7 @@
 <div class="hud-top">
   <span class="logo">YG<b>TeeV</b></span>
   <span class="hud-pill">FOR YOUTH PASTORS</span>
-  <a class="hud-cta" style="text-decoration:none" href="https://pastors.ygteev.com/youth-group-registration">Launch free</a>
+  <a class="hud-cta" style="text-decoration:none" href="https://pastors.ygteev.com/youth-group-registration" onclick="fbq && fbq('trackCustom','LaunchCTAClick',{placement:'topbar'})">Launch free</a>
 </div>
 
 <div class="lvlup" id="lvlup">⭐ LEVEL UP</div>
@@ -153,7 +166,7 @@
     <div class="card">
       <h1>Run the youth group they <span class="g">can't put down.</span></h1>
       <p class="flavor">YGTeeV turns daily Bible reading into a living multiplayer world — with the <b>safest chat in youth ministry</b> wired straight to you.</p>
-      <a class="cta" style="text-decoration:none" href="https://pastors.ygteev.com/youth-group-registration">
+      <a class="cta" style="text-decoration:none" href="https://pastors.ygteev.com/youth-group-registration" onclick="fbq && fbq('trackCustom','LaunchCTAClick',{placement:'hero'})">
         🚀 <span>Launch your youth group<small>FREE FOR 90 DAYS</small></span>
       </a>
       <span class="sub-cta">Scroll to explore the world your students will live in <b>▼</b></span>
@@ -692,6 +705,7 @@
       });
       setTimeout(() => c.remove(), 2400);
     }
+    if (window.fbq) fbq('trackCustom', 'LaunchCTAClick', { placement: 'press_launch' });
     setTimeout(() => { location.href = "https://pastors.ygteev.com/youth-group-registration"; }, 750);
   });
 })();
