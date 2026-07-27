@@ -3,16 +3,37 @@
 // hits redeem-child-pairing-token, gets a session, stays signed in via the
 // standard Supabase refresh-token loop.
 //
-// Requires parent has profiles.age_verified_at set (paid $0.99 / dev bypass).
+// Two invocation modes:
+//
+//   1. Parent-first (legacy) — parent taps "Add a kid" in the app and
+//      types the child's name / dob / grade themselves. The parent's
+//      device then hands the resulting pairing token to the kid to
+//      redeem on a separate device.
+//
+//   2. Kid-first via signup handoff — the reimagined under-13
+//      onboarding. The KID device (anonymous) creates a
+//      `child_signup_handoffs` row with their name / dob / grade,
+//      shows a QR encoding the row's nonce. Parent scans, is routed
+//      into the app, and calls this endpoint with the nonce set.
+//      When `signup_handoff_nonce` is present we pull demographics
+//      SERVER-SIDE from the handoff row (client body values for
+//      those fields are ignored), mint the child, and stamp the
+//      resulting `child_user_id`, `pairing_token`, `numeric_code`,
+//      `redeemed_at` back onto the handoff row so the kid's device
+//      can poll for the token and finish the redeem.
+//
+// Requires parent has profiles.age_verified_at set (paid $0.99 / dev bypass)
+// in both modes.
 //
 // Request body:
 //   {
-//     "family_id":     "<uuid>",
-//     "first_name":    "Ezra",
-//     "last_name":     "Kim",            // optional
-//     "date_of_birth": "2014-08-12",     // ISO date
-//     "grade_year":    5,                 // optional, int
-//     "avatar_url":    null               // optional
+//     "family_id":            "<uuid>",
+//     "first_name":           "Ezra",           // ignored if nonce set
+//     "last_name":            "Kim",             // ignored if nonce set
+//     "date_of_birth":        "2014-08-12",      // ignored if nonce set
+//     "grade_year":           5,                  // ignored if nonce set
+//     "avatar_url":           null,               // optional
+//     "signup_handoff_nonce": "A3F72C81"          // optional — kid-first mode
 //   }
 //
 // Response:
@@ -84,12 +105,53 @@ Deno.serve(async (req)=>{
     return fail('bad-json', 400, String(e));
   }
   const familyId = String(body.family_id ?? '').trim();
-  const firstName = String(body.first_name ?? '').trim();
-  const lastName = String(body.last_name ?? '').trim();
-  const dobStr = String(body.date_of_birth ?? '').trim();
-  const gradeYear = body.grade_year != null ? Number(body.grade_year) : null;
   const avatarUrl = body.avatar_url ? String(body.avatar_url) : null;
+  const handoffNonceRaw = body.signup_handoff_nonce ?? null;
+  const handoffNonce = handoffNonceRaw != null
+    ? String(handoffNonceRaw).trim().toUpperCase()
+    : null;
+
   if (!familyId) return fail('family_id-required', 400, body);
+
+  // Resolved fields — client-supplied by default, overridden by the
+  // handoff row when signup_handoff_nonce is set.
+  let firstName = String(body.first_name ?? '').trim();
+  let lastName  = String(body.last_name  ?? '').trim();
+  let dobStr    = String(body.date_of_birth ?? '').trim();
+  let gradeYear = body.grade_year != null ? Number(body.grade_year) : null;
+  let handoffRowId: string | null = null;
+
+  // 1a. Kid-first mode: load the handoff row via service role and use
+  //     its demographics as the source of truth. Fall through into
+  //     the normal validation with those values below.
+  if (handoffNonce) {
+    const supabaseService_early = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'), {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    const { data: handoffRow, error: handoffErr } = await supabaseService_early
+      .from('child_signup_handoffs')
+      .select('id, expires_at, redeemed_at, display_name, grade_year, date_of_birth')
+      .eq('nonce', handoffNonce)
+      .maybeSingle();
+    if (handoffErr) return fail('handoff-lookup-failed', 500, handoffErr.message);
+    if (!handoffRow) return fail('handoff-not-found', 404, handoffNonce);
+    if (handoffRow.redeemed_at) return fail('handoff-already-redeemed', 409, handoffNonce);
+    if (new Date(handoffRow.expires_at) < new Date()) {
+      return fail('handoff-expired', 410, handoffNonce);
+    }
+
+    // display_name from the handoff is a single field. Use it as
+    // firstName (no lastName split); it's already what the kid
+    // chose to be called in-app.
+    firstName = String(handoffRow.display_name ?? '').trim();
+    lastName  = '';
+    dobStr    = handoffRow.date_of_birth
+      ? String(handoffRow.date_of_birth).slice(0, 10)
+      : '';
+    gradeYear = handoffRow.grade_year != null ? Number(handoffRow.grade_year) : null;
+    handoffRowId = handoffRow.id;
+  }
+
   if (!firstName) return fail('first_name-required', 400, body);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dobStr)) return fail('date_of_birth-invalid', 400, body);
   const dob = new Date(dobStr);
@@ -169,6 +231,24 @@ Deno.serve(async (req)=>{
     created_by: user.id
   }).select('expires_at').single();
   if (tokErr || !tokenRow) return fail('token-insert-failed', 500, tokErr?.message);
+
+  // 8. If this was a kid-first (handoff) call, stamp the handoff row
+  //    so the waiting kid device can poll and see the resulting
+  //    pairing token. Best-effort — the pairing token was minted
+  //    successfully, so a failed stamp here should not roll back
+  //    the child account. Log and continue.
+  if (handoffRowId) {
+    const { error: handoffUpdErr } = await supabaseService.from('child_signup_handoffs').update({
+      child_user_id: childUserId,
+      pairing_token: pairingToken,
+      numeric_code: numericCode,
+      redeemed_at: new Date().toISOString()
+    }).eq('id', handoffRowId);
+    if (handoffUpdErr) {
+      console.error('[create-child-account] handoff-stamp-failed:', handoffUpdErr.message);
+    }
+  }
+
   return json({
     child_user_id: childUserId,
     display_name: displayName,
