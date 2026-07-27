@@ -1,12 +1,11 @@
-// v7: Accept an optional `promo_code` in the request body. Looks the
-// code up in `pastor_signup_promos`; if valid (active, not expired,
-// under max_uses), uses its `trial_days` for the Stripe Checkout
-// Session and increments the use count. Falls back to the default
-// trial when no code is provided or the code is invalid.
-//
-// Promo code is stashed on the Stripe subscription metadata so the
-// `stripe-webhook` (and any future reconciliation) can attribute
-// signups to a campaign.
+// v10: mirror fbp/fbc onto subscription metadata so invoice-driven
+// Purchase events can match on browser identifiers too.
+// v9: Accept optional `fb` attribution ({ fbp, fbc, source_url }) from
+// the registration site and stash it in the Checkout Session metadata so
+// stripe-webhook can send Meta Conversions API events (StartTrial /
+// Purchase) with browser identifiers for ad attribution.
+// v8 (2026-07-20): default trial extended 14 -> 90 days.
+// v7: promo_code support via pastor_signup_promos.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 const cors = {
@@ -14,8 +13,6 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json"
 };
-// v8 (2026-07-20): default trial extended 14 -> 90 days — every pastor
-// gets 3 months free. Promo codes can still override via trial_days.
 const DEFAULT_TRIAL_DAYS = 90;
 Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") return new Response("ok", {
@@ -33,6 +30,11 @@ Deno.serve(async (req)=>{
     const cancelUrl = body?.cancel_url;
     const rawPromo = body?.promo_code;
     const promoCode = rawPromo ? String(rawPromo).trim().toLowerCase() : null;
+    // Optional Meta ads attribution from the browser (_fbp/_fbc cookies).
+    const fb = body?.fb ?? {};
+    const fbp = typeof fb.fbp === "string" ? fb.fbp.slice(0, 200) : null;
+    const fbc = typeof fb.fbc === "string" ? fb.fbc.slice(0, 400) : null;
+    const fbSourceUrl = typeof fb.source_url === "string" ? fb.source_url.slice(0, 480) : null;
     if (!draftId || !tierId || !successUrl || !cancelUrl) {
       return json({
         error: "missing_required_fields"
@@ -75,9 +77,6 @@ Deno.serve(async (req)=>{
         tier_id: tierId
       }, 500);
     }
-    // Resolve trial length from promo code, if any. Silent fallback to
-    // the default — never error out the signup just because a code is
-    // invalid; the user shouldn't be blocked from paying us.
     let trialDays = DEFAULT_TRIAL_DAYS;
     let resolvedPromoCode = null;
     if (promoCode) {
@@ -89,10 +88,9 @@ Deno.serve(async (req)=>{
     }
     const email = user.email ?? draft.email ?? "";
     const name = `${draft.first_name ?? ""} ${draft.last_name ?? ""}`.trim();
-    // Find existing Stripe customer by email
     let customerId = null;
     try {
-      const searchRes = await stripeApi("GET", `/v1/customers/search?query=${encodeURIComponent(`email:"${email}"`)}`, null, STRIPE_KEY);
+      const searchRes = await stripeApi("GET", `/v1/customers/search?query=${encodeURIComponent(`email:\"${email}\"`)}`, null, STRIPE_KEY);
       if (searchRes?.data?.length) customerId = searchRes.data[0].id;
     } catch (_e) {}
     if (!customerId) {
@@ -117,6 +115,9 @@ Deno.serve(async (req)=>{
     params.append("subscription_data[metadata][supabase_user_id]", user.id);
     params.append("subscription_data[metadata][draft_id]", draftId);
     params.append("subscription_data[metadata][tier_id]", tierId);
+    // Also on the subscription so later invoice Purchase events can match.
+    if (fbp) params.append("subscription_data[metadata][fb_fbp]", fbp);
+    if (fbc) params.append("subscription_data[metadata][fb_fbc]", fbc);
     if (resolvedPromoCode) {
       params.append("subscription_data[metadata][promo_code]", resolvedPromoCode);
       params.append("metadata[promo_code]", resolvedPromoCode);
@@ -127,6 +128,9 @@ Deno.serve(async (req)=>{
     params.append("metadata[supabase_user_id]", user.id);
     params.append("metadata[draft_id]", draftId);
     params.append("metadata[tier_id]", tierId);
+    if (fbp) params.append("metadata[fb_fbp]", fbp);
+    if (fbc) params.append("metadata[fb_fbc]", fbc);
+    if (fbSourceUrl) params.append("metadata[fb_source_url]", fbSourceUrl);
     params.append("allow_promotion_codes", "true");
     const session = await stripeApi("POST", "/v1/checkout/sessions", params, STRIPE_KEY);
     if (session?.error) {
@@ -135,9 +139,6 @@ Deno.serve(async (req)=>{
         detail: session.error
       }, 502);
     }
-    // Bump uses_count for the promo. We do this fire-and-forget after
-    // the Checkout Session is created — the user has already left for
-    // Stripe. If this fails we just under-count analytics, no harm.
     if (resolvedPromoCode) {
       try {
         await admin.rpc("increment_pastor_signup_promo_uses", {

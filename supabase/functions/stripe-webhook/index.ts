@@ -1,10 +1,13 @@
-// v7: After checkout.session.completed finalizes the pastor signup +
-// writes the stripe_subscriptions row, fire-and-forget a welcome email
-// via send-pastor-welcome-email. Failures are logged but do not fail
-// the webhook — Stripe doesn't retry on non-2xx for arbitrary downstream
-// hiccups, and the signup itself has already succeeded.
+// v8: Meta Conversions API — after a successful trial checkout, send a
+// server-side StartTrial event (hashed email + _fbp/_fbc passed through
+// checkout metadata by the registration site); every PAID invoice sends
+// a Purchase event with the real amount. No-ops silently when
+// META_CAPI_ACCESS_TOKEN isn't set; never fails the webhook.
+// v7: welcome email after finalize (fire-and-forget).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+const META_PIXEL_ID = Deno.env.get("META_PIXEL_ID") ?? "770329684625319";
+const META_TOKEN = Deno.env.get("META_CAPI_ACCESS_TOKEN") ?? "";
 Deno.serve(async (req)=>{
   if (req.method !== "POST") return new Response("method not allowed", {
     status: 405
@@ -114,6 +117,21 @@ async function handleEvent(event, admin, stripeKey) {
         }, {
           onConflict: "stripe_subscription_id"
         });
+        // Meta CAPI: the ad-attributable conversion moment.
+        await sendMetaEvent({
+          event_name: "StartTrial",
+          event_id: `${event.id}`,
+          event_source_url: session.metadata?.fb_source_url || "https://pastors.ygteev.com/youth-group-registration",
+          email: session.customer_details?.email ?? session.customer_email ?? null,
+          fbp: session.metadata?.fb_fbp ?? null,
+          fbc: session.metadata?.fb_fbc ?? null,
+          custom_data: {
+            currency: (session.currency ?? "usd").toLowerCase(),
+            value: 0,
+            content_name: tierId ?? "pastor_plan",
+            predicted_ltv: (session.amount_total ?? 0) / 100
+          }
+        });
         // Fire-and-forget welcome email. Don't block the webhook on the
         // email response — Resend can flake and signup is already done.
         try {
@@ -182,12 +200,68 @@ async function handleEvent(event, admin, stripeKey) {
               raw_payload: sub
             }).eq("stripe_subscription_id", inv.subscription);
           }
+          // Meta CAPI: real revenue — every paid invoice is a Purchase.
+          if ((inv.amount_paid ?? 0) > 0) {
+            await sendMetaEvent({
+              event_name: "Purchase",
+              event_id: `${event.id}`,
+              event_source_url: "https://pastors.ygteev.com",
+              email: inv.customer_email ?? null,
+              fbp: sub?.metadata?.fb_fbp ?? null,
+              fbc: sub?.metadata?.fb_fbc ?? null,
+              custom_data: {
+                currency: (inv.currency ?? "usd").toLowerCase(),
+                value: inv.amount_paid / 100,
+                content_name: sub?.metadata?.tier_id ?? "pastor_plan"
+              }
+            });
+          }
         }
         break;
       }
     default:
       break;
   }
+}
+/* ── Meta Conversions API (server events, deduped by event_id) ── */
+async function sendMetaEvent({ event_name, event_id, event_source_url, email, fbp, fbc, custom_data }) {
+  if (!META_TOKEN) return; // not configured yet — silently skip
+  try {
+    const user_data = {};
+    if (email) user_data.em = [await sha256(email.trim().toLowerCase())];
+    if (fbp) user_data.fbp = fbp;
+    if (fbc) user_data.fbc = fbc;
+    if (!user_data.em && !user_data.fbp && !user_data.fbc) return; // nothing to match on
+    const payload = {
+      data: [{
+        event_name,
+        event_time: Math.floor(Date.now() / 1000),
+        event_id,
+        action_source: "website",
+        event_source_url,
+        user_data,
+        custom_data
+      }]
+    };
+    const res = await fetch(`https://graph.facebook.com/v21.0/${META_PIXEL_ID}/events?access_token=${META_TOKEN}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      console.log("[stripe-webhook] meta capi failed", res.status, await res.text());
+    } else {
+      console.log("[stripe-webhook] meta capi sent", event_name, event_id);
+    }
+  } catch (e) {
+    console.log("[stripe-webhook] meta capi threw", String(e));
+  }
+}
+async function sha256(s) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map((b)=>b.toString(16).padStart(2, "0")).join("");
 }
 async function stripeApi(method, path, body, key) {
   const res = await fetch(`https://api.stripe.com${path}`, {
