@@ -1,5 +1,6 @@
 // v10: mirror fbp/fbc onto subscription metadata so invoice-driven
 // Purchase events can match on browser identifiers too.
+// v11 (2026-07-27): default trial 90 -> 30 days.
 // v9: Accept optional `fb` attribution ({ fbp, fbc, source_url }) from
 // the registration site and stash it in the Checkout Session metadata so
 // stripe-webhook can send Meta Conversions API events (StartTrial /
@@ -13,7 +14,7 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json"
 };
-const DEFAULT_TRIAL_DAYS = 90;
+const DEFAULT_TRIAL_DAYS = 30;
 Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") return new Response("ok", {
     headers: cors

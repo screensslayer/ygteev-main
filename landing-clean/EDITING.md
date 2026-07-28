@@ -14,7 +14,7 @@ Sections appear in the file in page order. Search for the `id=` to jump there.
 | Section | Search for | What's there |
 |---|---|---|
 | Top nav | `class="topnav"` | Nav labels (Safety, The game, League, Platform) |
-| Hero | `id="hero"` | Eyebrow, headline (3 lines, last one green), paragraph, button labels, "Free for 90 days" line |
+| Hero | `id="hero"` | Eyebrow, headline (3 lines, last one green), paragraph, button labels, "Free for 30 days" line |
 | Trust strip | `class="hero-proof"` | The four bullet facts under the hero |
 | Hero dashboard mockup | `Wednesday Night Youth` | All the fake dashboard data (names, numbers, streaks) |
 | Safe chat | `id="product"` | Headline, paragraph, the four bold bullets, chat mockup messages |
