@@ -107,6 +107,13 @@ Deno.serve(async (req)=>{
     if (!groupId) return json({
       error: "missing_group_id"
     }, 400);
+    // Test mode: reroute delivery to an allowlisted internal address.
+    // Hardcoded allowlist so the public anon key can't be used to spam.
+    const TEST_RECIPIENTS = [
+      "jimjacob10@gmail.com",
+      "jim@ygteev.com"
+    ];
+    const testTo = typeof body?.test_to === "string" && TEST_RECIPIENTS.includes(body.test_to.toLowerCase()) ? body.test_to.toLowerCase() : null;
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -145,6 +152,7 @@ Deno.serve(async (req)=>{
       const days = Math.round((new Date(trialEndIso).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
       if (days > 0 && days <= 365) trialDays = days;
     }
+    if (testTo) pastorEmail = testTo;
     if (!pastorEmail) {
       return json({
         error: "pastor_email_not_found",
