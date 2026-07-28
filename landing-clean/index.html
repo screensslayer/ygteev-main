@@ -1,0 +1,870 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>YGTeeV — Launch your youth group</title>
+<meta name="description" content="YGTeeV turns daily Bible reading into a shared game for your youth group, with moderated chat wired straight to you." />
+<link rel="canonical" href="https://launch.ygteev.com/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="YGTeeV">
+<meta property="og:title" content="YGTeeV — Daily Bible reading your students actually keep up with">
+<meta property="og:description" content="Reading plans as a shared game — streaks, gardens, a national league — with every conversation moderated and routed to you. Free for 90 days.">
+<meta property="og:url" content="https://launch.ygteev.com/">
+<meta property="og:image" content="https://launch.ygteev.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="YGTeeV — Daily Bible reading your students actually keep up with">
+<meta name="twitter:description" content="Reading plans as a shared game for youth groups, with moderated chat wired straight to the pastor.">
+<meta name="twitter:image" content="https://launch.ygteev.com/og.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d12'/%3E%3Cpath d='M16 25V12' stroke='%235ac48f' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M16 18c-4-.8-6.5-3.2-7.2-7 4 .9 6.4 3.2 7.2 7z' fill='%235ac48f'/%3E%3Cpath d='M16 14c4-.8 6.5-3.2 7.2-7-4 .9-6.4 3.2-7.2 7z' fill='%234da87a'/%3E%3C/svg%3E">
+<!-- Meta Pixel -->
+<script>
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init','770329684625319');
+fbq('track','PageView');
+fbq('track','ViewContent',{content_name:'pastor_landing'});
+</script>
+<noscript><img height="1" width="1" style="display:none" alt=""
+src="https://www.facebook.com/tr?id=770329684625319&ev=PageView&noscript=1"/></noscript>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ===== tokens ===== */
+  :root{
+    --bg:#0b0d12;
+    --bg2:#10131b;
+    --surface:#151924;
+    --line:rgba(255,255,255,.08);
+    --line2:rgba(255,255,255,.14);
+    --ink:#eef0f4;
+    --ink2:#aeb6c6;
+    --ink3:#7d8598;
+    --accent:#5ac48f;
+    --accent-ink:#0a1510;
+    --warn:#e0a24a;
+    --danger:#e06767;
+    --radius:12px;
+    --maxw:1120px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:clip}
+  a{color:inherit;text-decoration:none}
+  ::selection{background:var(--accent);color:var(--accent-ink)}
+  .container{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  .section{padding:104px 0}
+  @media (max-width:720px){.section{padding:60px 0}}
+  .eyebrow{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1,h2{letter-spacing:-.02em;line-height:1.15;font-weight:700}
+  h2{font-size:clamp(28px,4vw,40px)}
+  .lede{color:var(--ink2);font-size:17px;max-width:56ch}
+  .btn{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#0c0e13;font-weight:600;font-size:15px;padding:11px 20px;border-radius:7px;transition:background .15s}
+  .btn:hover{background:#dfe4ea}
+  .btn-ghost{display:inline-flex;align-items:center;background:transparent;color:var(--ink);border:1px solid rgba(255,255,255,.28);font-weight:600;font-size:15px;padding:10px 20px;border-radius:7px;transition:border-color .15s}
+  .btn-ghost:hover{border-color:rgba(255,255,255,.5)}
+  .link-arrow{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:15px;color:var(--ink2);padding:10px 2px;transition:color .15s}
+  .link-arrow:hover{color:var(--ink)}
+  .link-arrow svg{width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
+  .link-arrow:hover svg{transform:translateX(2px)}
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto}
+    *,*::before,*::after{transition:none !important;animation:none !important}
+  }
+
+  /* ===== topbar ===== */
+  .topbar{position:sticky;top:0;z-index:50;background:rgba(11,13,18,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  .topbar-inner{display:flex;align-items:center;gap:28px;height:60px}
+  .brand{font-weight:700;font-size:17px;letter-spacing:-.01em}
+  .brand span{color:var(--accent)}
+  .topnav{display:flex;gap:24px;font-size:14px;color:var(--ink2);margin-left:auto}
+  .topnav a:hover{color:var(--ink)}
+  .topbar-auth{display:flex;align-items:center;gap:18px}
+  .topbar-signin{font-size:14px;color:var(--ink2);transition:color .15s}
+  .topbar-signin:hover{color:var(--ink)}
+  .topbar .btn{padding:8px 16px;font-size:14px}
+  @media (max-width:720px){.topnav{display:none}.topbar-auth{margin-left:auto}}
+
+  /* ===== hero (zone: hero) ===== */
+  #hero{position:relative;overflow-x:clip;display:flex;align-items:center;min-height:calc(100vh - 60px);padding:64px 0 72px;background:radial-gradient(1100px 640px at 76% 34%,rgba(90,196,143,.10),transparent 66%),radial-gradient(900px 560px at 2% -12%,rgba(132,152,224,.07),transparent 62%),linear-gradient(180deg,#0d1017 0%,var(--bg) 52%)}
+  #hero>.container{width:100%}
+  .hero-grid{display:grid;grid-template-columns:minmax(0,1.18fr) minmax(0,.82fr);gap:56px;align-items:center}
+  #hero h1{font-size:clamp(36px,4.1vw,59px);letter-spacing:-.035em;line-height:1.06}
+  #hero h1 .h1-sub{color:var(--accent)}
+  #hero .lede{margin:22px 0 34px}
+  .hero-actions{display:flex;gap:14px;flex-wrap:wrap}
+  .hero-note{margin-top:20px;font-size:13px;color:var(--ink3)}
+  .hero-note b{color:var(--ink2);font-weight:600}
+  /* trust strip */
+  .hero-proof{margin-top:56px;display:flex;align-items:baseline;gap:14px 36px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:26px}
+  .hp-label{font-size:12px;color:var(--ink3);letter-spacing:.01em;flex:none}
+  .hp-facts{display:flex;align-items:baseline;gap:12px 34px;flex-wrap:wrap}
+  .hp-facts span{position:relative;font-size:13.5px;font-weight:500;color:var(--ink2);white-space:nowrap;padding-left:15px}
+  .hp-facts span::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:5px;height:5px;border-radius:50%;background:var(--accent);opacity:.75}
+  /* hero dashboard mockup */
+  .hero-visual{position:relative;min-width:0}
+  .hero-visual::before{content:"";position:absolute;inset:-16% -22%;background:radial-gradient(50% 46% at 52% 44%,rgba(90,196,143,.17),transparent 72%);pointer-events:none}
+  .dash-card{position:relative;z-index:1;background:var(--bg2);border:1px solid var(--line2);border-radius:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 32px 80px -28px rgba(0,0,0,.75);font-size:13px;overflow:hidden}
+  .dash-chrome{display:flex;align-items:center;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface)}
+  .dash-chrome .cdot{width:9px;height:9px;border-radius:50%;background:var(--line2)}
+  .dash-chrome .ctitle{margin-left:8px;font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dash-body{padding:16px 20px 16px}
+  .dash-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+  .dash-head b{display:block;font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+  .dash-head span{display:block;font-size:11.5px;color:var(--ink3);margin-top:2px}
+  .dash-badge{margin-left:auto;flex:none;font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--accent);background:rgba(90,196,143,.1);border:1px solid rgba(90,196,143,.25);border-radius:999px;padding:3px 10px}
+  .dash-avatars{display:flex;align-items:center;margin-bottom:14px}
+  .dash-av{position:relative;width:26px;height:26px;border-radius:50%;border:2px solid var(--bg2);margin-left:-6px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--ink);letter-spacing:.01em}
+  .dash-av:nth-child(1){margin-left:0;z-index:5}
+  .dash-av:nth-child(2){z-index:4}
+  .dash-av:nth-child(3){z-index:3}
+  .dash-av:nth-child(4){z-index:2}
+  .dash-av:nth-child(5){z-index:1}
+  .dash-avatars .amore{margin-left:9px;font-size:11.5px;color:var(--ink3)}
+  .dash-chart{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;height:106px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  .dash-col{min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end}
+  .dash-col .val{font-size:9.5px;font-style:normal;color:var(--ink3);font-variant-numeric:tabular-nums}
+  .dash-col.today .val{color:var(--accent);font-weight:600}
+  .dash-bar{width:100%;border-radius:4px 4px 2px 2px;background:rgba(90,196,143,.3)}
+  .dash-col.today .dash-bar{background:var(--accent)}
+  .dash-col span{font-size:10px;color:var(--ink3)}
+  .dash-col.today span{color:var(--ink2);font-weight:600}
+  .dash-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+  .dash-stats b{display:block;font-size:19px;font-weight:700;letter-spacing:-.02em}
+  .dash-stats span{font-size:10px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3)}
+  .dash-roster{margin-top:13px;border-top:1px solid var(--line);padding-top:9px}
+  .dash-roster-hd{display:flex;justify-content:space-between;font-size:9.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3);padding-bottom:3px}
+  .dash-row{display:grid;grid-template-columns:auto minmax(0,1fr) 56px auto;gap:11px;align-items:center;padding:7px 0}
+  .dash-row + .dash-row{border-top:1px solid var(--line)}
+  .dash-row .rav{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:600;color:var(--ink)}
+  .dash-row .rnm{min-width:0;line-height:1.3}
+  .dash-row .rnm b{display:block;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dash-row .rnm small{display:block;font-size:10.5px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dash-row .rbar{height:4px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden}
+  .dash-row .rbar i{display:block;height:100%;border-radius:999px;background:var(--accent)}
+  .dash-row .rstreak{font-size:11px;font-weight:600;color:var(--ink2);font-variant-numeric:tabular-nums;min-width:26px;text-align:right}
+  .dash-foot{display:flex;align-items:center;gap:8px;margin-top:2px;padding-top:11px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink2)}
+  .dash-foot .fdot2{flex:none;width:6px;height:6px;border-radius:50%;background:var(--warn)}
+  .dash-foot b{color:var(--ink);font-weight:600}
+  .dash-toast{position:absolute;left:-30px;bottom:34px;z-index:2;display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line2);border-radius:10px;box-shadow:0 20px 48px -12px rgba(0,0,0,.85);padding:10px 14px;font-size:12.5px;color:var(--ink2)}
+  .dash-toast .tdot{flex:none;width:22px;height:22px;border-radius:6px;background:rgba(90,196,143,.12);display:flex;align-items:center;justify-content:center}
+  .dash-toast .tdot svg{width:12px;height:12px;stroke:var(--accent);stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .dash-toast b{color:var(--ink);font-weight:600}
+  @media (max-width:960px){
+    #hero{display:block;min-height:0;padding:96px 0 80px}
+    .hero-grid{grid-template-columns:1fr;gap:56px}
+    #hero h1{max-width:22ch;text-wrap:balance}
+    #hero .hbr{display:none}
+    .hero-proof{margin-top:64px}
+    .dash-toast{position:static;margin-top:14px}
+  }
+  @media (max-width:560px){
+    #hero{padding:64px 0 60px}
+    #hero h1{font-size:clamp(21px,(100vw - 52px)/12.6,27px);max-width:none}
+    #hero .hbr{display:inline}
+    .hero-actions{flex-direction:column;align-items:stretch;gap:12px;max-width:360px}
+    .hero-actions .btn,.hero-actions .btn-ghost,.hero-actions .link-arrow{width:100%;justify-content:center}
+    .hero-proof{margin-top:48px;display:block}
+    .hp-label{display:block;margin-bottom:16px}
+    .hp-facts{display:grid;grid-template-columns:1fr;gap:12px}
+    .hp-facts span{white-space:normal}
+  }
+
+  /* ===== product (zone: safe chat / moderation) ===== */
+  #product{border-bottom:1px solid var(--line)}
+  .mod-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:72px;align-items:center}
+  @media (max-width:960px){.mod-grid{grid-template-columns:1fr;gap:48px}}
+  .mod-copy h2{font-size:clamp(28px,2.5vw + 7px,37px);text-wrap:balance}
+  @media (max-width:480px){.mod-copy h2 br{display:none}}
+  .mod-copy .lede{margin-top:18px}
+  .mod-points{list-style:none;margin-top:30px;display:flex;flex-direction:column;gap:16px}
+  .mod-points li{display:flex;gap:12px;align-items:flex-start;color:var(--ink2);font-size:15px}
+  .mod-points li b{color:var(--ink);font-weight:600}
+  .mod-points .tick{flex:none;width:20px;height:20px;border-radius:6px;background:rgba(90,196,143,.12);display:flex;align-items:center;justify-content:center;margin-top:2px}
+  .mod-points .tick svg{width:11px;height:11px;stroke:var(--accent);stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  /* chat frame mockup */
+  .mod-visual{position:relative;min-width:0;padding-bottom:132px}
+  .chat-frame{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--radius);box-shadow:0 24px 60px -24px rgba(0,0,0,.6);overflow:hidden;font-size:13.5px}
+  .chat-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
+  .chat-head .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+  .chat-head b{font-size:13.5px;font-weight:600}
+  .chat-head .meta{color:var(--ink3);font-size:12px;margin-left:auto}
+  .chat-body{padding:16px;display:flex;flex-direction:column;gap:14px}
+  .msg{display:flex;gap:10px;min-width:0}
+  .ava{flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:600;color:var(--ink)}
+  .msg-b{min-width:0}
+  .msg-meta{display:flex;gap:8px;align-items:baseline;margin-bottom:3px}
+  .msg-meta b{font-size:12.5px;font-weight:600}
+  .msg-meta time{font-size:11px;color:var(--ink3)}
+  .msg-t{color:var(--ink2);line-height:1.5}
+  /* held message card */
+  .msg-held{border:1px solid rgba(224,162,74,.35);background:rgba(224,162,74,.06);border-radius:10px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start}
+  .msg-held .shield{flex:none;width:30px;height:30px;border-radius:8px;background:rgba(224,162,74,.14);display:flex;align-items:center;justify-content:center}
+  .msg-held .shield svg{width:15px;height:15px;stroke:var(--warn);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .msg-held-b{min-width:0;flex:1}
+  .msg-held-b b{display:block;font-size:12.5px;font-weight:600;color:var(--warn);margin-bottom:2px}
+  .msg-held-b p{font-size:12.5px;color:var(--ink2);line-height:1.5}
+  .msg-held-actions{display:flex;gap:8px;margin-top:10px}
+  .chip-btn{font-size:11.5px;font-weight:600;padding:5px 12px;border-radius:6px;border:1px solid var(--line2);color:var(--ink2)}
+  .chip-btn.primary{background:var(--surface);color:var(--ink)}
+  /* routing card overlay */
+  .route-card{position:absolute;right:0;bottom:0;width:248px;background:var(--surface);border:1px solid var(--line2);border-radius:var(--radius);box-shadow:0 32px 72px -12px rgba(0,0,0,.8);padding:14px 16px;font-size:12px}
+  @media (max-width:1200px){
+    .mod-visual{padding-bottom:0}
+    .route-card{position:static;width:100%;margin-top:14px}
+  }
+  .route-card h4{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);margin-bottom:10px}
+  .route-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);color:var(--ink2)}
+  .route-row:first-of-type{border-top:0}
+  .route-row .rdot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--ink3)}
+  .route-row b{color:var(--ink);font-weight:600;margin-left:auto}
+  @media (max-width:960px){
+    .route-card{position:static;width:100%;margin-top:14px}
+  }
+  @media (max-width:480px){
+    .chat-body{padding:12px}
+    .msg-held{flex-direction:column;gap:8px}
+  }
+
+  /* ===== game (zone: game) ===== */
+  #game{border-bottom:1px solid var(--line)}
+  #game .gm-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:72px;align-items:center}
+  #game .gm-copy .lede{margin-top:18px}
+  #game .gm-feats{margin-top:30px;border-top:1px solid var(--line)}
+  #game .gm-feat{display:grid;grid-template-columns:168px minmax(0,1fr);gap:18px;padding:15px 0;border-bottom:1px solid var(--line);font-size:15px}
+  #game .gm-feat b{color:var(--ink);font-weight:600}
+  #game .gm-feat span{color:var(--ink2)}
+  #game .gm-cta{margin-top:28px}
+  #game .gm-stage{display:flex;justify-content:center}
+  #game .gm-phone{width:300px;background:#05070c;border:1px solid var(--line2);border-radius:40px;padding:10px;box-shadow:0 32px 72px -28px rgba(0,0,0,.8)}
+  #game .gm-screen{position:relative;height:584px;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;background:linear-gradient(180deg,#0d1524 0%,#0e1e22 55%,#132419 100%)}
+  #game .gm-statusbar{flex:none;display:flex;align-items:flex-start;padding:0 16px}
+  #game .gm-sb-time{flex:1;font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--ink2);line-height:24px}
+  #game .gm-notch{flex:none;width:104px;height:22px;background:#05070c;border-radius:0 0 12px 12px}
+  #game .gm-sb-icons{flex:1;display:flex;align-items:center;justify-content:flex-end;gap:5px;height:24px;color:var(--ink2)}
+  #game .gm-sb-icons svg{display:block}
+  #game .gm-hud{flex:none;display:flex;align-items:center;padding:9px 14px 6px}
+  #game .gm-title{font-size:13px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+  #game .gm-chips{margin-left:auto;display:flex;gap:6px}
+  #game .gm-chip{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:999px;padding:3px 8px;font-size:10.5px;font-weight:600;color:var(--ink2)}
+  #game .gm-chip svg{width:10px;height:10px}
+  #game .gm-garden{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px 14px;align-content:end}
+  #game .gm-plot{position:relative;height:124px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  #game .gm-soil{position:absolute;left:0;right:0;bottom:0;height:22px;background:#241c14;border-top:2px solid #372a1c}
+  #game .gm-tag{position:absolute;top:8px;left:8px;font-size:8.5px;font-weight:600;letter-spacing:.03em;color:var(--ink2);background:rgba(255,255,255,.08);border-radius:5px;padding:2px 6px}
+  #game .gm-wiltbadge{position:absolute;top:27px;left:8px;font-size:7.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--warn);background:rgba(224,162,74,.12);border:1px solid rgba(224,162,74,.32);border-radius:4px;padding:1px 4px}
+  #game .gm-veg{position:absolute;left:50%;transform:translateX(-50%);bottom:16px;width:60px;height:84px}
+  #game .gm-emptyplot{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:transparent;border:1px dashed var(--line2)}
+  #game .gm-plus{font-size:17px;line-height:1;font-weight:400;color:var(--ink3)}
+  #game .gm-plantword{font-size:8.5px;font-weight:600;letter-spacing:.03em;color:var(--ink3)}
+  #game .gm-week{flex:none;display:flex;align-items:center;gap:8px;margin:8px 14px 0;padding:7px 10px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px}
+  #game .gm-days{display:flex;gap:4px}
+  #game .gm-days i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.12)}
+  #game .gm-days i.on{background:var(--accent)}
+  #game .gm-week span{margin-left:auto;font-size:10px;font-weight:600;color:var(--ink3)}
+  #game .gm-task{flex:none;margin:8px 12px 15px;background:var(--surface);border:1px solid var(--line2);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px}
+  #game .gm-task-txt b{display:block;font-size:12.5px;font-weight:600}
+  #game .gm-task-txt span{font-size:10.5px;color:var(--ink3)}
+  #game .gm-read{margin-left:auto;background:var(--accent);color:var(--accent-ink);font-size:11.5px;font-weight:600;border-radius:999px;padding:7px 14px;white-space:nowrap}
+  @media (max-width:960px){
+    #game .gm-grid{grid-template-columns:1fr;gap:48px}
+    #game .gm-stage{order:2}
+  }
+  @media (max-width:480px){
+    #game .gm-feat{grid-template-columns:1fr;gap:4px}
+  }
+
+  /* ===== league (zone: league) ===== */
+  #league{border-bottom:1px solid var(--line);background:var(--bg2)}
+  #league .lg-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:72px;align-items:center}
+  #league .lg-copy .lede{margin-top:18px}
+  #league .lg-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:30px;padding-top:22px;border-top:1px solid var(--line)}
+  #league .lg-stat b{display:block;font-size:15px;font-weight:600}
+  #league .lg-stat span{font-size:13px;color:var(--ink3)}
+  #league .lg-copy .btn{margin-top:30px}
+  #league .lg-card{max-width:470px;margin-left:auto;background:var(--surface);border:1px solid var(--line2);border-radius:var(--radius);box-shadow:0 24px 60px -24px rgba(0,0,0,.6);overflow:hidden}
+  #league .lg-head{display:flex;align-items:baseline;gap:10px;padding:16px 20px 13px;border-bottom:1px solid var(--line)}
+  #league .lg-head b{font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+  #league .lg-head span{margin-left:auto;font-size:12px;color:var(--ink3)}
+  #league .lg-row{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);font-size:13.5px}
+  #league .lg-rank{flex:none;width:20px;font-weight:600;color:var(--ink3);font-variant-numeric:tabular-nums}
+  #league .lg-name{min-width:0;font-weight:500;letter-spacing:-.01em;line-height:1.35}
+  #league .lg-name small{display:block;font-size:11.5px;font-weight:400;color:var(--ink3)}
+  #league .lg-pts{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums}
+  #league .lg-delta{flex:none;width:34px;display:flex;align-items:center;justify-content:flex-end;gap:3px;font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
+  #league .lg-delta svg{width:8px;height:8px}
+  #league .lg-delta.up{color:var(--accent)}
+  #league .lg-delta.down{color:var(--danger)}
+  #league .lg-row.you{background:rgba(90,196,143,.07)}
+  #league .lg-row.you .lg-rank{color:var(--accent)}
+  #league .lg-you{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);border:1px solid rgba(90,196,143,.4);border-radius:5px;padding:1px 6px;margin-left:7px;vertical-align:1px}
+  #league .lg-foot{padding:13px 20px 17px;background:rgba(90,196,143,.05)}
+  #league .lg-foot span{font-size:12px;color:var(--ink3)}
+  #league .lg-foot b{font-weight:600;color:var(--accent)}
+  #league .lg-bar{height:5px;background:rgba(255,255,255,.07);border-radius:99px;margin-top:8px;overflow:hidden}
+  #league .lg-fill{height:100%;width:77.5%;background:var(--accent);border-radius:99px}
+  #league .lg-stat span{text-wrap:balance}
+  @media (max-width:960px){
+    #league .lg-grid{grid-template-columns:1fr;gap:48px}
+    #league .lg-card{margin-left:0;max-width:100%}
+  }
+  @media (max-width:480px){
+    #league .lg-stats{grid-template-columns:1fr;gap:14px}
+    #league .lg-row{padding:12px 14px}
+    #league .lg-head,#league .lg-foot{padding-left:14px;padding-right:14px}
+  }
+
+  /* ===== platform (zone: platform) ===== */
+  #platform{border-bottom:1px solid var(--line)}
+  .plat-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:72px;align-items:center;margin-bottom:72px}
+  @media (max-width:960px){.plat-grid{grid-template-columns:1fr;gap:48px}}
+  .plat-copy .lede{margin-top:18px}
+  /* pastor console mockup */
+  .console{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--radius);box-shadow:0 24px 60px -24px rgba(0,0,0,.6);overflow:hidden;font-size:13px}
+  .console-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
+  .console-head b{font-size:13.5px;font-weight:600}
+  .console-head span{margin-left:auto;color:var(--ink3);font-size:12px}
+  .console-body{padding:4px 16px}
+  .con-row{display:grid;grid-template-columns:1fr auto;gap:7px 16px;padding:13px 0 15px;border-top:1px solid var(--line)}
+  .con-row:first-child{border-top:0}
+  .con-row .nm{font-size:13px;font-weight:600}
+  .con-row .pc{font-size:12px;color:var(--ink3);font-variant-numeric:tabular-nums}
+  .con-bar{grid-column:1/-1;height:4px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden}
+  .con-bar i{display:block;height:100%;border-radius:999px;background:var(--accent)}
+  .con-bar i.low{background:var(--warn)}
+  .console-foot{display:flex;align-items:center;gap:9px;padding:12px 16px;border-top:1px solid var(--line);background:var(--surface);font-size:12.5px;color:var(--ink2)}
+  .console-foot .fdot{width:6px;height:6px;border-radius:50%;background:var(--warn);flex:none}
+  .console-foot b{color:var(--ink);font-weight:600}
+  /* capability grid */
+  .plat-features{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  @media (max-width:960px){.plat-features{grid-template-columns:1fr 1fr}}
+  @media (max-width:600px){.plat-features{grid-template-columns:1fr}}
+  .plat-cell{background:var(--bg2);padding:24px}
+  .plat-cell h3{font-size:15px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px}
+  .plat-cell p{font-size:13.5px;color:var(--ink2);line-height:1.55}
+  .plat-cell .ic{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:rgba(90,196,143,.1);margin-bottom:14px}
+  .plat-cell .ic svg{width:14px;height:14px;stroke:var(--accent);stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ===== cta (zone: cta) ===== */
+  #cta{text-align:left;border-bottom:1px solid var(--line)}
+  .cta-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:72px;align-items:center}
+  @media (max-width:960px){.cta-grid{grid-template-columns:1fr;gap:56px}}
+  #cta h2{max-width:24ch}
+  @media (max-width:560px){
+    .cta-br{display:none}
+    .cta-actions{flex-direction:column;align-items:stretch;gap:12px;max-width:360px}
+    .cta-actions .btn,.cta-actions .btn-ghost,.cta-actions .link-arrow{width:100%;justify-content:center}
+    .cta-meta{flex-direction:column;align-items:flex-start;gap:10px}
+  }
+  .cta-lede{margin:18px 0 32px;max-width:48ch}
+  .cta-actions{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:28px}
+  .cta-meta{display:flex;gap:10px 26px;flex-wrap:wrap;font-size:13.5px;color:var(--ink3)}
+  .cta-meta span{display:inline-flex;align-items:center;gap:8px}
+  .cta-meta .cdot{width:5px;height:5px;border-radius:50%;background:var(--accent);flex:none}
+  .cta-meta span:first-child .cdot{margin-left:-1px}
+  /* qr invite card mockup */
+  .qr-card{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--radius);box-shadow:0 24px 60px -24px rgba(0,0,0,.6);overflow:hidden;font-size:13px;max-width:480px;justify-self:end;width:100%}
+  @media (max-width:960px){.qr-card{justify-self:start}}
+  .qr-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
+  .qr-head b{font-size:13.5px;font-weight:600}
+  .qr-head span{margin-left:auto;color:var(--ink3);font-size:12px}
+  .qr-body{display:flex;align-items:center;gap:20px;padding:20px 16px}
+  .qr-tile{flex:none;width:132px;height:132px;background:#fff;border-radius:10px;padding:10px}
+  .qr-tile svg{display:block;width:100%;height:100%}
+  .qr-side p{color:var(--ink2);font-size:13px;line-height:1.55}
+  .qr-link{display:inline-block;margin-top:12px;font-size:12px;color:var(--ink3);font-variant-numeric:tabular-nums;letter-spacing:.01em;border:1px solid var(--line);border-radius:6px;padding:4px 9px;background:var(--surface)}
+  .qr-foot{display:flex;align-items:center;gap:9px;padding:12px 16px;border-top:1px solid var(--line);background:var(--surface);font-size:12.5px;color:var(--ink2)}
+  .qr-foot .qdot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none}
+  .qr-foot b{color:var(--ink);font-weight:600}
+  @media (max-width:480px){.qr-body{flex-direction:column;align-items:flex-start}.qr-tile{width:148px;height:148px}}
+
+  /* ===== footer (zone: footer) ===== */
+  #footer{padding:64px 0 40px;color:var(--ink3);font-size:13px}
+  .footer-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr);gap:40px;padding-bottom:44px}
+  @media (max-width:720px){.footer-grid{grid-template-columns:1fr;gap:32px}}
+  .footer-brand .brand{display:inline-block;margin-bottom:12px}
+  .footer-brand p{max-width:34ch;line-height:1.6}
+  .footer-hd{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);margin-bottom:10px}
+  .footer-col a{display:block;padding:5px 0;color:var(--ink3);transition:color .15s}
+  .footer-col a:hover{color:var(--ink)}
+  .footer-bottom{display:flex;align-items:center;gap:10px 24px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:26px}
+  .footer-bottom .fsep{margin-left:auto;color:var(--ink3)}
+</style>
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a class="brand" href="#hero">YG<span>TeeV</span></a>
+    <nav class="topnav">
+      <a href="#product">Safety</a>
+      <a href="#game">The game</a>
+      <a href="#league">League</a>
+      <a href="#platform">Platform</a>
+    </nav>
+    <div class="topbar-auth">
+      <a class="topbar-signin" href="https://pastors.ygteev.com">Sign in</a>
+      <a class="btn" href="https://pastors.ygteev.com/youth-group-registration" onclick="fbq && fbq('trackCustom','LaunchCTAClick',{placement:'topbar'})">Launch your group</a>
+    </div>
+  </div>
+</header>
+
+<section id="hero" class="section">
+  <div class="container">
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow">For youth pastors</p>
+        <h1>Daily Bible reading <br class="hbr">your students actually <br class="hbr"><span class="h1-sub">keep up with</span></h1>
+        <p class="lede">YGTeeV turns reading plans into a shared game for your youth group — streaks, gardens, and a league table — with every conversation moderated and routed to you.</p>
+        <div class="hero-actions">
+          <a class="btn" href="https://pastors.ygteev.com/youth-group-registration" onclick="fbq && fbq('trackCustom','LaunchCTAClick',{placement:'hero'})">Launch your group</a>
+          <a class="link-arrow" href="#product">See how safety works<svg viewBox="0 0 16 16"><path d="M2.5 8h11M9.5 4l4 4-4 4"/></svg></a>
+        </div>
+        <p class="hero-note"><b>Free for 90 days</b> · 10-minute setup · Cancel anytime</p>
+      </div>
+      <div class="hero-visual" aria-label="Group reading dashboard, illustrative UI">
+        <div class="dash-card">
+          <div class="dash-chrome" aria-hidden="true">
+            <span class="cdot"></span><span class="cdot"></span><span class="cdot"></span>
+            <span class="ctitle">pastors.ygteev.com — group dashboard</span>
+          </div>
+          <div class="dash-body">
+          <div class="dash-head">
+            <div><b>Wednesday Night Youth</b><span>This week's reading</span></div>
+            <span class="dash-badge">42 students</span>
+          </div>
+          <div class="dash-avatars" aria-hidden="true">
+            <span class="dash-av" style="background:#31404f">MJ</span>
+            <span class="dash-av" style="background:#3d3a52">TR</span>
+            <span class="dash-av" style="background:#2f4a3c">AK</span>
+            <span class="dash-av" style="background:#4a3d33">SD</span>
+            <span class="dash-av" style="background:#34455e">EW</span>
+            <span class="amore">+37 reading this week</span>
+          </div>
+          <div class="dash-chart" role="img" aria-label="Daily reading completion, rising through the week">
+            <div class="dash-col"><i class="val">18</i><div class="dash-bar" style="height:40%"></div><span>Mon</span></div>
+            <div class="dash-col"><i class="val">23</i><div class="dash-bar" style="height:51%"></div><span>Tue</span></div>
+            <div class="dash-col"><i class="val">20</i><div class="dash-bar" style="height:44%"></div><span>Wed</span></div>
+            <div class="dash-col"><i class="val">27</i><div class="dash-bar" style="height:60%"></div><span>Thu</span></div>
+            <div class="dash-col"><i class="val">26</i><div class="dash-bar" style="height:58%"></div><span>Fri</span></div>
+            <div class="dash-col"><i class="val">29</i><div class="dash-bar" style="height:64%"></div><span>Sat</span></div>
+            <div class="dash-col today"><i class="val">31</i><div class="dash-bar" style="height:69%"></div><span>Today</span></div>
+          </div>
+          <div class="dash-stats">
+            <div><b>31</b><span>Read today</span></div>
+            <div><b>9 days</b><span>Group streak</span></div>
+            <div><b>2nd</b><span>In the league</span></div>
+          </div>
+          <div class="dash-roster" aria-hidden="true">
+            <div class="dash-roster-hd"><span>Plan progress</span><span>Streak</span></div>
+            <div class="dash-row"><span class="rav" style="background:#31404f">MJ</span><span class="rnm"><b>Maya J.</b><small>John &middot; Day 12 of 21</small></span><span class="rbar"><i style="width:57%"></i></span><span class="rstreak">9d</span></div>
+            <div class="dash-row"><span class="rav" style="background:#3d3a52">TR</span><span class="rnm"><b>Tyler R.</b><small>John &middot; Day 12 of 21</small></span><span class="rbar"><i style="width:57%"></i></span><span class="rstreak">12d</span></div>
+            <div class="dash-row"><span class="rav" style="background:#2f4a3c">AK</span><span class="rnm"><b>Abby K.</b><small>Psalms &middot; Day 4 of 14</small></span><span class="rbar"><i style="width:29%"></i></span><span class="rstreak">4d</span></div>
+            <div class="dash-row" style="opacity:.55"><span class="rav" style="background:#4a3d33">SD</span><span class="rnm"><b>Sofia D.</b><small>Ruth &middot; Day 6 of 10</small></span><span class="rbar"><i style="width:60%"></i></span><span class="rstreak">6d</span></div>
+            <div class="dash-row" style="opacity:.28"><span class="rav" style="background:#34455e">EW</span><span class="rnm"><b>Ethan W.</b><small>John &middot; Day 11 of 21</small></span><span class="rbar"><i style="width:52%"></i></span><span class="rstreak">7d</span></div>
+          </div>
+          <div class="dash-foot"><span class="fdot2"></span><span><b>1 message</b> held for review &mdash; routed to you</span></div>
+          </div>
+        </div>
+        <div class="dash-toast">
+          <span class="tdot"><svg viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8"/></svg></span>
+          <span><b>Maya</b> finished Day 12 of John</span>
+        </div>
+      </div>
+    </div>
+    <div class="hero-proof" aria-label="How YGTeeV is built">
+      <span class="hp-label">Built so you can hand it to parents</span>
+      <div class="hp-facts">
+        <span>Every message screened before delivery</span>
+        <span>No student-to-student DMs</span>
+        <span>Parents get their own channel</span>
+        <span>Priced by active students</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="product" class="section">
+  <div class="container">
+    <div class="mod-grid">
+      <div class="mod-copy">
+        <p class="eyebrow">Safe chat</p>
+        <h2>Every message is screened <br>before anyone sees it</h2>
+        <p class="lede">AI moderation screens every message in every thread — group chat, small groups, parent chat. Flagged messages are held and routed to the right adult.</p>
+        <ul class="mod-points">
+          <li><span class="tick"><svg viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8"/></svg></span><span><b>Held, not deleted.</b> Flagged messages wait for human review, so nothing disappears without an adult seeing it.</span></li>
+          <li><span class="tick"><svg viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8"/></svg></span><span><b>No member-to-member DMs.</b> Students talk in group threads and 1:1 with their pastor or leader — nowhere else.</span></li>
+          <li><span class="tick"><svg viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8"/></svg></span><span><b>Parents get their own thread.</b> Created automatically with you and your leaders when their teen joins.</span></li>
+          <li><span class="tick"><svg viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8"/></svg></span><span><b>Nobody is exempt.</b> Leaders and pastors go through the same screening as every student.</span></li>
+        </ul>
+      </div>
+      <div class="mod-visual" aria-label="Moderated group chat, illustrative UI">
+        <div class="chat-frame">
+          <div class="chat-head"><span class="dot"></span><b>Wednesday Night Youth</b><span class="meta">42 members</span></div>
+          <div class="chat-body">
+            <div class="msg">
+              <span class="ava" style="background:#31456a">M</span>
+              <div class="msg-b">
+                <div class="msg-meta"><b>Maya</b><time>7:41 PM</time></div>
+                <p class="msg-t">day 12 done. the garden thing is actually keeping me going</p>
+              </div>
+            </div>
+            <div class="msg">
+              <span class="ava" style="background:#5a4a78">J</span>
+              <div class="msg-b">
+                <div class="msg-meta"><b>Jonah</b><time>7:42 PM</time></div>
+                <p class="msg-t">same, on a 9 day streak. who else is doing the John plan</p>
+              </div>
+            </div>
+            <div class="msg-held">
+              <span class="shield"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M12 8v4"/><path d="M12 15.5v.5"/></svg></span>
+              <div class="msg-held-b">
+                <b>Message held before delivery</b>
+                <p>Flagged by moderation and routed to you. Not delivered to the thread.</p>
+                <div class="msg-held-actions">
+                  <span class="chip-btn primary">Review</span>
+                  <span class="chip-btn">Release</span>
+                </div>
+              </div>
+            </div>
+            <div class="msg">
+              <span class="ava" style="background:#3d6152">E</span>
+              <div class="msg-b">
+                <div class="msg-meta"><b>Elise</b><time>7:45 PM</time></div>
+                <p class="msg-t">bringing two friends on wed</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="route-card" aria-label="Where flagged messages go">
+          <h4>Flag routing</h4>
+          <div class="route-row"><span class="rdot"></span>Small group thread<b>Leader</b></div>
+          <div class="route-row"><span class="rdot"></span>Youth group thread<b>Pastor</b></div>
+          <div class="route-row"><span class="rdot"></span>Parent thread<b>Pastor</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="game" class="section">
+  <div class="container">
+    <div class="gm-grid">
+      <div class="gm-stage">
+        <div class="gm-phone" role="img" aria-label="App screen showing a backyard garden grown by daily reading">
+          <div class="gm-screen">
+            <div class="gm-statusbar">
+              <span class="gm-sb-time">9:41</span>
+              <div class="gm-notch"></div>
+              <span class="gm-sb-icons">
+                <svg width="14" height="9" viewBox="0 0 17 11" aria-hidden="true"><rect x="0" y="7" width="3" height="4" rx="1" fill="currentColor"/><rect x="4.5" y="4.5" width="3" height="6.5" rx="1" fill="currentColor"/><rect x="9" y="2.5" width="3" height="8.5" rx="1" fill="currentColor"/><rect x="13.5" y="0" width="3" height="11" rx="1" fill="currentColor" opacity=".35"/></svg>
+                <svg width="13" height="9" viewBox="0 0 15 11" aria-hidden="true"><path d="M7.5 10.6L5.2 8.3a3.3 3.3 0 0 1 4.6 0z" fill="currentColor"/><path d="M3.4 6.5a5.8 5.8 0 0 1 8.2 0L10.1 8a3.7 3.7 0 0 0-5.2 0z" fill="currentColor" opacity=".7"/><path d="M1 4.1a9.2 9.2 0 0 1 13 0l-1.5 1.5a7.1 7.1 0 0 0-10 0z" fill="currentColor" opacity=".45"/></svg>
+                <svg width="19" height="9" viewBox="0 0 23 11" aria-hidden="true"><rect x=".5" y=".5" width="19" height="10" rx="3" fill="none" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="13.5" height="7" rx="1.6" fill="currentColor"/><path d="M21.3 3.6v3.8a2 2 0 0 0 0-3.8z" fill="currentColor" opacity=".45"/></svg>
+              </span>
+            </div>
+            <div class="gm-hud">
+              <span class="gm-title">My Backyard</span>
+              <div class="gm-chips">
+                <span class="gm-chip"><svg viewBox="0 0 12 12"><path d="M6 1.2C7.8 3.6 9.4 5.5 9.4 7.4a3.4 3.4 0 1 1-6.8 0C2.6 5.5 4.2 3.6 6 1.2z" fill="#5aa7d8"/></svg>24</span>
+                <span class="gm-chip"><svg viewBox="0 0 12 12"><path d="M6 1l5 5-5 5-5-5z" fill="#e0a24a"/></svg>2,140</span>
+                <span class="gm-chip"><svg viewBox="0 0 12 12"><path d="M4.1 2.5C4.6 3.8 5.3 4.5 5.8 5 5.8 3.6 6.2 2.1 7.2 1.1 7.3 2.6 8 3.8 8.8 5c.8 1.2 1 2.4.6 3.6C8.9 10.1 7.6 11 6 11 4.1 11 2.4 9.6 2.4 7.3 2.4 5.4 3.2 3.9 4.1 2.5Z" fill="#e06767"/></svg>12d</span>
+              </div>
+            </div>
+            <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+              <defs>
+                <radialGradient id="gmGlow"><stop offset="0" stop-color="#e0a24a" stop-opacity=".34"/><stop offset="1" stop-color="#e0a24a" stop-opacity="0"/></radialGradient>
+                <radialGradient id="gmPetal" cx=".5" cy=".8" r="1"><stop offset="0" stop-color="#f6d08e"/><stop offset="1" stop-color="#da963c"/></radialGradient>
+                <radialGradient id="gmGlow2"><stop offset="0" stop-color="#b287d6" stop-opacity=".3"/><stop offset="1" stop-color="#b287d6" stop-opacity="0"/></radialGradient>
+                <radialGradient id="gmPetal2" cx=".5" cy=".8" r="1"><stop offset="0" stop-color="#dcb8ea"/><stop offset="1" stop-color="#9d68c0"/></radialGradient>
+                <symbol id="gm-flower" viewBox="0 0 60 84">
+                  <circle cx="30" cy="21" r="19" fill="url(#gmGlow)"/>
+                  <path d="M30 84C30 68 29.4 50 30 36" stroke="#3f8f66" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+                  <path d="M30 64C22 62 16.5 56 15 47.5 23.5 49.5 28.6 55 30 64Z" fill="#3f8f66"/>
+                  <path d="M30 53C38 51 43.5 45 45 36.5 36.5 38.5 31.4 44 30 53Z" fill="#4da87a"/>
+                  <g fill="url(#gmPetal)">
+                    <ellipse cx="30" cy="11.5" rx="5" ry="9.5"/>
+                    <ellipse cx="30" cy="11.5" rx="5" ry="9.5" transform="rotate(60 30 21)"/>
+                    <ellipse cx="30" cy="11.5" rx="5" ry="9.5" transform="rotate(120 30 21)"/>
+                    <ellipse cx="30" cy="11.5" rx="5" ry="9.5" transform="rotate(180 30 21)"/>
+                    <ellipse cx="30" cy="11.5" rx="5" ry="9.5" transform="rotate(240 30 21)"/>
+                    <ellipse cx="30" cy="11.5" rx="5" ry="9.5" transform="rotate(300 30 21)"/>
+                  </g>
+                  <circle cx="30" cy="21" r="4.6" fill="#b26f22"/>
+                  <circle cx="30" cy="21" r="2.8" fill="#f3c87e"/>
+                </symbol>
+                <symbol id="gm-flower2" viewBox="0 0 60 84">
+                  <circle cx="30" cy="22" r="16" fill="url(#gmGlow2)"/>
+                  <path d="M30 84C30 68 30.6 51 30 37" stroke="#3f8f66" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+                  <path d="M30 63C38 61 43.5 55 45 46.5 36.5 48.5 31.4 54 30 63Z" fill="#3f8f66"/>
+                  <path d="M30 53C22 51 16.5 45 15 36.5 23.5 38.5 28.6 44 30 53Z" fill="#4da87a"/>
+                  <g fill="url(#gmPetal2)">
+                    <ellipse cx="30" cy="13.5" rx="5.6" ry="8.8"/>
+                    <ellipse cx="30" cy="13.5" rx="5.6" ry="8.8" transform="rotate(72 30 22)"/>
+                    <ellipse cx="30" cy="13.5" rx="5.6" ry="8.8" transform="rotate(144 30 22)"/>
+                    <ellipse cx="30" cy="13.5" rx="5.6" ry="8.8" transform="rotate(216 30 22)"/>
+                    <ellipse cx="30" cy="13.5" rx="5.6" ry="8.8" transform="rotate(288 30 22)"/>
+                  </g>
+                  <circle cx="30" cy="22" r="4.4" fill="#5e3a7a"/>
+                  <circle cx="30" cy="22" r="2.6" fill="#ecdcf6"/>
+                </symbol>
+                <symbol id="gm-bud" viewBox="0 0 60 84">
+                  <path d="M30 84C30 70 29.5 56 30 44" stroke="#3f8f66" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+                  <path d="M30 68C23 66 18 61 16.5 53.5 24 55.5 28.7 60 30 68Z" fill="#3f8f66"/>
+                  <path d="M30 59C37 57 42 52 43.5 44.5 36 46.5 31.3 51 30 59Z" fill="#4da87a"/>
+                  <path d="M30 27C25.2 33 24.5 40 30 45 35.5 40 34.8 33 30 27Z" fill="#e8ab55"/>
+                  <path d="M30 45C26 44 23.8 41 23.5 37.5 26.8 39 29.2 41.5 30 45Z" fill="#3f8f66"/>
+                  <path d="M30 45C34 44 36.2 41 36.5 37.5 33.2 39 30.8 41.5 30 45Z" fill="#3f8f66"/>
+                </symbol>
+                <symbol id="gm-bud2" viewBox="0 0 60 84">
+                  <g transform="translate(60 0) scale(-1 1)">
+                    <path d="M30 84C30 71 29.5 58 30 47" stroke="#3f8f66" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+                    <path d="M30 70C23 68 18 63 16.5 55.5 24 57.5 28.7 62 30 70Z" fill="#4da87a"/>
+                    <path d="M30 61C37 59 42 54 43.5 46.5 36 48.5 31.3 53 30 61Z" fill="#3f8f66"/>
+                    <path d="M30 31C25.6 36.5 25 43 30 47.5 35 43 34.4 36.5 30 31Z" fill="#c97b9a"/>
+                    <path d="M30 47.5C26.2 46.6 24.1 43.8 23.8 40.5 26.9 41.9 29.2 44.2 30 47.5Z" fill="#3f8f66"/>
+                    <path d="M30 47.5C33.8 46.6 35.9 43.8 36.2 40.5 33.1 41.9 30.8 44.2 30 47.5Z" fill="#3f8f66"/>
+                  </g>
+                </symbol>
+                <symbol id="gm-young" viewBox="0 0 60 84">
+                  <path d="M30 84C30 74 29.6 64 30 54" stroke="#3f8f66" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <path d="M30 72C24 70.5 20 66.5 18.8 60.5 24.8 62 28.8 66 30 72Z" fill="#3f8f66"/>
+                  <path d="M30 64C36 62.5 40 58.5 41.2 52.5 35.2 54 31.2 58 30 64Z" fill="#4da87a"/>
+                  <path d="M30 54C27 51 26.8 47 30 44 33.2 47 33 51 30 54Z" fill="#4da87a"/>
+                </symbol>
+                <symbol id="gm-young2" viewBox="0 0 60 84">
+                  <g transform="translate(60 0) scale(-1 1)">
+                    <path d="M30 84C30 73 29.6 61 30 50" stroke="#3f8f66" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                    <path d="M30 74C24 72.5 20 68.5 18.8 62.5 24.8 64 28.8 68 30 74Z" fill="#4da87a"/>
+                    <path d="M30 64C36 62.5 40 58.5 41.2 52.5 35.2 54 31.2 58 30 64Z" fill="#3f8f66"/>
+                    <path d="M30 56C25.5 55 22.8 52 22 47.5 26.5 48.7 29.2 51.7 30 56Z" fill="#4da87a"/>
+                    <path d="M30 50C27.2 46.8 27 43 30 40 33 43 32.8 46.8 30 50Z" fill="#4da87a"/>
+                  </g>
+                </symbol>
+                <symbol id="gm-sprout" viewBox="0 0 60 84">
+                  <path d="M30 84C30 79 29.8 74 30 70" stroke="#3f8f66" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <path d="M30 70C25 69 21.8 65.8 21 61 26 62.2 29.2 65.4 30 70Z" fill="#4da87a"/>
+                  <path d="M30 70C35 69 38.2 65.8 39 61 34 62.2 30.8 65.4 30 70Z" fill="#3f8f66"/>
+                </symbol>
+                <symbol id="gm-wilt" viewBox="0 0 60 84">
+                  <path d="M30 84C30 72 30 60 27 52 24.5 45.5 19 43 15 46.5" stroke="#6b6b52" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <path d="M29 66C23 65 19 61.5 17.8 56 23.4 57.4 27.6 61 29 66Z" fill="#57573f"/>
+                  <path d="M28 56C33.5 54 36.5 50 37 44.5 31.8 46.6 28.6 50.6 28 56Z" fill="#605e42"/>
+                  <path d="M15 46.5C11.5 48.5 10.5 52.5 13 56 16.5 54 17.5 50 15 46.5Z" fill="#7a6a3f"/>
+                </symbol>
+              </defs>
+            </svg>
+            <div class="gm-week">
+              <div class="gm-days"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div>
+              <span>5 of 7 days watered this week</span>
+            </div>
+            <div class="gm-garden">
+              <div class="gm-plot"><span class="gm-tag">John</span><svg class="gm-veg" aria-hidden="true"><use href="#gm-flower"/></svg><span class="gm-soil"></span></div>
+              <div class="gm-plot"><span class="gm-tag">Psalms</span><svg class="gm-veg" aria-hidden="true"><use href="#gm-bud"/></svg><span class="gm-soil"></span></div>
+              <div class="gm-plot"><span class="gm-tag">Ruth</span><svg class="gm-veg" aria-hidden="true"><use href="#gm-young"/></svg><span class="gm-soil"></span></div>
+              <div class="gm-plot"><span class="gm-tag">Luke</span><svg class="gm-veg" aria-hidden="true"><use href="#gm-flower2"/></svg><span class="gm-soil"></span></div>
+              <div class="gm-plot"><span class="gm-tag">Acts</span><span class="gm-wiltbadge">Wilting</span><svg class="gm-veg" aria-hidden="true"><use href="#gm-wilt"/></svg><span class="gm-soil"></span></div>
+              <div class="gm-plot"><span class="gm-tag">Esther</span><svg class="gm-veg" aria-hidden="true"><use href="#gm-bud2"/></svg><span class="gm-soil"></span></div>
+              <div class="gm-plot"><span class="gm-tag">Mark</span><svg class="gm-veg" aria-hidden="true"><use href="#gm-sprout"/></svg><span class="gm-soil"></span></div>
+              <div class="gm-plot"><span class="gm-tag">Jonah</span><svg class="gm-veg" aria-hidden="true"><use href="#gm-young2"/></svg><span class="gm-soil"></span></div>
+              <div class="gm-plot gm-emptyplot"><span class="gm-plus">+</span><span class="gm-plantword">Plant a book</span></div>
+            </div>
+            <div class="gm-task">
+              <div class="gm-task-txt">
+                <b>Today &middot; John 3</b>
+                <span>5 min read &middot; earns 6 water</span>
+              </div>
+              <span class="gm-read">Read</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="gm-copy">
+        <p class="eyebrow">The game</p>
+        <h2>A garden that only grows when they read</h2>
+        <p class="lede">Finishing a day's plan earns water and XP. Water grows each student's backyard, plant by plant, over weeks of showing up — and it fades when they stop, which brings students back better than any push notification.</p>
+        <div class="gm-feats">
+          <div class="gm-feat"><b>Water and XP</b><span>Earned only by reading. Streaks multiply both, so steady beats bingeing.</span></div>
+          <div class="gm-feat"><b>Plants track plans</b><span>Each plant grows a stage with every day of a plan. A finished book is a plant in full bloom.</span></div>
+          <div class="gm-feat"><b>Wilting is reversible</b><span>Miss a stretch and the garden fades. Come back and it recovers.</span></div>
+        </div>
+        <a class="btn-ghost gm-cta" href="https://pastors.ygteev.com/youth-group-registration" onclick="fbq && fbq('trackCustom','LaunchCTAClick',{placement:'game'})">See a live garden</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="league" class="section">
+  <div class="container">
+    <div class="lg-grid">
+      <div class="lg-copy">
+        <p class="eyebrow">The league</p>
+        <h2>Your whole group climbs the board together</h2>
+        <p class="lede">Every student's reading counts toward one weekly score, and youth groups are ranked against each other nationwide. Students start reminding each other to read — instead of you reminding all of them.</p>
+        <div class="lg-stats">
+          <div class="lg-stat"><b>Weekly</b><span>Starts at zero</span></div>
+          <div class="lg-stat"><b>Group-wide</b><span>Every student counts</span></div>
+          <div class="lg-stat"><b>Zero setup</b><span>Runs itself</span></div>
+        </div>
+        <a class="btn" href="https://pastors.ygteev.com/youth-group-registration" onclick="fbq && fbq('trackCustom','LaunchCTAClick',{placement:'league'})">Launch your group</a>
+      </div>
+      <div class="lg-visual">
+        <div class="lg-card" role="img" aria-label="Weekly leaderboard of youth groups ranked by chapters read">
+          <div class="lg-head"><b>Garden League</b><span>Week 30 &middot; resets Monday</span></div>
+          <div class="lg-row">
+            <span class="lg-rank">1</span>
+            <span class="lg-name">Northside Students<small>Cedar Falls, IA</small></span>
+            <span class="lg-pts">4,820</span>
+            <span class="lg-delta up"><svg viewBox="0 0 10 10"><path d="M5 2l4 6H1z" fill="currentColor"/></svg>2</span>
+          </div>
+          <div class="lg-row">
+            <span class="lg-rank">2</span>
+            <span class="lg-name">Crossroads Youth<small>Franklin, TN</small></span>
+            <span class="lg-pts">4,655</span>
+            <span class="lg-delta down"><svg viewBox="0 0 10 10"><path d="M5 8L1 2h8z" fill="currentColor"/></svg>1</span>
+          </div>
+          <div class="lg-row you">
+            <span class="lg-rank">3</span>
+            <span class="lg-name">Your youth group <span class="lg-you">You</span><small>34 students reading</small></span>
+            <span class="lg-pts">4,410</span>
+            <span class="lg-delta up"><svg viewBox="0 0 10 10"><path d="M5 2l4 6H1z" fill="currentColor"/></svg>1</span>
+          </div>
+          <div class="lg-row">
+            <span class="lg-rank">4</span>
+            <span class="lg-name">Harvest Hills Youth<small>Mesa, AZ</small></span>
+            <span class="lg-pts">4,180</span>
+            <span class="lg-delta down"><svg viewBox="0 0 10 10"><path d="M5 8L1 2h8z" fill="currentColor"/></svg>1</span>
+          </div>
+          <div class="lg-row">
+            <span class="lg-rank">5</span>
+            <span class="lg-name">Riverbend Students<small>Dayton, OH</small></span>
+            <span class="lg-pts">3,905</span>
+            <span class="lg-delta up"><svg viewBox="0 0 10 10"><path d="M5 2l4 6H1z" fill="currentColor"/></svg>3</span>
+          </div>
+          <div class="lg-foot">
+            <span><b>Your group</b> &middot; 1,240 of 1,600 chapters this week</span>
+            <div class="lg-bar"><div class="lg-fill"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="platform" class="section">
+  <div class="container">
+    <div class="plat-grid">
+      <div class="plat-copy">
+        <p class="eyebrow">Platform</p>
+        <h2>Run everything from one dashboard</h2>
+        <p class="lede">Small groups, leaders, events, and plans — managed in one place and synced to every student's app. One screen tells you how the group is actually doing this week.</p>
+      </div>
+      <div class="console" aria-label="Pastor dashboard, illustrative UI">
+        <div class="console-head"><b>Group pulse</b><span>This week</span></div>
+        <div class="console-body">
+          <div class="con-row"><span class="nm">Wednesday Crew</span><span class="pc">14 of 16 reading</span><span class="con-bar"><i style="width:87%"></i></span></div>
+          <div class="con-row"><span class="nm">9th Grade Girls</span><span class="pc">11 of 12 reading</span><span class="con-bar"><i style="width:92%"></i></span></div>
+          <div class="con-row"><span class="nm">Senior Guys</span><span class="pc">6 of 11 reading</span><span class="con-bar"><i class="low" style="width:55%"></i></span></div>
+        </div>
+        <div class="console-foot"><span class="fdot"></span><span><b>1 message</b> held for review — routed to you</span></div>
+      </div>
+    </div>
+    <div class="plat-features">
+      <div class="plat-cell">
+        <span class="ic"><svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.5v2.5M10.5 1.5v2.5"/></svg></span>
+        <h3>Events and RSVPs</h3>
+        <p>Publish an event, push it to every phone, and count heads without a spreadsheet.</p>
+      </div>
+      <div class="plat-cell">
+        <span class="ic"><svg viewBox="0 0 16 16"><circle cx="6" cy="5.5" r="2.4"/><path d="M2 13.5c.4-2.6 2-4 4-4s3.6 1.4 4 4"/><path d="M10.8 3.4a2.4 2.4 0 010 4.2M12 9.9c1.1.5 1.8 1.7 2 3.6"/></svg></span>
+        <h3>Small groups</h3>
+        <p>Leaders, rosters, and a chat per group — wired up automatically.</p>
+      </div>
+      <div class="plat-cell">
+        <span class="ic"><svg viewBox="0 0 16 16"><path d="M13.5 2.5L3.5 6H2v4h1.5l10 3.5v-11z"/><path d="M5.5 10.5v3"/></svg></span>
+        <h3>Announcements</h3>
+        <p>One post reaches every student, leader, and parent at once.</p>
+      </div>
+      <div class="plat-cell">
+        <span class="ic"><svg viewBox="0 0 16 16"><path d="M1.5 8.5h3l2-5 3 9 2-4h3"/></svg></span>
+        <h3>Engagement pulse</h3>
+        <p>See who is reading, playing, and drifting — before they are gone.</p>
+      </div>
+      <div class="plat-cell">
+        <span class="ic"><svg viewBox="0 0 16 16"><rect x="1.5" y="4" width="9" height="8" rx="2"/><path d="M10.5 7.5l4-2.5v6l-4-2.5"/></svg></span>
+        <h3>Live sessions</h3>
+        <p>Host moderated video hangouts that students join from the app.</p>
+      </div>
+      <div class="plat-cell">
+        <span class="ic"><svg viewBox="0 0 16 16"><path d="M3.5 1.5h9V14l-1.5-1-1.5 1-1.5-1-1.5 1-1.5-1-1.5 1V1.5z"/><path d="M6 5.5h4M6 8.5h4"/></svg></span>
+        <h3>Fair billing</h3>
+        <p>Priced by students who actually show up, not the size of your roster.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="cta" class="section">
+  <div class="container">
+    <div class="cta-grid">
+      <div class="cta-copy">
+        <p class="eyebrow">Get started</p>
+        <h2>Set up your youth group<br class="cta-br"> in about ten minutes</h2>
+        <p class="lede cta-lede">Create your group, invite your leaders, and put one QR code on the screen Wednesday night. Every student who scans it gets the full app free.</p>
+        <div class="cta-actions">
+          <a class="btn" href="https://pastors.ygteev.com/youth-group-registration" onclick="fbq && fbq('trackCustom','LaunchCTAClick',{placement:'cta'})">Launch your group</a>
+          <a class="link-arrow" href="#product">See how safety works<svg viewBox="0 0 16 16"><path d="M2.5 8h11M9.5 4l4 4-4 4"/></svg></a>
+        </div>
+        <div class="cta-meta">
+          <span><i class="cdot"></i>Free for 90 days</span>
+          <span><i class="cdot"></i>10-minute setup</span>
+          <span><i class="cdot"></i>Cancel anytime</span>
+        </div>
+      </div>
+      <div class="qr-card" aria-label="Group invite QR card, illustrative UI">
+        <div class="qr-head"><b>Group invite</b><span>Wednesday Crew</span></div>
+        <div class="qr-body">
+          <div class="qr-tile" aria-hidden="true">
+            <svg viewBox="-2 -2 29 29" role="presentation"><path fill="#0b0d12" d="M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM3 0h1v1h-1zM4 0h1v1h-1zM5 0h1v1h-1zM6 0h1v1h-1zM16 0h1v1h-1zM18 0h1v1h-1zM19 0h1v1h-1zM20 0h1v1h-1zM21 0h1v1h-1zM22 0h1v1h-1zM23 0h1v1h-1zM24 0h1v1h-1zM0 1h1v1h-1zM6 1h1v1h-1zM9 1h1v1h-1zM10 1h1v1h-1zM11 1h1v1h-1zM15 1h1v1h-1zM16 1h1v1h-1zM18 1h1v1h-1zM24 1h1v1h-1zM0 2h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM9 2h1v1h-1zM13 2h1v1h-1zM14 2h1v1h-1zM16 2h1v1h-1zM18 2h1v1h-1zM20 2h1v1h-1zM21 2h1v1h-1zM22 2h1v1h-1zM24 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM12 3h1v1h-1zM13 3h1v1h-1zM15 3h1v1h-1zM16 3h1v1h-1zM18 3h1v1h-1zM20 3h1v1h-1zM21 3h1v1h-1zM22 3h1v1h-1zM24 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM11 4h1v1h-1zM13 4h1v1h-1zM18 4h1v1h-1zM20 4h1v1h-1zM21 4h1v1h-1zM22 4h1v1h-1zM24 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM12 5h1v1h-1zM14 5h1v1h-1zM16 5h1v1h-1zM18 5h1v1h-1zM24 5h1v1h-1zM0 6h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM3 6h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM19 6h1v1h-1zM20 6h1v1h-1zM21 6h1v1h-1zM22 6h1v1h-1zM23 6h1v1h-1zM24 6h1v1h-1zM10 7h1v1h-1zM11 7h1v1h-1zM13 7h1v1h-1zM14 7h1v1h-1zM16 7h1v1h-1zM6 8h1v1h-1zM9 8h1v1h-1zM16 8h1v1h-1zM0 9h1v1h-1zM1 9h1v1h-1zM4 9h1v1h-1zM7 9h1v1h-1zM8 9h1v1h-1zM9 9h1v1h-1zM10 9h1v1h-1zM11 9h1v1h-1zM12 9h1v1h-1zM15 9h1v1h-1zM16 9h1v1h-1zM17 9h1v1h-1zM19 9h1v1h-1zM20 9h1v1h-1zM22 9h1v1h-1zM24 9h1v1h-1zM5 10h1v1h-1zM6 10h1v1h-1zM7 10h1v1h-1zM8 10h1v1h-1zM9 10h1v1h-1zM11 10h1v1h-1zM15 10h1v1h-1zM19 10h1v1h-1zM20 10h1v1h-1zM23 10h1v1h-1zM2 11h1v1h-1zM3 11h1v1h-1zM4 11h1v1h-1zM5 11h1v1h-1zM8 11h1v1h-1zM11 11h1v1h-1zM12 11h1v1h-1zM14 11h1v1h-1zM16 11h1v1h-1zM22 11h1v1h-1zM24 11h1v1h-1zM0 12h1v1h-1zM1 12h1v1h-1zM2 12h1v1h-1zM5 12h1v1h-1zM6 12h1v1h-1zM8 12h1v1h-1zM11 12h1v1h-1zM12 12h1v1h-1zM16 12h1v1h-1zM19 12h1v1h-1zM20 12h1v1h-1zM21 12h1v1h-1zM22 12h1v1h-1zM23 12h1v1h-1zM24 12h1v1h-1zM1 13h1v1h-1zM2 13h1v1h-1zM3 13h1v1h-1zM4 13h1v1h-1zM5 13h1v1h-1zM8 13h1v1h-1zM10 13h1v1h-1zM12 13h1v1h-1zM14 13h1v1h-1zM15 13h1v1h-1zM17 13h1v1h-1zM21 13h1v1h-1zM22 13h1v1h-1zM1 14h1v1h-1zM2 14h1v1h-1zM3 14h1v1h-1zM6 14h1v1h-1zM12 14h1v1h-1zM13 14h1v1h-1zM14 14h1v1h-1zM15 14h1v1h-1zM16 14h1v1h-1zM17 14h1v1h-1zM18 14h1v1h-1zM19 14h1v1h-1zM20 14h1v1h-1zM2 15h1v1h-1zM5 15h1v1h-1zM7 15h1v1h-1zM8 15h1v1h-1zM9 15h1v1h-1zM10 15h1v1h-1zM12 15h1v1h-1zM13 15h1v1h-1zM14 15h1v1h-1zM18 15h1v1h-1zM20 15h1v1h-1zM21 15h1v1h-1zM22 15h1v1h-1zM23 15h1v1h-1zM1 16h1v1h-1zM2 16h1v1h-1zM4 16h1v1h-1zM6 16h1v1h-1zM9 16h1v1h-1zM10 16h1v1h-1zM11 16h1v1h-1zM12 16h1v1h-1zM13 16h1v1h-1zM14 16h1v1h-1zM16 16h1v1h-1zM18 16h1v1h-1zM20 16h1v1h-1zM23 16h1v1h-1zM24 16h1v1h-1zM9 17h1v1h-1zM10 17h1v1h-1zM12 17h1v1h-1zM14 17h1v1h-1zM18 17h1v1h-1zM20 17h1v1h-1zM22 17h1v1h-1zM24 17h1v1h-1zM0 18h1v1h-1zM1 18h1v1h-1zM2 18h1v1h-1zM3 18h1v1h-1zM4 18h1v1h-1zM5 18h1v1h-1zM6 18h1v1h-1zM12 18h1v1h-1zM14 18h1v1h-1zM15 18h1v1h-1zM16 18h1v1h-1zM17 18h1v1h-1zM18 18h1v1h-1zM21 18h1v1h-1zM22 18h1v1h-1zM24 18h1v1h-1zM0 19h1v1h-1zM6 19h1v1h-1zM9 19h1v1h-1zM10 19h1v1h-1zM12 19h1v1h-1zM13 19h1v1h-1zM15 19h1v1h-1zM16 19h1v1h-1zM17 19h1v1h-1zM18 19h1v1h-1zM19 19h1v1h-1zM23 19h1v1h-1zM0 20h1v1h-1zM2 20h1v1h-1zM3 20h1v1h-1zM4 20h1v1h-1zM6 20h1v1h-1zM12 20h1v1h-1zM13 20h1v1h-1zM17 20h1v1h-1zM19 20h1v1h-1zM23 20h1v1h-1zM0 21h1v1h-1zM2 21h1v1h-1zM3 21h1v1h-1zM4 21h1v1h-1zM6 21h1v1h-1zM10 21h1v1h-1zM11 21h1v1h-1zM13 21h1v1h-1zM15 21h1v1h-1zM20 21h1v1h-1zM21 21h1v1h-1zM0 22h1v1h-1zM2 22h1v1h-1zM3 22h1v1h-1zM4 22h1v1h-1zM6 22h1v1h-1zM13 22h1v1h-1zM15 22h1v1h-1zM17 22h1v1h-1zM19 22h1v1h-1zM20 22h1v1h-1zM21 22h1v1h-1zM22 22h1v1h-1zM0 23h1v1h-1zM6 23h1v1h-1zM9 23h1v1h-1zM10 23h1v1h-1zM11 23h1v1h-1zM12 23h1v1h-1zM13 23h1v1h-1zM14 23h1v1h-1zM15 23h1v1h-1zM16 23h1v1h-1zM20 23h1v1h-1zM21 23h1v1h-1zM22 23h1v1h-1zM23 23h1v1h-1zM0 24h1v1h-1zM1 24h1v1h-1zM2 24h1v1h-1zM3 24h1v1h-1zM4 24h1v1h-1zM5 24h1v1h-1zM6 24h1v1h-1zM9 24h1v1h-1zM10 24h1v1h-1zM12 24h1v1h-1zM13 24h1v1h-1zM16 24h1v1h-1zM19 24h1v1h-1zM21 24h1v1h-1zM24 24h1v1h-1z"/></svg>
+          </div>
+          <div class="qr-side">
+            <p>Put this on the screen. Students scan it with their camera and land straight in your group.</p>
+            <span class="qr-link">ygteev.app/join/wed-crew</span>
+          </div>
+        </div>
+        <div class="qr-foot"><span class="qdot"></span><span><b>23 students joined</b> from this code</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer id="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="#hero">YG<span>TeeV</span></a>
+        <p>Daily Bible reading as a shared game for your youth group — with moderated chat wired straight to you.</p>
+      </div>
+      <nav class="footer-col" aria-label="Product">
+        <div class="footer-hd">Product</div>
+        <a href="#product">Safe chat</a>
+        <a href="#game">The game</a>
+        <a href="#league">League</a>
+        <a href="#platform">Platform</a>
+      </nav>
+      <nav class="footer-col" aria-label="Pastors">
+        <div class="footer-hd">Pastors</div>
+        <a href="https://pastors.ygteev.com/youth-group-registration" onclick="fbq && fbq('trackCustom','LaunchCTAClick',{placement:'footer'})">Launch your group</a>
+        <a href="https://pastors.ygteev.com">Pastor dashboard</a>
+        <a href="#platform">How billing works</a>
+        <a href="mailto:hello@ygteev.com">Contact support</a>
+      </nav>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 YGTeeV</span>
+      <span>Bible reading, together.</span>
+      <span class="fsep">pastors.ygteev.com</span>
+    </div>
+  </div>
+</footer>
