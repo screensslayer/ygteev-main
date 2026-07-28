@@ -19,11 +19,6 @@ const FROM_ADDRESS = Deno.env.get("YGTEEV_LEAD_FROM_EMAIL") ?? "jim@ygteev.com";
 const REPLY_TO = Deno.env.get("YGTEEV_LEAD_REPLY_TO") ?? FROM_ADDRESS;
 const DASHBOARD_URL = "https://pastors.ygteev.com/sign-in";
 const APP_STORE_URL = "https://apps.apple.com/us/app/ygteev/id6773066416";
-function firstName(full) {
-  if (!full) return "there";
-  const first = full.trim().split(/\s+/)[0];
-  return first || "there";
-}
 function esc(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -38,14 +33,13 @@ function fmtDate(iso) {
   });
 }
 function buildHtml(args) {
-  const p = esc(args.pastorFirst);
   const g = esc(args.groupName);
   const c = esc(args.churchName);
   const billOn = esc(args.firstBillOn);
   const td = args.trialDays;
   return `<!doctype html>
 <html><body style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif; color:#222; line-height:1.55; max-width:560px;">
-<p>Hey ${p},</p>
+<p>Hey there,</p>
 
 <p>Welcome to YGTeeV — <strong>${g}</strong> is officially set up. I'm genuinely glad to have ${c} on the platform.</p>
 
@@ -61,9 +55,9 @@ function buildHtml(args) {
   <li><strong>Create your first event.</strong> Pick something on the calendar (worship night, retreat, donut party). Students RSVP in-app, and if you make it public you also get a shareable invite link so kids can bring friends.</li>
 </ol>
 
-<p><a href="${DASHBOARD_URL}" style="display:inline-block; background:#6B2BFF; color:#fff; text-decoration:none; padding:12px 18px; border-radius:10px; font-weight:600;">Open Your Dashboard</a></p>
+<p><a href="${APP_STORE_URL}" style="display:inline-block; background:#6B2BFF; color:#fff; text-decoration:none; padding:12px 18px; border-radius:10px; font-weight:600;">Download YGTeeV</a></p>
 
-<p>If you haven't already, grab the iOS app yourself so you can see exactly what your students see: <a href="${APP_STORE_URL}">Download YGTeeV</a></p>
+<p>Everything above also works from your browser if you prefer: <a href="${DASHBOARD_URL}">open your dashboard</a>.</p>
 
 <p>One ask: if something feels off in the first week — confusing UI, a feature you wish existed, a workflow that's missing — hit reply. I read every email and we move fast on pastor feedback. We built this for you specifically.</p>
 
@@ -73,7 +67,7 @@ Jim<br/>
 </body></html>`;
 }
 function buildText(args) {
-  return `Hey ${args.pastorFirst},
+  return `Hey there,
 
 Welcome to YGTeeV — ${args.groupName} is officially set up. I'm genuinely glad to have ${args.churchName} on the platform.
 
@@ -87,9 +81,9 @@ Three things to do in the next 10 minutes:
 
   3. Create your first event. Pick something on the calendar (worship night, retreat, donut party). Students RSVP in-app, and if you make it public you also get a shareable invite link.
 
-Open your dashboard: ${DASHBOARD_URL}
+Download YGTeeV: ${APP_STORE_URL}
 
-If you haven't already, grab the iOS app yourself: ${APP_STORE_URL}
+Everything above also works from your browser if you prefer: ${DASHBOARD_URL}
 
 One ask: if something feels off in the first week — confusing UI, a feature you wish existed, a workflow that's missing — hit reply. I read every email and we move fast on pastor feedback.
 
@@ -134,11 +128,9 @@ Deno.serve(async (req)=>{
     // Pastor (membership role='pastor')
     const { data: membership } = await admin.from("youth_group_members").select("user_id").eq("group_id", groupId).eq("role", "pastor").limit(1).maybeSingle();
     let pastorEmail = null;
-    let pastorFirstName = "there";
     if (membership?.user_id) {
-      const { data: profile } = await admin.from("profiles").select("id, email, display_name").eq("id", membership.user_id).maybeSingle();
+      const { data: profile } = await admin.from("profiles").select("id, email").eq("id", membership.user_id).maybeSingle();
       pastorEmail = profile?.email ?? null;
-      pastorFirstName = firstName(profile?.display_name);
     }
     // Subscription for trial end
     const { data: subRow } = await admin.from("stripe_subscriptions").select("trial_end, current_period_end, status").eq("group_id", groupId).order("created_at", {
@@ -160,7 +152,6 @@ Deno.serve(async (req)=>{
       }, 404);
     }
     const args = {
-      pastorFirst: pastorFirstName,
       groupName: yg.name ?? "your group",
       churchName: yg.church_name ?? yg.name ?? "your church",
       trialDays,
