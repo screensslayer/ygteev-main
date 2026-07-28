@@ -139,8 +139,8 @@ Deno.serve(async (req)=>{
     }).limit(1).maybeSingle();
     const trialEndIso = subRow?.trial_end ?? subRow?.current_period_end ?? null;
     const firstBillOn = fmtDate(trialEndIso);
-    // Compute trial_days from trial_end (approximate). If we can't, default to 90.
-    let trialDays = 90;
+    // Compute trial_days from trial_end (approximate). If we can't, default to 30.
+    let trialDays = 30;
     if (trialEndIso) {
       const days = Math.round((new Date(trialEndIso).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
       if (days > 0 && days <= 365) trialDays = days;
