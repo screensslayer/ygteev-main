@@ -1,0 +1,19 @@
+# Staging instance of the Backyard game — https://ygteev-backyard-staging.fly.dev
+# Points at the PROD Supabase (baked into the bundle via .env at build time).
+# Deploy:  npm run build && flyctl deploy -c fly.staging.toml --ha=false
+app = "ygteev-backyard-staging"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.staging"
+
+[http_service]
+  internal_port = 80
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

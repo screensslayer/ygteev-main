@@ -1,0 +1,4 @@
+# Staging host for the Backyard game (Fly app: ygteev-backyard-staging).
+# Serves whatever is currently in dist/ — run `npm run build` first.
+FROM nginx:alpine
+COPY dist /usr/share/nginx/html

@@ -36,6 +36,21 @@ DNS CNAME `backyard` → `screensslayer.github.io`, custom domain bound via
 `public/CNAME`. After DNS/cert changes, check Settings → Pages →
 Enforce HTTPS is ticked.
 
+## Staging instance — Fly
+
+**https://ygteev-backyard-staging.fly.dev** — a separate deploy for testing
+changes before they hit backyard.ygteev.com. Same prod Supabase backend
+(the `.env` values are baked in at build time), so real accounts work.
+Auto-stop machine: first hit after idle takes ~1s to wake. Deploy whatever
+is locally built:
+
+```bash
+npm run build && flyctl deploy -c fly.staging.toml --ha=false
+```
+
+Production is untouched by staging deploys — it only ships via the
+GitHub Pages workflow on push to main.
+
 ## iOS embed contract
 
 The iOS app (`BackyardGameView`, a WKWebView) loads:
