@@ -129,6 +129,13 @@ const BIBLE_QUESTIONS = [
 ];
 const PLAYER_R = 0.45;
 
+// ================= ART PALETTE — single source of truth (sRGB hex; wrap in SRGB() at use) =================
+const PAL = { grassBase: 0x8cab4c, grassSun: 0xb2c25e, grassShade: 0x5c8a44, soil: 0x7a5138, pathStone: 0xc7ad7e, leafLime: 0x9ec455, leafMid: 0x619e46, leafDeep: 0x38714a, leafWarm: 0xc98e3f, bark: 0x7a5a3e, stone: 0x9d948a, waterSurf: 0x5fb4c4, waterDeep: 0x2e7286, skyTop: 0x4a8fd4, skyMid: 0xa9d3e4, skyHorizon: 0xd9e8d8, sun: 0xffe0a8, ambientSky: 0xb4cfe6, ambientGnd: 0x7f8f4e, fog: 0xd3e2ce, wood: 0xc9b68c, roof: 0xb5654a, plaster: 0xefe2c8, foam: 0xf4f7f5 };
+// Bespoke non-day atmospheres (shop-interior night / church golden hour) — keep their identity,
+// but sun/fog/sky values route through these named variables, never inline hex at call sites.
+const ATMO_NIGHT = { top: 0x241f33, mid: 0x35304a, bot: 0x4a4460, fog: 0x2a2438, sun: 0xffd9a0, hemiSky: 0x8a84a8, hemiGnd: 0x4a4458 };
+const ATMO_SUNSET = { top: 0x54408c, mid: 0xf0a670, bot: 0xffd9a0, fog: 0xe8a878, sun: 0xff9a4c, hemiSky: 0xf0b890, hemiGnd: 0x6a5438 };
+
 const SKIN_TONES = [0xf7d7b6, 0xf2c49b, 0xdca97e, 0xb97f57, 0x8a5a3a, 0x5f3d27];
 const HAIR_COLORS = [0x2a1a12, 0x5a3a22, 0x8a5f2e, 0xc9963c, 0xb5432f, 0x9a9aa4, 0xd06a8a];
 const SHIRT_COLORS = [0x3a72c9, 0xc94a34, 0x3f8f3f, 0x8a5f9a, 0x2fa39a, 0xe0862f, 0xd06a8a, 0x4a4a58];
@@ -359,47 +366,14 @@ export default function DragonGardenQuest() {
     renderer.setSize(W(), H());
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputEncoding = THREE.LinearEncoding;
+    // Direct sRGB output — NO render-to-texture grade pass. The old fullscreen
+    // post pass roughly doubled fill cost (fatal on WKWebView phones); its mild
+    // grade (sat 1.04 / con 1.06 / vig .06) is approximated by ACES tone
+    // mapping + exposure here and a free CSS vignette overlay in the JSX.
+    renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.12;
+    renderer.toneMappingExposure = 1.1;
     mount.appendChild(renderer.domElement);
-
-    // ---- AAA color grade: custom post-process pass ----
-    // scene renders to a texture, then a fullscreen shader applies
-    // contrast, saturation, teal-shadow/gold-highlight split toning,
-    // vignette, and gamma — the same recipe engines use for grading
-    const postRT = new THREE.WebGLRenderTarget(1, 1);
-    const postScene = new THREE.Scene();
-    const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    const gradeMat = new THREE.ShaderMaterial({
-      uniforms: {
-        tDiffuse: { value: postRT.texture },
-        uSat: { value: 1.12 },
-        uCon: { value: 1.06 },
-        uSplit: { value: 0.7 },
-        uVig: { value: 0.06 },
-      },
-      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
-      fragmentShader: `
-        varying vec2 vUv;
-        uniform sampler2D tDiffuse;
-        uniform float uSat, uCon, uSplit, uVig;
-        void main(){
-          vec3 c = texture2D(tDiffuse, vUv).rgb;
-          c = (c - 0.5) * uCon + 0.5;
-          float l = dot(c, vec3(0.299, 0.587, 0.114));
-          c = mix(vec3(l), c, uSat);
-          c += mix(vec3(-0.018, 0.004, 0.028), vec3(0.045, 0.02, -0.018), smoothstep(0.15, 0.85, l)) * uSplit;
-          float d = distance(vUv, vec2(0.5));
-          c *= 1.0 - uVig * smoothstep(0.4, 0.85, d);
-          c = pow(max(c, vec3(0.0)), vec3(1.0 / 2.2));
-          gl_FragColor = vec4(c, 1.0);
-        }`,
-      depthTest: false, depthWrite: false,
-    });
-    postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), gradeMat));
-    const sizeRT = () => postRT.setSize(Math.floor(W() * renderer.getPixelRatio()), Math.floor(H() * renderer.getPixelRatio()));
-    sizeRT();
 
     // ================= AUDIO: generative ambient score + synthesized SFX =================
     let AC = null, audioOut = null, musicBus = null, sfxBus = null, fountainGain = null, snoreGain = null, eatBuf = null;
@@ -631,11 +605,13 @@ export default function DragonGardenQuest() {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(46, W() / H(), 0.1, 400);
 
-    // ---- Lights: warm sun, long soft shadows ----
-    const hemi = new THREE.HemisphereLight(0xbcd8ec, 0x5a7a42, 0.5);
+    // ---- Lights: gold sun / cool blue sky fill — the warm-lit / cool-shadow split ----
+    const hemi = new THREE.HemisphereLight(PAL.ambientSky, PAL.ambientGnd, 0.66); // lifted so shade reads blue-green, not a dark hole
+    hemi.color.convertSRGBToLinear(); hemi.groundColor.convertSRGBToLinear();
     scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffdfae, 1.5);
-    sun.position.set(14, 20, 10);
+    const sun = new THREE.DirectionalLight(PAL.sun, 1.45);
+    sun.color.convertSRGBToLinear();
+    sun.position.set(16, 17, 9); // slightly lower sun = longer golden-hour shadows
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -42; sun.shadow.camera.right = 42;
@@ -644,7 +620,7 @@ export default function DragonGardenQuest() {
     sun.shadow.normalBias = 0.025;
     scene.add(sun);
     scene.add(sun.target);
-    const fill = new THREE.DirectionalLight(0x9ab8d8, 0.15);
+    const fill = new THREE.DirectionalLight(0x9ab8d8, 0.2); // cool counter-fill: pushes shadow facets toward blue
     fill.color.convertSRGBToLinear();
     fill.position.set(-14, 14, -8);
     scene.add(fill);
@@ -653,15 +629,15 @@ export default function DragonGardenQuest() {
     const skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false,
       uniforms: {
-        cTop: { value: new THREE.Color(0x3a7ad8) },
-        cMid: { value: new THREE.Color(0xaddaf2) },
-        cBot: { value: new THREE.Color(0xf2ead2) },
+        cTop: { value: new THREE.Color(PAL.skyTop) },
+        cMid: { value: new THREE.Color(PAL.skyMid) },
+        cBot: { value: new THREE.Color(PAL.skyHorizon) },
       },
       vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
       fragmentShader: `varying vec3 vP; uniform vec3 cTop; uniform vec3 cMid; uniform vec3 cBot;
         void main(){
           float h = normalize(vP).y;
-          vec3 col = h > 0.0 ? mix(cMid, cTop, pow(h, 0.7)) : mix(cMid, cBot, pow(-h, 0.8));
+          vec3 col = h > 0.0 ? mix(cMid, cTop, pow(h, 0.55)) : mix(cMid, cBot, pow(-h, 0.8));
           gl_FragColor = vec4(col, 1.0);
         }`,
     });
@@ -669,7 +645,12 @@ export default function DragonGardenQuest() {
     sky.renderOrder = -1;
     scene.add(sky);
 
-    const setAtmosphere = (top, mid, bot, fogC, sunC, sunI, hemiSky, hemiGnd, fogNear = 48, fogFar = 118) => {
+    // Day fog tuned tighter than the brief's 45/112: with the follow-cam ~10u behind
+    // the player, frame-top geometry sits at 35-55u, so the melt must start by ~30u
+    // and land ~50% cream by 55u for aerial perspective to read on this small map.
+    // Linear fog, PAL.fog cream — never gray. hemiI is per-preset so lifting day
+    // shade doesn't wash out night.
+    const setAtmosphere = (top, mid, bot, fogC, sunC, sunI, hemiSky, hemiGnd, fogNear = 30, fogFar = 76, hemiI = 0.66) => {
       skyMat.uniforms.cTop.value.set(top).convertSRGBToLinear();
       skyMat.uniforms.cMid.value.set(mid).convertSRGBToLinear();
       skyMat.uniforms.cBot.value.set(bot).convertSRGBToLinear();
@@ -677,6 +658,7 @@ export default function DragonGardenQuest() {
       sun.color.set(sunC).convertSRGBToLinear(); sun.intensity = sunI;
       hemi.color.set(hemiSky).convertSRGBToLinear();
       hemi.groundColor.set(hemiGnd).convertSRGBToLinear();
+      hemi.intensity = hemiI;
     };
 
     // ================= HELPERS =================
@@ -756,8 +738,10 @@ export default function DragonGardenQuest() {
     // ---- art-directed terrain: gaussian hills, masked flat around gameplay zones ----
     let terrainY = () => 0;
     const RIVER_X = (z) => -14 + Math.sin(z * 0.18) * 1.6;
-    const SAND = new THREE.Color(0x9a8a5c).convertSRGBToLinear();
-    const MORTAR = new THREE.Color(0x6e6a64).convertSRGBToLinear();
+    const SAND = new THREE.Color(PAL.pathStone).offsetHSL(0.018, -0.05, -0.12).convertSRGBToLinear();
+    const BANK_SHADE = new THREE.Color(PAL.grassShade).convertSRGBToLinear();
+    const BANK_WET = new THREE.Color(PAL.soil).offsetHSL(0, -0.04, -0.07).convertSRGBToLinear();
+    const MORTAR = new THREE.Color(PAL.stone).offsetHSL(0.012, 0, -0.075).convertSRGBToLinear();
     function makeTerrain(hills, flats) {
       return (x, z) => {
         let h = 0;
@@ -822,95 +806,304 @@ export default function DragonGardenQuest() {
     }
 
     // ---- Trees: multi-tier pines + faceted oaks ----
-    const PINE_GREENS = [0x2f7a33, 0x3d8c3c, 0x2c6e45, 0x4f9138];
-    const OAK_GREENS = [0x4f9c38, 0x63ad45, 0x77b94f, 0x41903b];
+    // Canopies pick from the PAL leaf ramp (lime/mid/deep + rare warm autumn accent).
+    // leafC = per-mesh jittered sRGB color derived from a PAL token (flat() converts to linear).
+    // Jitter widened to ~±8° hue so neighboring blobs never share one flat green.
+    const leafC = (tok, dl = 0.05) =>
+      new THREE.Color(tok).offsetHSL((Math.random() - 0.5) * 0.045, (Math.random() - 0.5) * 0.05, (Math.random() - 0.5) * dl);
+    // Authored species shifts — olive workhorse / yellow-green / blue-green(teal), ~60/25/15.
+    // ONE shift per tree (all its canopy meshes share it) so a stand reads as mixed species,
+    // not one asset stamped — A Short Hike's mustard-next-to-teal forest trick.
+    const speciesShift = () => {
+      const r = Math.random();
+      return r < 0.6
+        ? { h: -0.008 + Math.random() * 0.016, s: -0.045, l: 0 } // olive (subtle drift)
+        : r < 0.85
+          ? { h: -0.034 - Math.random() * 0.018, s: 0.015, l: 0.02 } // yellow-green
+          : { h: 0.028 + Math.random() * 0.02, s: -0.035, l: -0.03 }; // blue-green / teal
+    };
+    const spC = (tok, sp, dl = 0.04) => leafC(tok, dl).offsetHSL(sp.h, sp.s, sp.l);
+    const warmCanopy = () => Math.random() < 0.12; // ~1-in-8 trees go ochre/autumn
+    const barkC = () => new THREE.Color(PAL.bark).offsetHSL(0, 0, 0.035); // lifted so shadow side never goes black
+    // ---- canopy shade patches: one instanced flattened dome of cool moist grass under
+    // every tree so trunks grow OUT of the meadow instead of floating on it (critic:
+    // "darkened soft patch under every tree canopy"). One draw call per map.
+    const shadeGeo = new THREE.IcosahedronGeometry(1, 0);
+    const SHADE_MAX = 110;
+    let shadeInst = null, shadeCount = 0, shadeCol = null;
+    function addCanopyShade(x, z, r) {
+      if (!shadeInst || shadeInst.parent !== worldGroup) {
+        shadeInst = new THREE.InstancedMesh(shadeGeo, flat(0xffffff, { roughness: 1 }), SHADE_MAX);
+        shadeInst.receiveShadow = true;
+        shadeInst.frustumCulled = false;
+        // pre-size the color buffer BEFORE dropping count, else setColorAt allocates
+        // a zero-length buffer (count is live at allocation time) and instances go black
+        shadeInst.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SHADE_MAX * 3), 3);
+        shadeInst.count = 0; shadeCount = 0;
+        shadeCol = new THREE.Color();
+        worldGroup.add(shadeInst);
+      }
+      if (shadeCount >= SHADE_MAX) return;
+      instDummy.position.set(x + (Math.random() - 0.5) * 0.2, terrainY(x, z) + 0.015, z + (Math.random() - 0.5) * 0.2);
+      instDummy.rotation.set(0, Math.random() * Math.PI, 0);
+      instDummy.scale.set(r * (0.9 + Math.random() * 0.3), 0.055, r * (0.75 + Math.random() * 0.35));
+      instDummy.updateMatrix();
+      shadeInst.setMatrixAt(shadeCount, instDummy.matrix);
+      // cool moist grass a step below ground value — reads as shade+leaf-litter, not a hole
+      shadeCol.copy(SRGB(PAL.grassShade)).lerp(SRGB(PAL.leafDeep), 0.22)
+        .offsetHSL((Math.random() - 0.5) * 0.015, -0.06, 0.02 + (Math.random() - 0.5) * 0.03);
+      shadeInst.setColorAt(shadeCount, shadeCol);
+      shadeCount++; shadeInst.count = shadeCount;
+      shadeInst.instanceMatrix.needsUpdate = true;
+      if (shadeInst.instanceColor) shadeInst.instanceColor.needsUpdate = true;
+    }
+    // ---- one transformed, uniformly-tinted lump destined for a mergeGeoms canopy.
+    // Whole canopies become ONE vertex-colored mesh, so richer silhouettes cost
+    // FEWER draw calls than the old per-blob meshes. col must already be linear.
+    const canopyVCMat = flat(0xffffff, { vertexColors: true });
+    const lumpE = new THREE.Euler(), lumpM = new THREE.Matrix4();
+    function lumpG(geo, sx, sy, sz, rx, ry, rz, px, py, pz, col) {
+      geo.scale(sx, sy, sz);
+      lumpE.set(rx, ry, rz);
+      lumpM.makeRotationFromEuler(lumpE).setPosition(px, py, pz);
+      geo.applyMatrix4(lumpM);
+      const n = geo.attributes.position.count, arr = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { arr[i * 3] = col.r; arr[i * 3 + 1] = col.g; arr[i * 3 + 2] = col.b; }
+      geo.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+      return geo;
+    }
     function makePine(x, z, s = 1) {
       const g = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14 * s, 0.22 * s, 1.0 * s, 5), flat(0x6e4a2c));
-      trunk.position.y = 0.5 * s; trunk.castShadow = true;
-      const c = PINE_GREENS[Math.floor(Math.random() * PINE_GREENS.length)];
-      const tiers = [[1.15, 1.3, 1.15], [0.88, 1.15, 1.95], [0.58, 1.0, 2.7]];
-      tiers.forEach(([r, h, y]) => {
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(r * s, h * s, 6), flat(c));
-        cone.position.y = y * s; cone.castShadow = true;
-        g.add(cone);
-      });
-      g.add(trunk);
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13 * s, 0.24 * s, 1.3 * s, 5), flat(barkC()));
+      trunk.position.y = 0.6 * s; trunk.castShadow = true;
+      // one species tint per tree; crown shifts WARM (toward yellow-green) instead of
+      // brighter — keeps a strict two-step ramp, no near-white lit facets
+      const sp = speciesShift();
+      // EVERY pine sits somewhere on the leafDeep->leafMid band (0.1-0.45), and ~30%
+      // jump well into the mid/olive range — so a stand always mixes dark-teal,
+      // olive and sage conifers instead of repeating one bottle green
+      const mixMid = 0.1 + Math.random() * 0.35 + (Math.random() < 0.3 ? 0.3 : 0);
+      // proportion variants: squat-wide / standard / tall-narrow silhouettes
+      const pr = Math.random();
+      const wid = pr < 0.3 ? 1.14 : pr < 0.75 ? 1.0 : 0.86;
+      const hgt = pr < 0.3 ? 0.88 : pr < 0.75 ? 1.0 : 1.18;
+      const tiers = [
+        [1.18, 1.3, 1.15, 0.006, -0.022],
+        [0.86, 1.15, 1.95, -0.018, 0.03],
+        [0.52, 1.0, 2.7, -0.04, 0.062],
+      ];
+      const parts = tiers.map(([r, h, y, wh, dl], i) =>
+        lumpG(new THREE.ConeGeometry(r * s * wid, h * s * hgt, 6), 1, 1, 1,
+          0, i * 0.5 + (Math.random() - 0.5) * 0.35, 0, 0, y * s * hgt, 0,
+          new THREE.Color(PAL.leafDeep).lerp(new THREE.Color(PAL.leafMid), Math.min(0.75, mixMid))
+            .offsetHSL(sp.h + wh + (Math.random() - 0.5) * 0.02, sp.s + 0.02, sp.l + dl + (Math.random() - 0.5) * 0.015)
+            .convertSRGBToLinear()));
+      const canopy = new THREE.Mesh(mergeGeoms(parts), canopyVCMat);
+      canopy.castShadow = true;
+      g.add(canopy, trunk);
       g.position.set(x, terrainY(x, z), z);
       g.rotation.y = Math.random() * Math.PI;
       addCircleCol(x, z, 0.5 * s);
+      addCanopyShade(x, z, 1.15 * s);
       swayers.push({ g, ph: Math.random() * 9, amp: 1 });
       return g;
     }
     function makeOak(x, z, s = 1) {
       const g = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * s, 0.32 * s, 1.5 * s, 6), flat(0x7a5233));
-      trunk.position.y = 0.75 * s; trunk.castShadow = true;
-      const c1 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1 * s, 0), flat(OAK_GREENS[Math.floor(Math.random() * 4)]));
-      c1.position.y = 2.15 * s; c1.castShadow = true;
-      c1.rotation.set(Math.random(), Math.random(), Math.random());
-      const c2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.72 * s, 0), flat(OAK_GREENS[Math.floor(Math.random() * 4)]));
-      c2.position.set(0.55 * s, 2.6 * s, 0.25 * s); c2.castShadow = true;
-      c2.rotation.set(Math.random(), Math.random(), Math.random());
-      g.add(trunk, c1, c2);
+      // tapered trunk + 1-2 branch stubs that visibly enter the canopy
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13 * s, 0.34 * s, 1.7 * s, 6), flat(barkC()));
+      trunk.position.y = 0.82 * s; trunk.castShadow = true;
+      g.add(trunk);
+      const barkMat = flat(barkC());
+      const nb = 1 + (Math.random() < 0.55 ? 1 : 0);
+      for (let i = 0; i < nb; i++) {
+        const a = Math.random() * Math.PI * 2, lean = 0.62 + Math.random() * 0.25;
+        const br = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * s, 0.085 * s, 1.05 * s, 5), barkMat);
+        br.position.set(Math.cos(a) * 0.42 * s, (1.5 + Math.random() * 0.3) * s, Math.sin(a) * 0.42 * s);
+        br.rotation.set(Math.sin(a) * lean, 0, -Math.cos(a) * lean);
+        br.castShadow = true;
+        g.add(br);
+      }
+      // 5-7 irregular lumps with the mass pushed off-axis + a wide flat deep-teal
+      // underside skirt 25% darker — draped foliage with shadow beneath, not balloons.
+      // All lumps merge into ONE vertex-colored mesh (fewer draw calls than before).
+      const warm = warmCanopy();
+      const sp = speciesShift();
+      const tokLow = warm ? PAL.leafWarm : PAL.leafDeep;
+      const tokMid = warm ? PAL.leafWarm : PAL.leafMid;
+      const tokTop = warm ? PAL.leafWarm : PAL.leafLime;
+      const cx = (Math.random() - 0.5) * 0.55, cz = (Math.random() - 0.5) * 0.55;
+      const parts = [];
+      // underside skirt: teal-leaning cool shade — lifted so the shadow side reads
+      // blue-green, never a near-black hole
+      parts.push(lumpG(new THREE.IcosahedronGeometry(1.08 * s, 1.08 * s >= 1.0 ? 1 : 0), 1, 0.5, 1,
+        Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI,
+        cx * s, 1.8 * s, cz * s,
+        spC(tokLow, sp, 0.02).offsetHSL(0.024, -0.06, -0.04).convertSRGBToLinear()));
+      const n = 4 + Math.floor(Math.random() * 3);
+      // one designated sun-kissed lobe per canopy (warm-lit vs cool-shade lobe read)
+      const sunLobe = 1 + Math.floor(Math.random() * n);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + Math.random() * 1.5;
+        const hi = i / Math.max(1, n - 1);
+        const rad = (i === 0 ? 0.12 : 0.4 + Math.random() * 0.5) * (1 - hi * 0.45) * s;
+        const r = Math.max(0.34 * s, (0.9 - hi * 0.3) * (0.82 + Math.random() * 0.34) * s);
+        const tok = hi < 0.34 ? tokLow : hi < 0.72 ? tokMid : tokTop;
+        let lc = spC(tok, sp).offsetHSL(0, 0, hi * 0.02 + (Math.random() - 0.5) * 0.025);
+        // top lime lumps pull back toward the workhorse mid-green so big canopies
+        // never wash out into pale plastic lime
+        if (tok === tokTop && !warm) lc = lc.lerp(new THREE.Color(PAL.leafMid), 0.3);
+        if (i + 1 === sunLobe && !warm) lc = lc.offsetHSL(-0.014, 0.02, 0.032); // warm-lit lobe
+        // big lobes get one subdivision — more facets = richer flat-shaded value
+        // steps on large canopies instead of giant paper planes
+        parts.push(lumpG(new THREE.IcosahedronGeometry(r, r >= 1.0 ? 1 : 0), 1, 0.6 + Math.random() * 0.2, 1,
+          Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI,
+          cx * s + Math.cos(a) * rad, (2.05 + hi * 0.85 + (Math.random() - 0.5) * 0.2) * s, cz * s + Math.sin(a) * rad,
+          lc.convertSRGBToLinear()));
+      }
+      const canopy = new THREE.Mesh(mergeGeoms(parts), canopyVCMat);
+      canopy.castShadow = true;
+      g.add(canopy);
       g.position.set(x, terrainY(x, z), z);
       addCircleCol(x, z, 0.55 * s);
+      addCanopyShade(x, z, 1.3 * s);
       swayers.push({ g, ph: Math.random() * 9, amp: 1 });
       return g;
     }
     const makeTree = (x, z, s = 1) => (Math.random() < 0.55 ? makePine(x, z, s) : makeOak(x, z, s));
     function makeCypress(x, z, s = 1) {
       const g = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.16 * s, 0.7 * s, 5), flat(0x6e4a2c));
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.16 * s, 0.7 * s, 5), flat(barkC()));
       trunk.position.y = 0.35 * s; trunk.castShadow = true;
-      const c1 = new THREE.Mesh(new THREE.ConeGeometry(0.55 * s, 2.6 * s, 6), flat(0x2f6e3a));
+      const sp = speciesShift();
+      const c1 = new THREE.Mesh(new THREE.ConeGeometry(0.55 * s, 2.6 * s, 6), flat(spC(PAL.leafDeep, sp, 0.03)));
       c1.position.y = 1.9 * s; c1.castShadow = true;
-      const c2 = new THREE.Mesh(new THREE.ConeGeometry(0.34 * s, 1.2 * s, 6), flat(0x3a7a44));
+      const c2 = new THREE.Mesh(new THREE.ConeGeometry(0.3 * s, 1.2 * s, 6), flat(spC(PAL.leafDeep, sp, 0.03).offsetHSL(-0.024, 0.02, 0.04)));
       c2.position.y = 3.1 * s; c2.castShadow = true;
+      c2.rotation.y = 0.5;
       g.add(trunk, c1, c2);
       g.position.set(x, terrainY(x, z), z);
       addCircleCol(x, z, 0.42 * s);
+      addCanopyShade(x, z, 0.85 * s);
       swayers.push({ g, ph: Math.random() * 9, amp: 0.6 });
       return g;
     }
     const CHERRY_PINKS = [0xe8a0c8, 0xf0b8d8, 0xdd8fbc];
     function makeCherry(x, z, s = 1) {
       const g = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * s, 0.26 * s, 1.3 * s, 6), flat(0x5f4228));
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * s, 0.26 * s, 1.3 * s, 6), flat(barkC()));
       trunk.position.y = 0.65 * s; trunk.castShadow = true;
       const c1 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0 * s, 0), flat(CHERRY_PINKS[Math.floor(Math.random() * 3)]));
-      c1.position.y = 1.9 * s; c1.castShadow = true;
+      c1.position.y = 1.9 * s; c1.castShadow = true; c1.scale.y = 0.84;
       c1.rotation.set(Math.random(), Math.random(), Math.random());
       const c2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.62 * s, 0), flat(CHERRY_PINKS[Math.floor(Math.random() * 3)]));
-      c2.position.set(0.5 * s, 2.35 * s, 0.2 * s); c2.castShadow = true;
+      c2.position.set(0.5 * s, 2.35 * s, 0.2 * s); c2.castShadow = true; c2.scale.y = 0.84;
       c2.rotation.set(Math.random(), Math.random(), Math.random());
       g.add(trunk, c1, c2);
       g.position.set(x, terrainY(x, z), z);
       addCircleCol(x, z, 0.5 * s);
+      addCanopyShade(x, z, 1.1 * s);
       swayers.push({ g, ph: Math.random() * 9, amp: 1.25 });
       return g;
     }
 
-    // ---- Faceted rocks (light granite + dark boulders) ----
-    function makeRock(x, z, s = 1, dark = false) {
-      const base = dark ? 0x4a4a58 : 0x9a938c;
-      const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55 * s, 0),
-        flat(new THREE.Color(base).offsetHSL(0, 0, (Math.random() - 0.5) * 0.06)));
-      r.position.set(x, 0.3 * s + terrainY(x, z), z);
-      r.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
-      r.scale.set(1, 0.75 + Math.random() * 0.4, 1);
+    // ---- Faceted rocks (warm pale granite, moss-capped) ----
+    const instDummy = new THREE.Object3D();
+    const mossGeo = new THREE.IcosahedronGeometry(1, 0);
+    const mossMat = flat(PAL.leafDeep, { roughness: 1 });
+    const MOSS_MAX = 48;
+    let mossInst = null, mossCount = 0;
+    function addMossCap(x, y, z, s) {
+      // one InstancedMesh of flattened moss domes per map (recreated after clearWorld)
+      if (!mossInst || mossInst.parent !== worldGroup) {
+        mossInst = new THREE.InstancedMesh(mossGeo, mossMat, MOSS_MAX);
+        mossInst.castShadow = true; mossInst.receiveShadow = true;
+        mossInst.frustumCulled = false;
+        mossInst.count = 0; mossCount = 0;
+        worldGroup.add(mossInst);
+      }
+      if (mossCount >= MOSS_MAX) return;
+      instDummy.position.set(x + (Math.random() - 0.5) * 0.08 * s, y, z + (Math.random() - 0.5) * 0.08 * s);
+      instDummy.rotation.set((Math.random() - 0.5) * 0.3, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3);
+      instDummy.scale.set(0.46 * s, 0.16 * s, 0.46 * s);
+      instDummy.updateMatrix();
+      mossInst.setMatrixAt(mossCount, instDummy.matrix);
+      mossCount++; mossInst.count = mossCount;
+      mossInst.instanceMatrix.needsUpdate = true;
+    }
+    // baked two-tone facet split (Lonely Mountains): sun-facing facets warm-lit,
+    // grazing facets keep the base khaki, away facets cool toward the sky ambient
+    const ROCK_SUN = new THREE.Vector3(16, 17, 9).normalize();
+    function bakeRockFacets(geo, dark, rotE) {
+      const g = geo.index ? geo.toNonIndexed() : geo;
+      const pos = g.attributes.position;
+      // warm grey-tan, sat BELOW the flower highlights in value (no popcorn-white pebbles)
+      const base = new THREE.Color(PAL.stone).offsetHSL(0.02, dark ? 0.02 : 0.045, dark ? -0.12 : -0.045)
+        .offsetHSL(0, 0, (Math.random() - 0.5) * 0.05).convertSRGBToLinear();
+      const lit = base.clone().offsetHSL(0.012, 0.03, 0.055);
+      const cool = base.clone().lerp(SRGB(PAL.ambientSky), 0.3).offsetHSL(0, 0, -0.055);
+      const cols = new Float32Array(pos.count * 3);
+      const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3(), vn = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i += 3) {
+        va.fromBufferAttribute(pos, i); vb.fromBufferAttribute(pos, i + 1); vc.fromBufferAttribute(pos, i + 2);
+        vb.sub(va); vc.sub(va); vn.crossVectors(vb, vc).normalize();
+        if (rotE) vn.applyEuler(rotE);
+        const d = vn.dot(ROCK_SUN);
+        const fc = d > 0.3 ? lit : d > -0.1 ? base : cool;
+        for (let k = 0; k < 3; k++) { cols[(i + k) * 3] = fc.r; cols[(i + k) * 3 + 1] = fc.g; cols[(i + k) * 3 + 2] = fc.b; }
+      }
+      g.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+      return g;
+    }
+    function makeRock(x, z, s = 1, dark = false, opts = {}) {
+      const rotE = new THREE.Euler(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+      const geo = bakeRockFacets(new THREE.IcosahedronGeometry(0.55 * s, 0), dark, rotE);
+      const sy = 0.75 + Math.random() * 0.4;
+      // opts.sink: half-buried boulder — crown barely proud of the meadow, grass skirt hugs it
+      const ry = opts.y != null ? opts.y : (opts.sink ? 0.04 : 0.21) * s + terrainY(x, z);
+      if (opts.wet) {
+        // wet band: darken + cool everything near/below the waterline (-0.16) so in-stream
+        // stones read soaked at the base instead of dry pebbles floating on blue
+        const posA = geo.attributes.position, colA = geo.attributes.color;
+        const wetC = new THREE.Color(PAL.stone).offsetHSL(0.01, 0.02, -0.21).convertSRGBToLinear().lerp(SRGB(PAL.waterDeep), 0.22);
+        const wv = new THREE.Vector3(), cv = new THREE.Color();
+        for (let vi = 0; vi < posA.count; vi++) {
+          wv.fromBufferAttribute(posA, vi).applyEuler(rotE);
+          const wy = ry + wv.y * sy;
+          const t = Math.max(0, Math.min(1, (0.0 - wy) / 0.14)); // dry above ~0, fully wet below waterline
+          if (t > 0) {
+            cv.fromBufferAttribute(colA, vi).lerp(wetC, t * 0.85);
+            colA.setXYZ(vi, cv.r, cv.g, cv.b);
+          }
+        }
+      }
+      const r = new THREE.Mesh(geo, flat(0xffffff, { vertexColors: true }));
+      // sunk ~25% into the meadow so the boulder sits IN the land (or explicit y for in-stream stones)
+      r.position.set(x, ry, z);
+      r.rotation.copy(rotE);
+      r.scale.set(1, sy, 1);
       r.castShadow = true; r.receiveShadow = true;
-      addCircleCol(x, z, 0.52 * s);
+      if (!opts.noCol) addCircleCol(x, z, 0.52 * s);
+      if (s >= 0.5 && !opts.noMoss) addMossCap(x, r.position.y + (opts.sink ? 0.42 : 0.3) * s, z, s * 0.82); // top-cap accent only
+      if (!opts.noCol) rockBases.push([x, z, s]); // addGrass spawns hugging tufts here
       return r;
     }
 
     // ---- Petaled flowers ----
-    const PETALS = [0xff7ab8, 0xffffff, 0xffd24a, 0xb88ae8, 0xff8a5c, 0x8ab8ff];
+    // blossom colorways derived from PAL — warm white / blush / gold (golden-hour meadow set)
+    const BLOOM_WHITE = new THREE.Color(PAL.plaster).offsetHSL(0.03, -0.27, 0.06);
+    const BLOOM_BLUSH = new THREE.Color(PAL.roof).offsetHSL(-0.083, 0.16, 0.28);
+    const BLOOM_GOLD = new THREE.Color(PAL.sun).offsetHSL(0.014, -0.2, -0.18);
+    // saturated poppy-red accent species (Short Hike red foliage accents) — headliner, used sparingly
+    const BLOOM_RED = new THREE.Color(PAL.roof).offsetHSL(-0.015, 0.3, -0.02);
+    const PETALS = [BLOOM_WHITE, BLOOM_BLUSH, BLOOM_GOLD, BLOOM_RED, BLOOM_BLUSH.clone().offsetHSL(-0.06, -0.1, 0.02)];
+    const FLOWER_STEM = new THREE.Color(PAL.grassShade).offsetHSL(0, 0.06, 0.0);
+    const FLOWER_LEAF = new THREE.Color(PAL.leafLime).offsetHSL(0, -0.08, -0.04);
     function makeFlower(x, z) {
       const g = new THREE.Group();
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.4, 5), flat(0x3f8f3f));
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.4, 5), flat(FLOWER_STEM));
       stem.position.y = 0.2;
-      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 4), flat(0x54a848));
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 4), flat(FLOWER_LEAF));
       leaf.position.set(0.08, 0.16, 0); leaf.scale.set(1.6, 0.4, 0.8);
       const center = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), flat(0xffdf6a, { emissive: 0xcc9a20, emissiveIntensity: 0.3 }));
       center.position.y = 0.42;
@@ -930,33 +1123,81 @@ export default function DragonGardenQuest() {
       return g;
     }
 
-    function addWildflowers(count, area, avoid) {
+    function addWildflowers(count, area, avoid, edgeSegs) {
       const stemGeo = new THREE.ConeGeometry(0.035, 0.34, 4);
       stemGeo.translate(0, 0.17, 0);
-      const headGeo = new THREE.IcosahedronGeometry(0.075, 0);
-      headGeo.translate(0, 0.36, 0);
-      const stems = new THREE.InstancedMesh(stemGeo, flat(0x4f9c38, { roughness: 1 }), count);
-      const heads = new THREE.InstancedMesh(headGeo, flat(0xffffff, { roughness: 0.7, emissive: 0xffffff, emissiveIntensity: 0.07 }), count);
+      // multi-bloom head: one fat lobe + two smaller satellites so blooms read as blooms, not noise
+      const hMain = new THREE.IcosahedronGeometry(0.085, 0); hMain.translate(0, 0.37, 0);
+      const hA = new THREE.IcosahedronGeometry(0.052, 0); hA.translate(0.075, 0.31, 0.02);
+      const hB = new THREE.IcosahedronGeometry(0.046, 0); hB.translate(-0.05, 0.325, -0.06);
+      const headGeo = mergeGeoms([hMain, hA, hB]);
+      const stems = new THREE.InstancedMesh(stemGeo, flat(FLOWER_STEM, { roughness: 1 }), count);
+      const heads = new THREE.InstancedMesh(headGeo, flat(0xffffff, { roughness: 0.7, emissive: 0xffffff, emissiveIntensity: 0.06 }), count);
       addWind(stems.material, 0.05, 0.34);
       addWind(heads.material, 0.05, 0.42);
       stems.receiveShadow = true;
       const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
       const pv = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
-      const petals = [0xff7ab8, 0xffffff, 0xffd24a, 0xb88ae0, 0xff8a5c, 0x8ab8ff, 0xe84a4a];
+      // 4 colorways: white/gold filler, blush + saturated red the accents; drifts lean one way
+      const ways = [BLOOM_WHITE, BLOOM_GOLD, BLOOM_BLUSH, BLOOM_RED];
+      const pickWay = () => { const r = Math.random(); return r < 0.3 ? 0 : r < 0.62 ? 1 : r < 0.84 ? 2 : 3; };
+      // clustered drifts, never uniform-random; ~half hug path edges + fence lines where the eye travels
+      const centers = [];
+      let ct = 0;
+      const nClusters = Math.max(5, Math.round(count / 11));
+      while (centers.length < nClusters && ct < nClusters * 40) {
+        ct++;
+        let cx, cz;
+        const roll = Math.random();
+        if (roll < 0.18 && edgeSegs && edgeSegs.length) {
+          // drift along a fence line / field edge
+          const [x1, z1, x2, z2] = edgeSegs[Math.floor(Math.random() * edgeSegs.length)];
+          const t = Math.random();
+          cx = x1 + (x2 - x1) * t + (Math.random() - 0.5) * 0.8;
+          cz = z1 + (z2 - z1) * t + (Math.random() - 0.5) * 0.8;
+        } else if (roll < 0.5 && pathRoutes.length) {
+          // deliberate accent: a drift along a path edge
+          const rt = pathRoutes[Math.floor(Math.random() * pathRoutes.length)];
+          const si = Math.floor(Math.random() * (rt.pts.length - 1));
+          const [x1, z1] = rt.pts[si], [x2, z2] = rt.pts[si + 1];
+          const t = Math.random();
+          const dx = x2 - x1, dz = z2 - z1, L = Math.hypot(dx, dz) || 1;
+          const side = Math.random() < 0.5 ? -1 : 1;
+          const off = (rt.w || 1.5) * 0.6 + 0.7 + Math.random() * 0.9;
+          cx = x1 + dx * t + (-dz / L) * side * off;
+          cz = z1 + dz * t + (dx / L) * side * off;
+        } else if (roll < 0.62 && rockBases.length) {
+          const [rx, rz, rs] = rockBases[Math.floor(Math.random() * rockBases.length)];
+          const a0 = Math.random() * Math.PI * 2;
+          cx = rx + Math.cos(a0) * (0.7 * rs + 0.5); cz = rz + Math.sin(a0) * (0.7 * rs + 0.5);
+        } else {
+          cx = (Math.random() - 0.5) * area; cz = (Math.random() - 0.5) * area;
+        }
+        if (Math.abs(cx) > area / 2 || Math.abs(cz) > area / 2) continue;
+        if (avoid && avoid(cx, cz)) continue;
+        centers.push([cx, cz, pickWay()]);
+      }
       let placed = 0, tries = 0;
-      while (placed < count && tries < count * 12) {
+      while (placed < count && tries < count * 14 && centers.length) {
         tries++;
-        const x = (Math.random() - 0.5) * area, z = (Math.random() - 0.5) * area;
+        const [cx, cz, way] = centers[Math.floor(Math.random() * centers.length)];
+        const a = Math.random() * Math.PI * 2, rr = (Math.random() + Math.random()) * 1.1;
+        const x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr;
+        if (Math.abs(x) > area / 2 || Math.abs(z) > area / 2) continue;
         if (avoid && avoid(x, z)) continue;
         e.set((Math.random() - 0.5) * 0.3, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3);
         q.setFromEuler(e);
         pv.set(x, terrainY(x, z), z);
-        const sce = 0.8 + Math.random() * 0.8;
+        const wPick = Math.random() < 0.7 ? way : pickWay();
+        // red accent species carries bigger multi-bloom heads; whites stay filler-sized
+        const sce = (0.8 + Math.random() * 0.8) * (wPick === 3 ? 1.3 : wPick === 0 ? 0.9 : 1);
         sc.set(sce, sce, sce);
         m.compose(pv, q, sc);
         stems.setMatrixAt(placed, m);
         heads.setMatrixAt(placed, m);
-        col.setHex(petals[Math.floor(Math.random() * petals.length)]).convertSRGBToLinear();
+        col.copy(ways[wPick])
+          .offsetHSL((Math.random() - 0.5) * 0.02, 0, (Math.random() - 0.5) * 0.06)
+          .convertSRGBToLinear();
         heads.setColorAt(placed, col);
         placed++;
       }
@@ -967,7 +1208,8 @@ export default function DragonGardenQuest() {
     }
 
     function addPavedPlaza(px1, pz1, px2, pz2) {
-      const base = new THREE.Mesh(new THREE.BoxGeometry(px2 - px1, 0.06, pz2 - pz1), flat(0x6e6a64, { roughness: 1 }));
+      // mortar lifted toward the stone family so the gaps read as seams, not shadow holes
+      const base = new THREE.Mesh(new THREE.BoxGeometry(px2 - px1, 0.06, pz2 - pz1), flat(new THREE.Color(PAL.stone).offsetHSL(0.012, 0, -0.075), { roughness: 1 }));
       base.position.set((px1 + px2) / 2, 0.03, (pz1 + pz2) / 2);
       base.receiveShadow = true;
       addCloudShade(base.material);
@@ -989,7 +1231,7 @@ export default function DragonGardenQuest() {
         sc.set(sp, 1, sp * (0.9 + Math.random() * 0.2));
         m.compose(pv, q, sc);
         inst.setMatrixAt(i, m);
-        col.setHex(0x9a948c).convertSRGBToLinear().offsetHSL(0, 0, (Math.random() - 0.5) * 0.1);
+        col.setHex(PAL.pathStone).convertSRGBToLinear().offsetHSL(0.004 * (Math.random() - 0.5), (Math.random() - 0.5) * 0.05, (Math.random() - 0.5) * 0.2);
         inst.setColorAt(i, col);
       });
       inst.instanceMatrix.needsUpdate = true;
@@ -999,11 +1241,17 @@ export default function DragonGardenQuest() {
 
     function makeTulip(x, z) {
       const g = new THREE.Group();
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.5, 5), flat(0x3f8f3f));
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.5, 5), flat(FLOWER_STEM));
       stem.position.y = 0.25;
-      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.1, 5, 4), flat(0x4f9c38));
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.1, 5, 4), flat(FLOWER_LEAF));
       leaf.position.set(0.09, 0.2, 0); leaf.scale.set(1.8, 0.35, 0.7); leaf.rotation.z = -0.4;
-      const c = [0xe84a4a, 0xf0c040, 0xb86ae0, 0xf08a3a][Math.floor(Math.random() * 4)];
+      // tulip cups run a touch richer than the wildflower drifts, same 3-way family
+      const c = [
+        BLOOM_GOLD.clone().offsetHSL(0, 0.1, -0.04),
+        BLOOM_BLUSH.clone().offsetHSL(0, 0.12, -0.08),
+        BLOOM_WHITE,
+        BLOOM_GOLD.clone().offsetHSL(-0.035, 0.12, -0.06),
+      ][Math.floor(Math.random() * 4)];
       const cup = new THREE.Mesh(new THREE.SphereGeometry(0.13, 6, 5), flat(c, { emissive: c, emissiveIntensity: 0.15 }));
       cup.position.y = 0.55; cup.scale.set(1, 1.25, 1);
       const cupTop = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.12, 6), flat(c));
@@ -1017,13 +1265,40 @@ export default function DragonGardenQuest() {
     }
     const mixFlower = (x, z) => (Math.random() < 0.5 ? makeFlower(x, z) : makeTulip(x, z));
     function makeBush(x, z, s = 1) {
+      // never slice into a scatter boulder — slide out to the rock's edge instead
+      // (raw bush/rock mesh intersections read as a placement bug at close camera)
+      for (const [rx, rz, rs] of rockBases) {
+        const need = 0.95 * rs + 0.55 * s; // full rock footprint + bush radius
+        let dx = x - rx, dz = z - rz;
+        const d = Math.hypot(dx, dz);
+        if (d < need) {
+          if (d < 1e-4) { dx = 1; dz = 0; }
+          const k = need / (d || 1);
+          x = rx + dx * k; z = rz + dz * k;
+        }
+      }
       const g = new THREE.Group();
-      const b1 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55 * s, 0), flat(OAK_GREENS[Math.floor(Math.random() * 4)]));
-      b1.position.y = 0.4 * s; b1.castShadow = true;
-      b1.rotation.set(Math.random(), Math.random(), Math.random());
-      const b2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.38 * s, 0), flat(OAK_GREENS[Math.floor(Math.random() * 4)]));
-      b2.position.set(0.35 * s, 0.32 * s, 0.15 * s); b2.castShadow = true;
-      g.add(b1, b2);
+      // ONE species per bush (per-lump random tokens read as patchwork noise) in the
+      // lime/mid band + rare ochre; dark cool base skirt seats it into the grass.
+      // Lumps merge into a single vertex-colored mesh — 1 draw call per bush.
+      const sp = speciesShift();
+      const tok = Math.random() < 0.1 ? PAL.leafWarm : Math.random() < 0.45 ? PAL.leafLime : PAL.leafMid;
+      const parts = [];
+      parts.push(lumpG(new THREE.IcosahedronGeometry(0.52 * s, 0), 1.15, 0.5, 1.15,
+        Math.random(), Math.random(), Math.random(), 0, 0.15 * s, 0,
+        spC(PAL.leafDeep, sp, 0.02).offsetHSL(0.01, -0.06, -0.05).convertSRGBToLinear()));
+      const nl = 2 + (Math.random() < 0.5 ? 1 : 0);
+      for (let i = 0; i < nl; i++) {
+        const a = Math.random() * Math.PI * 2, rad = i === 0 ? 0 : (0.26 + Math.random() * 0.16) * s;
+        const r = (i === 0 ? 0.55 : 0.34 + Math.random() * 0.1) * s;
+        parts.push(lumpG(new THREE.IcosahedronGeometry(r, 0), 1, 0.72 + Math.random() * 0.16, 1,
+          Math.random(), Math.random(), Math.random(),
+          Math.cos(a) * rad, (i === 0 ? 0.4 : 0.3 + Math.random() * 0.18) * s, Math.sin(a) * rad,
+          spC(tok, sp).offsetHSL(0, 0, i === 0 ? 0 : 0.025).convertSRGBToLinear()));
+      }
+      const m = new THREE.Mesh(mergeGeoms(parts), canopyVCMat);
+      m.castShadow = true;
+      g.add(m);
       g.position.set(x, terrainY(x, z), z);
       addCircleCol(x, z, 0.5 * s);
       swayers.push({ g, ph: Math.random() * 9, amp: 0.8 });
@@ -1044,10 +1319,16 @@ export default function DragonGardenQuest() {
         if (avoid && avoid(x, z)) continue;
         e.set(0, Math.random() * Math.PI, 0); q.setFromEuler(e);
         p.set(x, terrainY(x, z), z);
-        sc.set(1.2 + Math.random(), 0.5 + Math.random() * 0.5, 1.2 + Math.random());
+        sc.set(1.2 + Math.random(), 0.4 + Math.random() * 0.4, 1.2 + Math.random());
         m.compose(p, q, sc);
         inst.setMatrixAt(placed, m);
-        col.setHex(0x3f8a34).convertSRGBToLinear().offsetHSL((Math.random() - 0.5) * 0.05, 0, (Math.random() - 0.5) * 0.12);
+        // grass-ramp tint tied to the shared noise field — sprouts blend into the meadow
+        // instead of reading as dark saturated blobs
+        const sw = meadowNoise(x, z) + (Math.random() - 0.5) * 0.3;
+        col.copy(SRGB(PAL.grassBase));
+        if (sw > 0) col.lerp(SRGB(PAL.grassSun), Math.min(1, sw) * 0.6);
+        else col.lerp(SRGB(PAL.grassShade), Math.min(1, -sw) * 0.55);
+        col.offsetHSL((Math.random() - 0.5) * 0.02, -0.04, 0.02 + (Math.random() - 0.5) * 0.06);
         inst.setColorAt(placed, col);
         placed++;
       }
@@ -1058,46 +1339,177 @@ export default function DragonGardenQuest() {
     }
 
     function makeFence(x1, z1, x2, z2) {
+      // hand-set timber fence merged into ONE vertex-colored mesh (1 draw call per run):
+      // warm tan-orange wood, per-post hue/value jitter + lean wobble, rails segmented
+      // post-to-post with darkened end-grain where they meet posts (faked joinery)
       const g = new THREE.Group();
       const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz);
       const n = Math.max(2, Math.round(len / 1.2));
+      const yaw = -Math.atan2(dz, dx);
+      // saturated warm timber — PAL.wood pulled toward PAL.bark (A Short Hike fence family)
+      const timber = new THREE.Color(PAL.wood).lerp(new THREE.Color(PAL.bark), 0.3).offsetHSL(-0.01, 0.16, 0.015);
+      const geoms = [];
+      const tmpC = new THREE.Color();
+      const paint = (bg, c, endDip) => {
+        // solid vertex tint; endDip darkens vertices near the box's ±x ends (rail joinery)
+        const posA = bg.attributes.position, cols = new Float32Array(posA.count * 3);
+        const bb = bg.boundingBox || (bg.computeBoundingBox(), bg.boundingBox);
+        const hx = Math.max(0.001, bb.max.x);
+        for (let vi = 0; vi < posA.count; vi++) {
+          tmpC.copy(c);
+          if (endDip && Math.abs(posA.getX(vi)) > hx - 0.14) tmpC.offsetHSL(0.004, 0.02, -0.085);
+          cols[vi * 3] = tmpC.r; cols[vi * 3 + 1] = tmpC.g; cols[vi * 3 + 2] = tmpC.b;
+        }
+        bg.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+        return bg;
+      };
+      const postPts = [];
       for (let i = 0; i <= n; i++) {
         const t = i / n;
-        const p = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.9, 0.14), flat(0xb9895a));
-        p.position.set(x1 + dx * t, 0.45, z1 + dz * t); p.castShadow = true; g.add(p);
+        const px = x1 + dx * t, pz = z1 + dz * t;
+        const h = 0.86 + Math.random() * 0.1;
+        postPts.push([px, pz, h]);
+        const pc = timber.clone()
+          .offsetHSL((Math.random() - 0.5) * 0.016, (Math.random() - 0.5) * 0.09, -0.045 + (Math.random() - 0.5) * 0.075)
+          .convertSRGBToLinear();
+        const pg = paint(new THREE.BoxGeometry(0.14 * (0.94 + Math.random() * 0.14), h, 0.145 * (0.94 + Math.random() * 0.14)), pc, false);
+        pg.rotateX((Math.random() - 0.5) * 0.1);   // hand-set lean, ~±3°
+        pg.rotateZ((Math.random() - 0.5) * 0.1);
+        pg.translate(px, h / 2, pz);
+        geoms.push(pg);
       }
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.1, 0.08), flat(0xcda06b));
-      rail.position.set((x1 + x2) / 2, 0.72, (z1 + z2) / 2);
-      rail.rotation.y = -Math.atan2(dz, dx); rail.castShadow = true; g.add(rail);
-      const rail2 = rail.clone(); rail2.position.y = 0.38; g.add(rail2);
+      // rails segmented between posts so each carries its own tone + joined ends
+      [0.7, 0.365].forEach((ry, ri) => {
+        for (let i = 0; i < n; i++) {
+          const [ax, az] = postPts[i], [bx, bz] = postPts[i + 1];
+          const segL = Math.hypot(bx - ax, bz - az) + 0.06;
+          const rc = timber.clone()
+            .offsetHSL((Math.random() - 0.5) * 0.014, (Math.random() - 0.5) * 0.07, 0.035 + (Math.random() - 0.5) * 0.07)
+            .convertSRGBToLinear();
+          // rare sagging rail: one end slipped its joint — reads hand-built, not extruded
+          const sag = ri === 1 && Math.random() < 0.06;
+          const rg = paint(new THREE.BoxGeometry(segL, 0.095, 0.075), rc, true);
+          rg.rotateZ((Math.random() - 0.5) * 0.055 + (sag ? (Math.random() < 0.5 ? 0.17 : -0.17) : 0));
+          rg.rotateY(yaw);
+          rg.translate((ax + bx) / 2, ry - (sag ? 0.09 : 0) + (ri ? 0 : (Math.random() - 0.5) * 0.045), (az + bz) / 2);
+          geoms.push(rg);
+        }
+      });
+      const fence = new THREE.Mesh(mergeGeoms(geoms), flat(0xffffff, { vertexColors: true }));
+      fence.castShadow = true; fence.receiveShadow = true;
+      g.add(fence);
       addBoxCol((x1 + x2) / 2, (z1 + z2) / 2, Math.abs(dx) / 2 + 0.12, Math.abs(dz) / 2 + 0.12, 0);
       return g;
     }
     function makeSign(x, z, rotY = 0) {
       const g = new THREE.Group();
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.2, 5), flat(0x8a6238));
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.2, 5), flat(PAL.bark));
       post.position.y = 0.6;
-      const board = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.55, 0.08), flat(0xd8b07a));
+      const board = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.55, 0.08), flat(new THREE.Color(PAL.wood).offsetHSL(0.004, 0.03, 0.045)));
       board.position.y = 1.15; board.castShadow = true;
       g.add(post, board); g.position.set(x, 0, z); g.rotation.y = rotY;
       addCircleCol(x, z, 0.28);
       return g;
     }
 
+    // ---- shared low-frequency meadow noise: >0 = dry sunlit patch, <0 = cool moist patch ----
+    // two value-noise octaves; ground tint, grass ramp, and clover patches all sample the
+    // SAME field so tuft color agrees with the ground beneath it.
+    const meadowNoise = (x, z) =>
+      0.35 * (Math.sin(x * 0.11 + z * 0.045) + Math.sin(z * 0.09 - x * 0.05)) +
+      0.6 * Math.sin(x * 0.033 + 1.7) * Math.sin(z * 0.041 + 0.4);
+    // second decorrelated channel for the pale-sage macro patches
+    const meadowNoise2 = (x, z) => meadowNoise(z * 1.63 + 31.0, x * 1.63 - 12.0);
+
+    // ---- path routes, registered per-map BEFORE makeGround so the ground itself
+    // carries a worn dry-earth ribbon under/around the flagstones (path carved INTO
+    // the land instead of coins floating on grass) ----
+    let pathRoutes = [];
+    const setPathRoutes = (routes) => { pathRoutes = routes; };
+    function pathWear(x, z) {
+      // 1 at a route's centerline -> 0 at the edge of its worn band
+      let wear = 0;
+      for (const rt of pathRoutes) {
+        const band = (rt.w || 1.5) * 0.6 + 0.85;
+        const pts = rt.pts;
+        for (let i = 0; i < pts.length - 1; i++) {
+          const x1 = pts[i][0], z1 = pts[i][1], x2 = pts[i + 1][0], z2 = pts[i + 1][1];
+          const dx = x2 - x1, dz = z2 - z1;
+          const L2 = dx * dx + dz * dz || 1;
+          let t = ((x - x1) * dx + (z - z1) * dz) / L2;
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const px = x1 + dx * t - x, pz = z1 + dz * t - z;
+          const w = 1 - Math.sqrt(px * px + pz * pz) / band;
+          if (w > wear) wear = w;
+        }
+      }
+      return wear;
+    }
+    const rockBases = []; // makeRock registers; addGrass hugs each base with tufts
+
+    // ---- tiny geometry merge (r128 has no bundled BufferGeometryUtils) ----
+    function mergeGeoms(list) {
+      const parts = list.map((g) => (g.index ? g.toNonIndexed() : g));
+      let vCount = 0;
+      parts.forEach((g) => { vCount += g.attributes.position.count; });
+      const pos = new Float32Array(vCount * 3), nor = new Float32Array(vCount * 3);
+      const hasCol = parts.every((g) => g.attributes.color);
+      const colA = hasCol ? new Float32Array(vCount * 3) : null;
+      let o = 0;
+      parts.forEach((g) => {
+        pos.set(g.attributes.position.array, o * 3);
+        nor.set(g.attributes.normal.array, o * 3);
+        if (hasCol) colA.set(g.attributes.color.array, o * 3);
+        o += g.attributes.position.count;
+      });
+      const out = new THREE.BufferGeometry();
+      out.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      out.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+      if (hasCol) out.setAttribute("color", new THREE.BufferAttribute(colA, 3));
+      return out;
+    }
     // ---- Ground: faceted, hand-painted color variation ----
     function makeGround(size, color, tintFn) {
-      const geo = new THREE.PlaneGeometry(size, size, 46, 46);
+      const geo = new THREE.PlaneGeometry(size, size, 76, 76);
       const pos = geo.attributes.position;
       const colors = [];
-      const base = new THREE.Color(color).convertSRGBToLinear();
-      const deep = base.clone().offsetHSL(0.01, 0.08, -0.14);
+      // desaturate ~12% + nudge warm so the base escapes plastic lime
+      const base = new THREE.Color(color).offsetHSL(0.006, -0.075, 0.008).convertSRGBToLinear();
+      const deep = base.clone().offsetHSL(0.008, 0.02, -0.11);
+      const cSun = SRGB(PAL.grassSun), cShade = SRGB(PAL.grassShade);
+      const cSage = new THREE.Color(PAL.grassShade).offsetHSL(0.012, -0.13, 0.11).convertSRGBToLinear();
+      const cWorn = new THREE.Color(PAL.pathStone).offsetHSL(-0.006, -0.06, -0.1).convertSRGBToLinear();
+      const cStraw = new THREE.Color(PAL.grassSun).offsetHSL(0.012, -0.1, 0.03).convertSRGBToLinear();
+      // two extra painted-macro channels (A Short Hike): dry ochre crests + fresh moist green
+      const cOchre = new THREE.Color(PAL.grassSun).offsetHSL(-0.032, 0.045, -0.005).convertSRGBToLinear();
+      const cFresh = new THREE.Color(PAL.grassShade).offsetHSL(-0.012, 0.09, 0.035).convertSRGBToLinear();
+      // baked aerial perspective: far terrain melts toward a bluer fog family
+      const cFar = new THREE.Color(PAL.fog).lerp(new THREE.Color(PAL.skyMid), 0.35).convertSRGBToLinear();
       const tmp = new THREE.Color();
       for (let i = 0; i < pos.count; i++) {
         const wx = pos.getX(i), wz = -pos.getY(i);
-        pos.setZ(i, terrainY(wx, wz) + (Math.random() - 0.5) * 0.12);
-        tmp.copy(base).lerp(deep, Math.random() * Math.random());
+        pos.setZ(i, terrainY(wx, wz) + (Math.random() - 0.5) * 0.1);
+        tmp.copy(base).lerp(deep, Math.random() * Math.random() * 0.38);
+        // macro hue drift — sunlit hilltops go dry yellow-green, hollows go cool teal-green,
+        // with a second decorrelated pale-sage channel so no big patch holds one hue
+        const w = meadowNoise(wx, wz);
+        if (w > 0) tmp.lerp(cSun, Math.min(1, w * 1.2) * 0.85);
+        else tmp.lerp(cShade, Math.min(1, -w * 1.15) * 0.9);
+        if (w > 0.5) tmp.lerp(cOchre, Math.min(1, (w - 0.5) * 2.2) * 0.6); // dry crests bake ochre
+        const w2 = meadowNoise2(wx, wz);
+        if (w2 > 0.18) tmp.lerp(cSage, Math.min(1, w2 - 0.18) * 0.55);
+        if (w2 < -0.3) tmp.lerp(cFresh, Math.min(1, -w2 - 0.3) * 0.6); // moist fresh-green pools
+        // worn dry-earth ribbon under registered path routes: straw fringe -> trodden dirt core
+        const wear = pathWear(wx, wz);
+        if (wear > 0) {
+          tmp.lerp(cStraw, Math.min(1, wear * 2.2) * 0.7);
+          tmp.lerp(cWorn, Math.pow(Math.min(1, wear * 1.12), 1.6) * 0.85);
+        }
         if (tintFn) tintFn(wx, wz, tmp);
-        const v = 0.92 + Math.random() * 0.16;
+        // distance desaturation ramp (aerial perspective baked into the vertex colors)
+        const dR = Math.hypot(wx, wz);
+        if (dR > size * 0.31) tmp.lerp(cFar, Math.min(1, (dR - size * 0.31) / (size * 0.3)) * 0.42);
+        const v = 0.95 + Math.random() * 0.1;
         colors.push(tmp.r * v, tmp.g * v, tmp.b * v);
       }
       geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
@@ -1119,28 +1531,58 @@ export default function DragonGardenQuest() {
         const n = Math.floor(len / 0.85);
         for (let j = 0; j <= n; j++) {
           const t = j / Math.max(1, n);
-          const lateral = ((j % 2 === 0 ? -1 : 1) * (0.18 + Math.random() * 0.14)) * (width / 1.5);
+          const lateral = ((j % 2 === 0 ? -1 : 1) * (0.16 + Math.random() * 0.12)) * (width / 1.5);
           stones.push({
-            x: x1 + dirX * len * t + perpX * lateral + (Math.random() - 0.5) * 0.15,
-            z: z1 + dirZ * len * t + perpZ * lateral + (Math.random() - 0.5) * 0.15,
-            s: 0.75 + Math.random() * 0.5,
+            x: x1 + dirX * len * t + perpX * lateral + (Math.random() - 0.5) * 0.07,
+            z: z1 + dirZ * len * t + perpZ * lateral + (Math.random() - 0.5) * 0.07,
+            s: 0.62 + Math.random() * 0.68,
             rot: Math.random() * Math.PI,
           });
+          // shoulder litter: occasional half-buried broken stone / pebble off the run's edge
+          if (Math.random() < 0.38) {
+            const side = Math.random() < 0.5 ? -1 : 1;
+            const off = (width / 1.5) * (0.62 + Math.random() * 0.55);
+            stones.push({
+              x: x1 + dirX * len * t + perpX * side * off + (Math.random() - 0.5) * 0.2,
+              z: z1 + dirZ * len * t + perpZ * side * off + (Math.random() - 0.5) * 0.2,
+              s: 0.16 + Math.random() * 0.24,
+              rot: Math.random() * Math.PI,
+              frag: true,
+            });
+          }
         }
       }
       const geo = new THREE.CylinderGeometry(0.5, 0.56, 0.12, 6);
-      const inst = new THREE.InstancedMesh(geo, flat(0xffffff), stones.length);
+      {
+        // baked bevel split: bright top face, shadowed side wall — stones read set INTO the earth
+        const nor = geo.attributes.normal, bevCols = new Float32Array(nor.count * 3);
+        for (let vi = 0; vi < nor.count; vi++) {
+          const up = nor.getY(vi) > 0.7;
+          bevCols[vi * 3] = up ? 1 : 0.66; bevCols[vi * 3 + 1] = up ? 1 : 0.645; bevCols[vi * 3 + 2] = up ? 1 : 0.615;
+        }
+        geo.setAttribute("color", new THREE.BufferAttribute(bevCols, 3));
+      }
+      const inst = new THREE.InstancedMesh(geo, flat(0xffffff, { vertexColors: true }), stones.length);
       addWind(inst.material, 0.0, 1.0);
       inst.receiveShadow = true; inst.castShadow = true;
       const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
       const p = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
+      // 3 discrete stone shades so runs read hand-laid, not confetti
+      const SHADE3 = [0, -0.055, 0.05];
       stones.forEach((st, i) => {
-        e.set(0, st.rot, 0); q.setFromEuler(e);
-        p.set(st.x, 0.06, st.z);
-        sc.set(st.s, 1, st.s * (0.8 + Math.random() * 0.4));
+        // settled tilt + sunk 30-50% into the worn-dirt ribbon; fragments bury deeper
+        e.set((Math.random() - 0.5) * 0.09, st.rot, (Math.random() - 0.5) * 0.09); q.setFromEuler(e);
+        p.set(st.x, terrainY(st.x, st.z) + (st.frag ? 0.002 : 0.014 + Math.random() * 0.018), st.z);
+        sc.set(st.s, st.frag ? 0.7 : 0.75 + Math.random() * 0.4, st.s * (0.8 + Math.random() * 0.4));
         m.compose(p, q, sc);
         inst.setMatrixAt(i, m);
-        col.setHex(0xa2937e).convertSRGBToLinear().offsetHSL(0, 0, (Math.random() - 0.5) * 0.14);
+        // 3 tone families (warm ochre / cool grey / moss-edged) + discrete value steps
+        col.setHex(PAL.pathStone).convertSRGBToLinear();
+        const fam = Math.random();
+        if (fam < 0.3) col.lerp(SRGB(PAL.stone), 0.5 + Math.random() * 0.2); // cool grey slab
+        else if (fam < 0.45) col.lerp(SRGB(PAL.leafDeep), 0.16 + Math.random() * 0.1); // moss-kissed
+        col.offsetHSL((Math.random() - 0.5) * 0.012, (Math.random() - 0.5) * 0.03,
+          SHADE3[Math.floor(Math.random() * 3)] + (Math.random() - 0.5) * 0.05 + (st.frag ? -0.05 : 0) - 0.015);
         inst.setColorAt(i, col);
       });
       inst.instanceMatrix.needsUpdate = true;
@@ -1148,28 +1590,164 @@ export default function DragonGardenQuest() {
       worldGroup.add(inst);
     }
 
-    // ---- Instanced grass tufts ----
+    // ---- Instanced grass tufts: crossed-blade clusters (thin triangles, not cones),
+    // 2 variants, each ONE draw call. Vertex gradient roots each blade in the ground
+    // color (instance tint = ground hue beneath) and only the tips catch warm sun ----
+    function bladeTuftGeo(nBlades, hMin, hMax, spread) {
+      const pos = [], nor = [], col = [];
+      const va = new THREE.Vector3(), vb = new THREE.Vector3(), vn = new THREE.Vector3();
+      for (let i = 0; i < nBlades; i++) {
+        const a = (i / nBlades) * Math.PI * 2 + Math.random() * 1.1;
+        const bx = Math.cos(a), bz = Math.sin(a);
+        const h = hMin + Math.random() * (hMax - hMin);
+        const lean = spread * (0.5 + Math.random());
+        const bw = 0.045 + Math.random() * 0.035;
+        const ox = bx * 0.06 * Math.random(), oz = bz * 0.06 * Math.random();
+        const px = -bz * bw, pz = bx * bw;
+        const tx = ox + bx * lean + (Math.random() - 0.5) * 0.05;
+        const tz = oz + bz * lean + (Math.random() - 0.5) * 0.05;
+        pos.push(ox - px, 0, oz - pz, ox + px, 0, oz + pz, tx, h, tz);
+        va.set(2 * px, 0, 2 * pz); vb.set(tx - (ox - px), h, tz - (oz - pz));
+        vn.crossVectors(va, vb).normalize();
+        for (let k = 0; k < 3; k++) nor.push(vn.x, vn.y, vn.z);
+        // root sits IN the ground (matches instance tint), tip runs lighter + warm
+        const rv = 0.86 + Math.random() * 0.08;
+        col.push(rv * 0.98, rv, rv * 0.96, rv * 0.98, rv, rv * 0.96, 1.3, 1.24, 1.0);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+      g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+      return g;
+    }
+    // compat shim for older cone-spec callers (e.g. river bank tufts): maps the old
+    // [radius, height, ...] spec onto the new blade-cluster geometry. Callers use
+    // FrontSide materials, so the back faces are baked in (flipped winding).
+    function tuftGeo(spec) {
+      const hs = spec.map((s) => s[1]);
+      const g = bladeTuftGeo(spec.length + 3, Math.min(...hs) * 0.75, Math.max(...hs) * 1.1, 0.16);
+      const P = g.attributes.position.array, N = g.attributes.normal.array, C = g.attributes.color.array;
+      const n = P.length;
+      const P2 = new Float32Array(n * 2), N2 = new Float32Array(n * 2), C2 = new Float32Array(n * 2);
+      P2.set(P); N2.set(N); C2.set(C);
+      for (let t = 0; t < n; t += 9) {
+        const o = n + t;
+        for (let k = 0; k < 3; k++) {
+          const src = t + [0, 2, 1][k] * 3, dst = o + k * 3;
+          for (let d = 0; d < 3; d++) {
+            P2[dst + d] = P[src + d];
+            N2[dst + d] = -N[src + d];
+            C2[dst + d] = C[src + d];
+          }
+        }
+      }
+      const out = new THREE.BufferGeometry();
+      out.setAttribute("position", new THREE.BufferAttribute(P2, 3));
+      out.setAttribute("normal", new THREE.BufferAttribute(N2, 3));
+      out.setAttribute("color", new THREE.BufferAttribute(C2, 3));
+      return out;
+    }
+    // clump field: dense drifts and near-bare patches, not even stubble
+    const grassClump = (x, z) =>
+      0.5 + 0.5 * Math.sin(x * 0.21 + z * 0.29 + 2.1) * Math.sin(x * 0.16 - z * 0.185 + 0.7);
     function addGrass(count, area, avoid) {
-      const geo = new THREE.ConeGeometry(0.06, 0.42, 4);
-      geo.translate(0, 0.21, 0);
-      const inst = new THREE.InstancedMesh(geo, flat(0xffffff), count);
-      addWind(inst.material, 0.075, 0.4);
-      inst.receiveShadow = true;
+      // three tuft silhouettes (spiky / low fan / tall arching) so close-camera grass
+      // never reads as one stamped star shape; all share one wind material
+      const geoSpike = bladeTuftGeo(7, 0.26, 0.48, 0.13);
+      const geoFan = bladeTuftGeo(6, 0.14, 0.28, 0.24);
+      const geoTall = bladeTuftGeo(5, 0.4, 0.64, 0.3);
+      const mat = flat(0xffffff, { vertexColors: true, side: THREE.DoubleSide });
+      addWind(mat, 0.075, 0.4);
+      const nSpike = Math.round(count * 0.5), nFan = Math.round(count * 0.34), nTall = count - nSpike - nFan;
+      const spikes = new THREE.InstancedMesh(geoSpike, mat, nSpike);
+      const fans = new THREE.InstancedMesh(geoFan, mat, nFan);
+      const talls = new THREE.InstancedMesh(geoTall, mat, nTall);
+      spikes.receiveShadow = true; fans.receiveShadow = true; talls.receiveShadow = true;
       const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
       const p = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
-      let placed = 0, tries = 0;
-      while (placed < count && tries < count * 12) {
+      // same warm-desat base the ground itself uses, so roots melt into the terrain
+      const cBase = new THREE.Color(PAL.grassBase).offsetHSL(0.006, -0.075, 0.008).convertSRGBToLinear();
+      const cSun = SRGB(PAL.grassSun), cShade = SRGB(PAL.grassShade);
+      const tint = (x, z) => {
+        // sample the SAME noise field + the same lerp weights the ground uses, so the
+        // tuft ROOT color equals the dirt below it — only the vertex-gradient tips contrast
+        const wj = meadowNoise(x, z) + (Math.random() - 0.5) * 0.16;
+        col.copy(cBase);
+        if (wj > 0) col.lerp(cSun, Math.min(1, wj * 1.15) * 0.8);
+        else col.lerp(cShade, Math.min(1, -wj * 1.1) * 0.85);
+        col.offsetHSL((Math.random() - 0.5) * 0.01, 0, 0.01 + (Math.random() - 0.5) * 0.025);
+        return col;
+      };
+      const put = (inst, idx, x, z, s) => {
+        e.set((Math.random() - 0.5) * 0.35, Math.random() * Math.PI, (Math.random() - 0.5) * 0.35);
+        q.setFromEuler(e);
+        p.set(x, terrainY(x, z) - 0.03, z);
+        sc.set(s, s * (0.8 + Math.random() * 0.7), s);
+        m.compose(p, q, sc);
+        inst.setMatrixAt(idx, m);
+        inst.setColorAt(idx, tint(x, z));
+      };
+      let pS = 0, pF = 0, pT = 0;
+      // tufts hugging each scatter-rock base ground the boulders in the meadow
+      for (const [rx, rz, rs] of rockBases) {
+        if (Math.abs(rx) > area / 2 || Math.abs(rz) > area / 2) continue;
+        const k = 2 + (Math.random() < 0.6 ? 1 : 0);
+        for (let i = 0; i < k && pS < nSpike; i++) {
+          const a = Math.random() * Math.PI * 2, d = 0.58 * rs + 0.14 + Math.random() * 0.1;
+          put(spikes, pS++, rx + Math.cos(a) * d, rz + Math.sin(a) * d, 1.0 + Math.random() * 0.5);
+        }
+      }
+      let tries = 0;
+      while (pS + pF + pT < nSpike + nFan + nTall && tries < count * 16) {
         tries++;
         const x = (Math.random() - 0.5) * area, z = (Math.random() - 0.5) * area;
         if (avoid && avoid(x, z)) continue;
-        e.set((Math.random() - 0.5) * 0.4, Math.random() * Math.PI, (Math.random() - 0.5) * 0.4);
-        q.setFromEuler(e);
-        p.set(x, terrainY(x, z), z);
-        const s = 0.7 + Math.random() * 1.1;
-        sc.set(s, s * (0.8 + Math.random() * 0.8), s);
+        // clump-noise gate: dense drifts + near-bare patches, biased into shade pockets
+        let pAcc = 0.06 + 0.94 * Math.pow(grassClump(x, z), 1.5);
+        if (meadowNoise(x, z) < -0.1) pAcc = Math.min(1, pAcc + 0.2);
+        if (Math.random() > pAcc) continue;
+        const s = 0.65 + Math.random() * 1.05;
+        const roll = Math.random();
+        // tall arching tufts live inside dense clumps only — accents, not carpet
+        if (pT < nTall && roll < 0.16 && grassClump(x, z) > 0.55) put(talls, pT++, x, z, s * 0.9);
+        else if (pF < nFan && (pS >= nSpike || roll < 0.5)) put(fans, pF++, x, z, s);
+        else if (pS < nSpike) put(spikes, pS++, x, z, s);
+        else if (pF < nFan) put(fans, pF++, x, z, s);
+        else if (pT < nTall) put(talls, pT++, x, z, s * 0.9);
+      }
+      spikes.count = pS; fans.count = pF; talls.count = pT;
+      spikes.instanceMatrix.needsUpdate = true; fans.instanceMatrix.needsUpdate = true; talls.instanceMatrix.needsUpdate = true;
+      if (spikes.instanceColor) spikes.instanceColor.needsUpdate = true;
+      if (fans.instanceColor) fans.instanceColor.needsUpdate = true;
+      if (talls.instanceColor) talls.instanceColor.needsUpdate = true;
+      worldGroup.add(spikes, fans, talls);
+    }
+
+    // ---- Instanced clover / dry-grass ground patches (one draw call) ----
+    function addGroundPatches(count, area, avoid) {
+      const geo = new THREE.IcosahedronGeometry(0.6, 0);
+      geo.scale(1, 0.14, 1);
+      const inst = new THREE.InstancedMesh(geo, flat(0xffffff), count);
+      inst.receiveShadow = true;
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+      const p = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
+      const cSun = SRGB(PAL.grassSun), cBase = SRGB(PAL.grassBase);
+      let placed = 0, tries = 0;
+      while (placed < count && tries < count * 14) {
+        tries++;
+        const x = (Math.random() - 0.5) * area, z = (Math.random() - 0.5) * area;
+        if (avoid && avoid(x, z)) continue;
+        // dry clover discs live on the sunlit patches of the noise field
+        if (meadowNoise(x, z) < 0.05 && Math.random() < 0.75) continue;
+        e.set(0, Math.random() * Math.PI, 0); q.setFromEuler(e);
+        p.set(x, terrainY(x, z) + 0.005, z);
+        const s = 0.7 + Math.random() * 1.0;
+        sc.set(s, 0.55 + Math.random() * 0.4, s * (0.75 + Math.random() * 0.5));
         m.compose(p, q, sc);
         inst.setMatrixAt(placed, m);
-        col.setHex(0x55a53a).convertSRGBToLinear().offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.12);
+        // dry straw sitting AT ground value — reads as a worn patch, never bright popcorn
+        col.copy(cSun).offsetHSL(0.008, -0.045, -0.02).lerp(cBase, 0.25 + Math.random() * 0.3)
+          .offsetHSL((Math.random() - 0.5) * 0.015, 0, (Math.random() - 0.5) * 0.035);
         inst.setColorAt(placed, col);
         placed++;
       }
@@ -1184,11 +1762,12 @@ export default function DragonGardenQuest() {
       const trunkGeo = new THREE.CylinderGeometry(0.14, 0.22, 1, 5);
       trunkGeo.translate(0, 0.5, 0);
       const coneGeo = new THREE.ConeGeometry(1, 1.2, 6);
-      const trunks = new THREE.InstancedMesh(trunkGeo, flat(0x6e4a2c), count);
+      const trunks = new THREE.InstancedMesh(trunkGeo, flat(PAL.bark), count);
       const cones = new THREE.InstancedMesh(coneGeo, flat(0xffffff), count * 3);
       trunks.castShadow = true; cones.castShadow = true;
       const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
       const p = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
+      const hazeCol = SRGB(PAL.fog);
       let ti = 0, ci = 0, tries = 0;
       while (ti < count && tries < count * 20) {
         tries++;
@@ -1197,20 +1776,33 @@ export default function DragonGardenQuest() {
         const x = Math.cos(a) * r, z = Math.sin(a) * r;
         if (exitPts.some(([ex, ez]) => Math.hypot(x - ex, z - ez) < 5)) continue;
         const s = 1.1 + Math.random() * 1.3;
-        e.set(0, Math.random() * Math.PI, 0); q.setFromEuler(e);
+        const baseRot = Math.random() * Math.PI;
+        e.set(0, baseRot, 0); q.setFromEuler(e);
         p.set(x, terrainY(x, z), z); sc.set(s, s, s);
         m.compose(p, q, sc);
         trunks.setMatrixAt(ti, m);
-        const green = new THREE.Color(PINE_GREENS[Math.floor(Math.random() * PINE_GREENS.length)])
-          .convertSRGBToLinear()
-          .offsetHSL(0, 0, (Math.random() - 0.5) * 0.05);
-        const tiers = [[1.15, 1.3, 1.15], [0.88, 1.15, 1.95], [0.58, 1.0, 2.7]];
+        // ring canopies live in the leafDeep band with a per-tree SPECIES shift, so the
+        // tree line drifts olive/mustard/teal along its length instead of one repeated
+        // green; fog still melts them into the horizon
+        const sp = speciesShift();
+        // wider species spread than before (deep/mid/lime picks) so the tree line
+        // drifts teal->olive->sage along its length
+        const rt = Math.random();
+        const green = spC(rt < 0.6 ? PAL.leafDeep : rt < 0.9 ? PAL.leafMid : PAL.leafLime, sp, 0.06).convertSRGBToLinear();
+        // atmospheric haze: desaturate + lift toward the fog/sky family with distance
+        // so the far ring RECEDES instead of sitting saturated on the pale hills
+        const hazeT = 0.16 + ((r - rMin) / Math.max(0.001, rMax - rMin)) * 0.3;
+        green.lerp(hazeCol, hazeT);
+        const tiers = [[1.15, 1.3, 1.15], [0.85, 1.15, 1.95], [0.52, 1.0, 2.7]];
+        let tn = 0;
         for (const [tr, th, ty] of tiers) {
+          e.set(0, baseRot + tn * 0.5, 0); q.setFromEuler(e); // staggered tier rotation
           p.set(x, terrainY(x, z) + ty * s, z); sc.set(tr * s, th * s, tr * s);
           m.compose(p, q, sc);
           cones.setMatrixAt(ci, m);
-          cones.setColorAt(ci, col.copy(green));
-          ci++;
+          // crown warms slightly (sun-from-above), never brightens into plastic
+          cones.setColorAt(ci, col.copy(green).offsetHSL(-0.008 * tn, 0, tn * 0.012));
+          ci++; tn++;
         }
         ti++;
       }
@@ -1749,12 +2341,13 @@ export default function DragonGardenQuest() {
       const s = SEEDS[seedKey];
       const g = new THREE.Group();
       const stemH = [0.25, 0.55, 0.8][stage];
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, stemH, 5), flat(0x3d8a3a));
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, stemH, 5), flat(new THREE.Color(PAL.leafMid).offsetHSL(0, 0, -0.05)));
       stem.position.y = stemH / 2; stem.castShadow = true;
       g.add(stem);
       const leafGeo = new THREE.SphereGeometry(0.16 + stage * 0.06, 6, 5);
+      const leafMat = flat(leafC(PAL.leafMid, 0.04));
       for (let i = 0; i < 2 + stage; i++) {
-        const leaf = new THREE.Mesh(leafGeo, flat(0x54a848));
+        const leaf = new THREE.Mesh(leafGeo, leafMat);
         const a = (i / (2 + stage)) * Math.PI * 2;
         leaf.position.set(Math.cos(a) * 0.2, stemH * 0.7, Math.sin(a) * 0.2);
         leaf.scale.set(1, 0.5, 1.4); leaf.rotation.y = -a;
@@ -1787,7 +2380,7 @@ export default function DragonGardenQuest() {
       const leafMat = new THREE.MeshStandardMaterial({ color: SRGB(sd.leaf), emissive: SRGB(sd.leafGlow), emissiveIntensity: 0.3, flatShading: true, roughness: 0.8 });
       const berryMat = new THREE.MeshStandardMaterial({ color: SRGB(sd.berry), emissive: SRGB(sd.berry), emissiveIntensity: 1.5, roughness: 0.25 });
       if (stage === 0) {
-        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 0.3, 5), flat(0x3d8a3a));
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 0.3, 5), flat(new THREE.Color(PAL.leafMid).offsetHSL(0, 0, -0.05)));
         stem.position.y = 0.15;
         const bud = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), leafMat);
         bud.position.y = 0.36;
@@ -1831,11 +2424,73 @@ export default function DragonGardenQuest() {
 
     function makePlot(x, z, special = false) {
       const g = new THREE.Group();
-      const soil = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.22, 1.5), flat(special ? 0x4a3b5c : 0x6b4a2f, { roughness: 1 }));
-      soil.position.y = 0.11; soil.receiveShadow = true; soil.castShadow = true;
-      const rim = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 1.7), flat(special ? 0x8a6dbd : 0x8a6238));
-      rim.position.y = 0.05;
-      g.add(rim, soil);
+      // tilled bed: dark furrow base + 4 lighter turned-earth ridges, timber frame with
+      // corner posts — all merged into ONE vertex-colored mesh; per-bed HSL jitter so
+      // the six beds never read as one stamp
+      const soilC = new THREE.Color(special ? 0x4a3b5c : PAL.soil)
+        .offsetHSL((Math.random() - 0.5) * 0.02, (Math.random() - 0.5) * 0.07, (Math.random() - 0.5) * 0.08);
+      const furrowC = soilC.clone().offsetHSL(0.004, 0.03, -0.075).convertSRGBToLinear();
+      const ridgeC = soilC.clone().offsetHSL(0.008, -0.03, 0.065).convertSRGBToLinear();
+      const rimC = new THREE.Color(special ? 0x8a6dbd : PAL.wood)
+        .lerp(new THREE.Color(special ? 0x8a6dbd : PAL.bark), special ? 0 : 0.28)
+        .offsetHSL(-0.008, special ? 0 : 0.12, -0.03 + (Math.random() - 0.5) * 0.05).convertSRGBToLinear();
+      const postC = rimC.clone().offsetHSL(0.004, 0.02, -0.06);
+      const solid = (bg, c) => {
+        const cnt = bg.attributes.position.count, cols = new Float32Array(cnt * 3);
+        for (let vi = 0; vi < cnt; vi++) { cols[vi * 3] = c.r; cols[vi * 3 + 1] = c.g; cols[vi * 3 + 2] = c.b; }
+        bg.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+        return bg;
+      };
+      const parts = [];
+      const base = solid(new THREE.BoxGeometry(1.5, 0.2, 1.5), furrowC);
+      base.translate(0, 0.1, 0); parts.push(base);
+      // ~1 in 3 beds reads "just watered": the far half's soil goes dark and moist so the
+      // six beds tell a chore-in-progress story instead of stamping one dry state
+      const watered = !special && Math.random() < 0.38;
+      const wetC = soilC.clone().offsetHSL(0.006, 0.05, -0.16).convertSRGBToLinear();
+      [-0.54, -0.18, 0.18, 0.54].forEach((rz) => {
+        const rw = 1.36 - Math.abs(rz) * 0.08;
+        const wet = watered && rz < 0;
+        const rC = (wet ? wetC : ridgeC).clone().offsetHSL(0, 0, (Math.random() - 0.5) * 0.045);
+        const ridge = solid(new THREE.BoxGeometry(rw, 0.07, 0.2), rC);
+        ridge.rotateY((Math.random() - 0.5) * 0.05);
+        ridge.translate((Math.random() - 0.5) * 0.05, 0.225, rz);
+        parts.push(ridge);
+      });
+      if (watered) {
+        // damp fill between the wet ridges — sits above the base, below the ridge crowns
+        const damp = solid(new THREE.BoxGeometry(1.44, 0.016, 0.68), wetC.clone().offsetHSL(0, 0, -0.03));
+        damp.translate(0, 0.206, -0.37);
+        parts.push(damp);
+      }
+      // frame rails (4 sides) + squat corner posts
+      [[0, -0.85, 1.7, 0.12], [0, 0.85, 1.7, 0.12], [-0.85, 0, 0.12, 1.7], [0.85, 0, 0.12, 1.7]].forEach(([fx, fz, w, d]) => {
+        const rail = solid(new THREE.BoxGeometry(w, 0.14, d), rimC.clone().offsetHSL(0, 0, (Math.random() - 0.5) * 0.04));
+        rail.translate(fx, 0.07, fz); parts.push(rail);
+      });
+      [[-0.85, -0.85], [0.85, -0.85], [-0.85, 0.85], [0.85, 0.85]].forEach(([px, pz]) => {
+        const post = solid(new THREE.BoxGeometry(0.16, 0.26, 0.16), postC);
+        post.rotateY((Math.random() - 0.5) * 0.1);
+        post.translate(px, 0.13, pz); parts.push(post);
+      });
+      // trodden-dirt spill skirt under the frame + a few kicked-up clods around the
+      // base — the bed sits in worked earth instead of hovering on lawn
+      const spillC = soilC.clone().lerp(new THREE.Color(PAL.pathStone), 0.34).offsetHSL(0.002, -0.05, -0.02).convertSRGBToLinear();
+      const spill = solid(new THREE.CylinderGeometry(1.14, 1.3, 0.05, 10), spillC);
+      spill.rotateY(Math.random() * Math.PI);
+      spill.translate((Math.random() - 0.5) * 0.08, 0.024, (Math.random() - 0.5) * 0.08);
+      parts.push(spill);
+      for (let ci = 0; ci < 4; ci++) {
+        const ca = Math.random() * Math.PI * 2, cr = 0.98 + Math.random() * 0.3;
+        const clod = solid(new THREE.IcosahedronGeometry(0.045 + Math.random() * 0.04, 0),
+          furrowC.clone().offsetHSL(0, 0, (Math.random() - 0.5) * 0.07));
+        clod.rotateY(Math.random() * Math.PI);
+        clod.translate(Math.cos(ca) * cr, 0.045, Math.sin(ca) * cr);
+        parts.push(clod);
+      }
+      const bed = new THREE.Mesh(mergeGeoms(parts), flat(0xffffff, { vertexColors: true, roughness: 1 }));
+      bed.receiveShadow = true; bed.castShadow = true;
+      g.add(bed);
       if (special) {
         const runeMat = new THREE.MeshStandardMaterial({ color: SRGB(0x9fffe0), emissive: SRGB(0x63ffc9), emissiveIntensity: 0.7 });
         for (let i = 0; i < 4; i++) {
@@ -1845,6 +2500,11 @@ export default function DragonGardenQuest() {
           rune.rotation.y = a; g.add(rune);
         }
       }
+      // per-bed pose jitter: slight yaw + footprint scale so six beds never read as
+      // one duplicated stamp (position itself stays exactly on the plot grid)
+      g.rotation.y = (Math.random() - 0.5) * 0.1;
+      const ps = 0.96 + Math.random() * 0.07;
+      g.scale.set(ps, 1, ps);
       g.position.set(x, 0, z);
       return g;
     }
@@ -2043,6 +2703,7 @@ export default function DragonGardenQuest() {
       G.__redBags = { spawn: () => spawnRedBags(), sync: () => syncRedBags(), remove: (i) => removeRedBag(i, false) };
       G.__tp = (x, z) => { playerPos.x = x; playerPos.z = z; };
       G.__plots = (n) => plotNodes.slice(0, n || 8).map((nd) => ({ i: nd.idx, sp: nd.special, st: nd.stage, plant: !!nd.plant, seed: nd.data() && nd.data().seed, x: nd.x, z: nd.z }));
+      G.__renderInfo = () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geoms: renderer.info.memory.geometries });
     }
     G.reqCounter = (kind) => reqCounterRef.current(kind);
     G.reqSeedGift = (g) => reqSeedGiftRef.current(g);
@@ -2084,7 +2745,7 @@ export default function DragonGardenQuest() {
     let goldBag = null; // one-time glowing pouch on the town road
     let redBagMeshes = {}; // today's hidden question-pouches on HOME, by bag_idx
     let butterflies = [], glowNodes = [], embers = [], smokes = [], caveLight = null, npcs = [], zzz = [];
-    let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, winsSprite = null, water = null, foams = [], swayers = [], petals = [], fountainFx = null;
+    let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, winsSprite = null, water = null, foams = [], riverFoam = null, swayers = [], petals = [], fountainFx = null;
     let buildCells = [], ghostMesh = null, buildMarkers = null, counterKeeper = null;
 
     // "Z" sprite texture for Ember's snoring
@@ -2583,9 +3244,10 @@ export default function DragonGardenQuest() {
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
-      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; swayers = []; petals = []; fountainFx = null; goldBag = null; redBagMeshes = {};
+      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; riverFoam = null; swayers = []; petals = []; fountainFx = null; goldBag = null; redBagMeshes = {};
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
       colliders = [];
+      pathRoutes = []; rockBases.length = 0;
     }
 
     function refreshPlotVisual(node) {
@@ -2673,7 +3335,7 @@ export default function DragonGardenQuest() {
     function addChurchPlotField(positions) {
       const n = positions.length;
       // dark tilled rims with rich brown soil mounds — proper dirt plots
-      const rims = new THREE.InstancedMesh(new THREE.BoxGeometry(0.86, 0.06, 0.86), flat(0x4f3722, { roughness: 1 }), n);
+      const rims = new THREE.InstancedMesh(new THREE.BoxGeometry(0.86, 0.06, 0.86), flat(new THREE.Color(PAL.soil).offsetHSL(0, -0.04, -0.13), { roughness: 1 }), n);
       const soils = new THREE.InstancedMesh(new THREE.BoxGeometry(0.72, 0.18, 0.72), flat(0xffffff, { roughness: 1 }), n);
       rims.receiveShadow = true; soils.receiveShadow = true; soils.castShadow = true;
       const m = new THREE.Matrix4();
@@ -2681,7 +3343,7 @@ export default function DragonGardenQuest() {
       positions.forEach(([x, z], i) => {
         m.makeTranslation(x, 0.1, z); rims.setMatrixAt(i, m);
         m.makeTranslation(x, 0.17, z); soils.setMatrixAt(i, m);
-        soils.setColorAt(i, scol.setHex(0x7a5535).convertSRGBToLinear().offsetHSL(0.005 * (Math.random() - 0.5), 0, (Math.random() - 0.5) * 0.09));
+        soils.setColorAt(i, scol.setHex(PAL.soil).convertSRGBToLinear().offsetHSL(0.005 * (Math.random() - 0.5), 0, (Math.random() - 0.5) * 0.09));
         const anchor = new THREE.Group();
         anchor.position.set(x, 0, z);
         worldGroup.add(anchor);
@@ -2803,7 +3465,7 @@ export default function DragonGardenQuest() {
     // -------- HOME --------
     function buildHome() {
       clearWorld();
-      setAtmosphere(0x3d7ec2, 0x9fcbe0, 0xe8e0c0, 0xbcd8dc, 0xffdfae, 1.7, 0xbcd8ec, 0x5a7a42);
+      setAtmosphere(PAL.skyTop, PAL.skyMid, PAL.skyHorizon, PAL.fog, PAL.sun, 1.45, PAL.ambientSky, PAL.ambientGnd);
 
       const FT = FENCE_TIERS[G.build.fenceTier];
       const inGarden = (x, z, m = 1.1) => x > FT.x1 - m && x < FT.x2 + m && z > FT.z1 - m && z < FT.z2 + m;
@@ -2823,43 +3485,375 @@ export default function DragonGardenQuest() {
         if (rd < 3.2) { const t = 1 - rd / 3.2; h -= 0.62 * t * t; } // river banks
         return h;
       };
-      worldGroup.add(makeGround(80, 0x6aab44, (x, z, c) => {
+      // path routes registered BEFORE the ground so the terrain carries the worn ribbon
+      const homeRoutes = [
+        { pts: [[0, 7.0], [0, 1], [0, -4]], w: 1.5 },
+        { pts: [[0, 3], [14, 3], [24, 3]], w: 1.5 },
+        { pts: [[0, 3], [-9.0, 3]], w: 1.5 },
+        { pts: [[-17.2, 3], [-24, 3]], w: 1.5 },
+        { pts: [[4.6, 2.6], [5.55, -3.9]], w: 1.1 }, // spur off the road to the cottage doorstep
+      ];
+      setPathRoutes(homeRoutes);
+      // trodden garden floor: worn dry grass -> packed earth patches inside the fence
+      const GARDEN_WORN = new THREE.Color(PAL.grassSun).offsetHSL(-0.022, -0.14, -0.045).convertSRGBToLinear();
+      const GARDEN_TROD = new THREE.Color(PAL.soil).offsetHSL(0.012, -0.16, 0.1).convertSRGBToLinear();
+      worldGroup.add(makeGround(80, PAL.grassBase, (x, z, c) => {
         const rd = Math.abs(x - RIVER_X(z));
-        if (rd < 3.0) c.lerp(SAND, 1 - rd / 3.0);
+        if (rd < 3.4) c.lerp(SAND, 1 - rd / 3.4);
+        if (rd < 3.0) c.lerp(BANK_SHADE, (1 - rd / 3.0) * 0.45); // cool moist rim so the river sits IN the land
+        if (rd < 2.6) c.lerp(BANK_WET, Math.pow(1 - rd / 2.6, 0.7) * 0.75); // wet soil fill toward the riverbed
+        const ridge = 1 - Math.abs(rd - 1.9) / 0.95; // extra dark band right at the waterline
+        if (ridge > 0) c.lerp(BANK_WET, ridge * 0.65);
+        // worked garden interior — soft edge falloff at the fence, patchy packed earth within
+        const gdx = Math.min(x - (FT.x1 - 0.6), (FT.x2 + 0.6) - x);
+        const gdz = Math.min(z - (FT.z1 - 0.6), (FT.z2 + 0.6) - z);
+        const gIn = Math.min(1, Math.min(gdx, gdz) / 1.1);
+        if (gIn > 0) {
+          c.lerp(GARDEN_WORN, gIn * 0.55);
+          const tn = 0.5 + 0.5 * Math.sin(x * 1.45 + z * 2.15 + 1.3) * Math.sin(x * 0.85 - z * 1.55);
+          c.lerp(GARDEN_TROD, gIn * (0.12 + tn * 0.58));
+        }
       }));
 
       // the river dividing the home meadow from the community garden
-      const wGeo = new THREE.PlaneGeometry(4.2, 80, 1, 60);
+      // depth-banded vertex gradient: teal channel core -> lighter cyan -> pale glowing rim at the banks
+      const wGeo = new THREE.PlaneGeometry(4.2, 80, 6, 60);
       wGeo.rotateX(-Math.PI / 2);
       const wPos = wGeo.attributes.position;
       const wData = [];
+      const wCols = [];
+      const wDeep = SRGB(PAL.waterDeep).offsetHSL(0, -0.02, -0.035); // desaturated blue-green channel core
+      const wMid = SRGB(PAL.waterSurf);
+      // shallows warm toward the sand bed so the water shares the scene's golden grade
+      const wRim = SRGB(PAL.waterSurf).lerp(SRGB(PAL.foam), 0.35).lerp(SAND, 0.18).offsetHSL(0.01, -0.05, 0.02);
+      const wTmp = new THREE.Color();
       for (let wi = 0; wi < wPos.count; wi++) {
         const lat = wPos.getX(wi);
         const wz = wPos.getZ(wi);
         wPos.setX(wi, RIVER_X(wz) + lat);
         wData.push([wi, wz, lat]);
+        const a = Math.min(1, Math.abs(lat) / 2.1);
+        if (a < 0.6) wTmp.copy(wDeep).lerp(wMid, a / 0.6);
+        else wTmp.copy(wMid).lerp(wRim, Math.pow((a - 0.6) / 0.4, 1.7));
+        wCols.push(wTmp.r, wTmp.g, wTmp.b);
       }
+      wGeo.setAttribute("color", new THREE.Float32BufferAttribute(wCols, 3));
       water = new THREE.Mesh(wGeo, new THREE.MeshStandardMaterial({
-        color: SRGB(0x3f9fd8), roughness: 0.15, metalness: 0.05,
-        emissive: SRGB(0x155a8a), emissiveIntensity: 0.3,
-        transparent: true, opacity: 0.9,
+        color: 0xffffff, vertexColors: true, roughness: 0.22, metalness: 0.14, // enough gloss for a sun-aligned glint on the ripple crests
+        emissive: SRGB(PAL.waterDeep), emissiveIntensity: 0.22,
+        transparent: true, opacity: 0.88,
       }));
       water.position.y = -0.16;
+      water.receiveShadow = true; // bridge + bank trees shade the surface; hemisphere cools the shaded water
       water.userData.verts = wData;
       worldGroup.add(water);
-      for (let fi = 0; fi < 9; fi++) {
-        const foam = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0),
-          flat(0xeaf6ff, { emissive: 0xbfe8ff, emissiveIntensity: 0.3, transparent: true, opacity: 0.85 }));
-        foam.scale.set(1.6, 0.35, 0.9);
-        foam.userData = { z: -38 + Math.random() * 76, sp: 2.2 + Math.random() * 1.6, off: (Math.random() - 0.5) * 2.4 };
-        worldGroup.add(foam); foams.push(foam);
+
+      // ---- wet-mud shoreline strips: a smooth analytic ribbon following RIVER_X on both banks.
+      // It hides the raw water-plane/terrain sawtooth intersection: the water edge now dies into
+      // this strip (same sine curve, no triangulation jags) and the strip's inner edge dips
+      // below the surface to double as the visible riverbed shelf.
+      {
+        // bank height WITHOUT the bridge-deck override (the strip must duck under the bridge, not climb it)
+        const bankY = (bx, bz) => {
+          let h = homeBase(bx, bz);
+          const rd = Math.abs(bx - RIVER_X(bz));
+          if (rd < 3.2) { const t = 1 - rd / 3.2; h -= 0.62 * t * t; }
+          return h;
+        };
+        const bedSand = SAND.clone().offsetHSL(0.004, -0.07, 0.075); // pale submerged shelf — reads as warm teal shallows through the water
+        const mudWet = BANK_WET.clone().offsetHSL(0, -0.02, -0.045); // dark damp contact ring just above the waterline
+        const mudSand = SAND.clone().offsetHSL(0.004, -0.02, -0.03); // damp sand mid-band
+        const mudOut = SAND.clone().lerp(BANK_SHADE, 0.42).offsetHSL(0, 0, -0.02); // blends into the tinted bank grass
+        const stripParts = [];
+        const mTmp = new THREE.Color();
+        [-1, 1].forEach((side) => {
+          const sg = new THREE.PlaneGeometry(1.5, 80, 3, 96);
+          sg.rotateX(-Math.PI / 2);
+          const sp = sg.attributes.position;
+          const sCols = new Float32Array(sp.count * 3);
+          for (let vi = 0; vi < sp.count; vi++) {
+            const lx = sp.getX(vi); // -0.75..0.75 across the strip
+            const vz = sp.getZ(vi);
+            const latAbs = 2.0 + side * lx; // 1.25..2.75 from channel center
+            const wx = RIVER_X(vz) + side * latAbs;
+            sp.setX(vi, wx);
+            sp.setY(vi, bankY(wx, vz) + 0.05);
+            // waterline sits at latAbs ~1.34-1.63 (t 0.06-0.25): keep that whole zone pale
+            // low-contrast shelf so the rippling crossing line never reads as dark teeth
+            const t = (latAbs - 1.25) / 1.5;
+            if (t < 0.22) mTmp.copy(bedSand);
+            else if (t < 0.42) mTmp.copy(bedSand).lerp(mudWet, (t - 0.22) / 0.2);
+            else if (t < 0.68) mTmp.copy(mudWet).lerp(mudSand, (t - 0.42) / 0.26);
+            else mTmp.copy(mudSand).lerp(mudOut, (t - 0.68) / 0.32);
+            const jit = 0.94 + Math.random() * 0.12; // subtle facet sparkle so it isn't a dead ribbon
+            sCols[vi * 3] = mTmp.r * jit; sCols[vi * 3 + 1] = mTmp.g * jit; sCols[vi * 3 + 2] = mTmp.b * jit;
+          }
+          sg.setAttribute("color", new THREE.BufferAttribute(sCols, 3));
+          stripParts.push(sg);
+        });
+        const mudStrip = new THREE.Mesh(mergeGeoms(stripParts),
+          new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.03, side: THREE.DoubleSide })); // damp sheen; DoubleSide — the mirrored west ribbon reverses winding
+        mudStrip.receiveShadow = true;
+        worldGroup.add(mudStrip);
       }
+
+      // foam — ONE InstancedMesh, matrices animated per frame:
+      // irregular drifting glints + slow thin dashes hugging both waterlines (Tunic-style
+      // shoreline contour) + anchored wake Vs and broken foam rings at the mid-stream boulders
+      riverFoam = new THREE.InstancedMesh(
+        new THREE.BoxGeometry(0.16, 0.05, 0.46),
+        flat(PAL.foam, { emissive: PAL.foam, emissiveIntensity: 0.12, transparent: true, opacity: 0.85 }), 52);
+      riverFoam.frustumCulled = false;
+      // drifting glints: random length/width, intensity 30-70%, biased toward the sunlit (east) half
+      for (let fi = 0; fi < 14; fi++)
+        foams.push({ z: -38 + Math.random() * 76, sp: 1.6 + Math.random() * 1.9, off: -0.7 + Math.random() * 2.5,
+          ry: (Math.random() - 0.5) * 0.6, ln: 0.65 + Math.random() * 1.9, w: 0.3 + Math.random() * 0.65,
+          al: 0.3 + Math.random() * 0.4 });
+      for (let fi = 0; fi < 16; fi++) {
+        const side = fi % 2 ? 1 : -1;
+        foams.push({ z: -36 + fi * 4.6 + Math.random() * 2.2, sp: 0.35 + Math.random() * 0.4,
+          off: side * (2.4 + Math.random() * 0.28), ry: 0, hug: true,
+          ln: 2.0 + Math.random() * 1.7, w: 0.45, al: 0.45 + Math.random() * 0.3 });
+      }
+      worldGroup.add(riverFoam);
+
+      // bank stones: decorative pebbles along both shores + abutment stones at the bridge ends (no collision)
+      const pebbles = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.14, 0), flat(PAL.stone), 88);
+      pebbles.frustumCulled = false;
+      pebbles.castShadow = true; pebbles.receiveShadow = true;
+      let pebN = 0;
+      const putPebble = (px, pz, sc) => {
+        if (pebN >= 88) return;
+        instDummy.position.set(px, terrainY(px, pz) + 0.05 * sc, pz);
+        instDummy.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+        instDummy.scale.set(sc * (0.8 + Math.random() * 0.8), sc * (0.45 + Math.random() * 0.35), sc * (0.8 + Math.random() * 0.8));
+        instDummy.updateMatrix();
+        pebbles.setMatrixAt(pebN++, instDummy.matrix);
+      };
+      for (let pi = 0; pi < 48; pi++) {
+        const pz = -37 + Math.random() * 74;
+        if (Math.abs(pz - 3) < 1.7) continue; // keep the bridge walkway clear
+        const px = RIVER_X(pz) + (Math.random() < 0.5 ? -1 : 1) * (2.25 + Math.random() * 1.0);
+        putPebble(px, pz, 0.9 + Math.random() * 1.5);
+      }
+      // chunkier stones hugging the bridge abutments
+      putPebble(-16.7, 1.7, 2.4); putPebble(-16.8, 4.4, 2.1);
+      putPebble(-9.9, 1.65, 2.2); putPebble(-9.8, 4.35, 2.5);
+
+      // ---- erosion rock clusters: anchor boulder + 2-3 mediums + pebble scatter hugging the
+      // banks and bridge footings — ONE InstancedMesh, decorative only (zero new collision)
+      const bankGeo = bakeRockFacets(new THREE.IcosahedronGeometry(0.55, 0), false, null);
+      {
+        // shared wet/contact band: the lower belt of every bank rock darkens toward damp
+        // stone, so shoreline boulders read soaked at the waterline instead of pasted on
+        const bPos = bankGeo.attributes.position, bCol = bankGeo.attributes.color;
+        const dampC = new THREE.Color(PAL.stone).offsetHSL(0.01, 0.02, -0.18).convertSRGBToLinear().lerp(SRGB(PAL.waterDeep), 0.15);
+        const bTmp = new THREE.Color();
+        for (let vi = 0; vi < bPos.count; vi++) {
+          const t = Math.max(0, Math.min(1, (-0.02 - bPos.getY(vi)) / 0.4));
+          if (t > 0) {
+            bTmp.fromBufferAttribute(bCol, vi).lerp(dampC, t * 0.7);
+            bCol.setXYZ(vi, bTmp.r, bTmp.g, bTmp.b);
+          }
+        }
+      }
+      const bankRocks = new THREE.InstancedMesh(bankGeo, flat(0xffffff, { vertexColors: true }), 44);
+      bankRocks.castShadow = true; bankRocks.receiveShadow = true; bankRocks.frustumCulled = false;
+      let bankN = 0;
+      const bankCol = new THREE.Color();
+      const putBankRock = (bx, bz, bs, by = null, mossy = false) => {
+        if (bankN >= 44) return;
+        const y = by != null ? by : 0.16 * bs + terrainY(bx, bz);
+        instDummy.position.set(bx, y, bz);
+        instDummy.rotation.set(0, (Math.random() - 0.5) * 1.3, 0); // yaw only — keeps the baked sun-facet split honest
+        instDummy.scale.set(bs, bs * (0.7 + Math.random() * 0.45), bs * (0.82 + Math.random() * 0.35));
+        instDummy.updateMatrix();
+        bankRocks.setMatrixAt(bankN, instDummy.matrix);
+        bankCol.setScalar(0.88 + Math.random() * 0.24);
+        bankRocks.setColorAt(bankN, bankCol);
+        bankN++;
+        if (mossy && bs >= 0.5) addMossCap(bx, y + 0.3 * bs, bz, bs * 0.82);
+      };
+      [[-24, -1], [-12.6, 1], [9.5, 1], [16.5, -1], [24.5, 1], [-30.5, 1]].forEach(([cz, side]) => {
+        const ax = RIVER_X(cz) + side * (2.45 + Math.random() * 0.45);
+        putBankRock(ax, cz, 0.85 + Math.random() * 0.35, null, true); // anchor
+        const nMed = 2 + (Math.random() < 0.5 ? 1 : 0);
+        for (let ci = 0; ci < nMed; ci++) {
+          const aa = Math.random() * Math.PI * 2, rr = 0.6 + Math.random() * 0.55;
+          putBankRock(ax + Math.cos(aa) * rr * 0.7, cz + Math.sin(aa) * rr * 1.5, 0.3 + Math.random() * 0.22);
+        }
+        for (let ci = 0; ci < 3; ci++)
+          putPebble(ax + (Math.random() - 0.5) * 1.9, cz + (Math.random() - 0.5) * 2.4, 0.7 + Math.random());
+      });
+      // stone footings where the bridge meets the banks
+      putBankRock(-16.95, 1.35, 0.6, null, true); putBankRock(-16.85, 4.7, 0.52);
+      putBankRock(-9.65, 1.3, 0.55); putBankRock(-9.95, 4.78, 0.58, null, true);
+      bankRocks.count = bankN;
+      if (bankRocks.instanceColor) bankRocks.instanceColor.needsUpdate = true;
+      worldGroup.add(bankRocks);
+
+      // mid-stream boulders breaking the surface — wet-banded bases, mossy crowns,
+      // broken foam collars where water meets rock + anchored wake Vs trailing downstream
+      [[-9, 0.45], [13, -0.5], [25, 0.35]].forEach(([bz, boff]) => {
+        const bx = RIVER_X(bz) + boff;
+        worldGroup.add(makeRock(bx, bz, 0.78, false, { noCol: true, y: -0.3, wet: true }));
+        [-1, 1].forEach((vs) => {
+          const fz = bz + 0.62;
+          foams.push({ z: fz, sp: 0, off: (bx + vs * 0.34 - RIVER_X(fz)) / 0.7, ry: vs * 0.42, ln: 0.85, w: 0.5, anch: true, al: 0.6 });
+        });
+        // broken collar: 3 short tangent dashes hugging the waterline around the rock
+        const a0 = Math.random() * Math.PI * 2;
+        for (let ci = 0; ci < 3; ci++) {
+          const aa = a0 + ci * 2.2 + (Math.random() - 0.5) * 0.4;
+          const fx = bx + Math.cos(aa) * 0.44, fz = bz + Math.sin(aa) * 0.44;
+          foams.push({ z: fz, sp: 0, off: (fx - RIVER_X(fz)) / 0.7, ry: -aa, ln: 0.55, w: 0.38, anch: true, al: 0.55 + Math.random() * 0.2 });
+        }
+      });
+      riverFoam.count = foams.length;
+      // bake per-glint intensity: dimmer glints tint toward the water so they read as
+      // catching light at 30-70%, not as painted-on white lane markings
+      {
+        const fc = new THREE.Color(), foamC = SRGB(PAL.foam), surfC = SRGB(PAL.waterSurf);
+        foams.forEach((fd, fi) => {
+          fc.copy(surfC).lerp(foamC, fd.al != null ? fd.al + 0.3 : 1);
+          riverFoam.setColorAt(fi, fc);
+        });
+        if (riverFoam.instanceColor) riverFoam.instanceColor.needsUpdate = true;
+      }
+
+      // reed / cattail clumps at the waterline — merged geometry, ONE InstancedMesh, wind-swayed
+      const reedParts = [];
+      const tintGeo = (g, c) => {
+        const nn = g.attributes.position.count, arr = new Float32Array(nn * 3);
+        for (let vi = 0; vi < nn; vi++) { arr[vi * 3] = c.r; arr[vi * 3 + 1] = c.g; arr[vi * 3 + 2] = c.b; }
+        g.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+        return g;
+      };
+      const reedStemC = SRGB(PAL.grassShade).offsetHSL(0.015, 0.06, -0.02);
+      const reedStemC2 = SRGB(PAL.leafDeep).offsetHSL(0, 0.04, 0.02);
+      const reedHeadC = SRGB(PAL.bark).offsetHSL(0, 0.06, -0.05);
+      [[0.95, 0, 0, 0.1, true], [0.75, 0.12, 0.07, -0.14, true], [0.6, -0.11, -0.08, 0.16, false], [0.82, -0.05, 0.13, -0.08, false]]
+        .forEach(([h, ox, oz, tilt, head], si) => {
+          const stem = new THREE.CylinderGeometry(0.016, 0.03, h, 4);
+          stem.translate(0, h / 2, 0);
+          tintGeo(stem, si % 2 ? reedStemC2 : reedStemC);
+          stem.rotateX(tilt); stem.rotateZ(tilt * 0.6); stem.translate(ox, 0, oz);
+          reedParts.push(stem);
+          if (head) {
+            const hd = new THREE.CylinderGeometry(0.045, 0.05, 0.2, 5);
+            hd.translate(0, h + 0.08, 0);
+            tintGeo(hd, reedHeadC);
+            hd.rotateX(tilt); hd.rotateZ(tilt * 0.6); hd.translate(ox, 0, oz);
+            reedParts.push(hd);
+          }
+        });
+      const reeds = new THREE.InstancedMesh(mergeGeoms(reedParts), flat(0xffffff, { vertexColors: true }), 40);
+      addWind(reeds.material, 0.055, 0.6);
+      reeds.castShadow = true; reeds.frustumCulled = false;
+      let reedN = 0;
+      const reedCol = new THREE.Color();
+      for (let ri = 0; ri < 120 && reedN < 40; ri++) {
+        const rz = -36 + Math.random() * 72;
+        if (Math.abs(rz - 3) < 2.7) continue; // keep the bridge approach clear
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const rx = RIVER_X(rz) + side * (1.95 + Math.random() * 0.55);
+        instDummy.position.set(rx, terrainY(rx, rz) - 0.04, rz);
+        instDummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+        const rs = 0.8 + Math.random() * 0.55;
+        instDummy.scale.set(rs, rs * (0.85 + Math.random() * 0.45), rs);
+        instDummy.updateMatrix();
+        reeds.setMatrixAt(reedN, instDummy.matrix);
+        reedCol.setScalar(0.9 + Math.random() * 0.2);
+        reeds.setColorAt(reedN, reedCol);
+        reedN++;
+      }
+      reeds.count = reedN;
+      if (reeds.instanceColor) reeds.instanceColor.needsUpdate = true;
+      worldGroup.add(reeds);
+
+      // bank tuft clusters: dense moist-green grass hugging both shores (the river corridor
+      // should read RICHER than the open meadow) — ONE InstancedMesh, clustered not uniform
+      {
+        const bankTuftG = bladeTuftGeo(8, 0.26, 0.5, 0.15);
+        const bankTufts = new THREE.InstancedMesh(bankTuftG,
+          flat(0xffffff, { vertexColors: true, roughness: 1, side: THREE.DoubleSide }), 96);
+        addWind(bankTufts.material, 0.06, 0.4);
+        bankTufts.castShadow = true; bankTufts.receiveShadow = true; bankTufts.frustumCulled = false;
+        const btCol = new THREE.Color();
+        const btShade = SRGB(PAL.grassShade), btDeep = SRGB(PAL.leafDeep), btBase = SRGB(PAL.grassBase);
+        let btN = 0;
+        for (let ci = 0; ci < 16 && btN < 96; ci++) {
+          const cz = -36 + Math.random() * 72;
+          if (Math.abs(cz - 3) < 2.6) continue; // bridge approach stays clear
+          const cSide = Math.random() < 0.5 ? -1 : 1;
+          const cLat = 2.45 + Math.random() * 0.75;
+          const nT = 4 + Math.floor(Math.random() * 4);
+          for (let ti = 0; ti < nT && btN < 96; ti++) {
+            const tz = cz + (Math.random() - 0.5) * 2.2;
+            const tLat = Math.max(2.2, cLat + (Math.random() - 0.5) * 0.9);
+            const tx = RIVER_X(tz) + cSide * tLat;
+            instDummy.position.set(tx, terrainY(tx, tz) - 0.03, tz);
+            instDummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+            const ts = 0.75 + Math.random() * 0.65;
+            instDummy.scale.set(ts, ts * (0.8 + Math.random() * 0.5), ts);
+            instDummy.updateMatrix();
+            bankTufts.setMatrixAt(btN, instDummy.matrix);
+            // moist ramp: shade-green leaning teal near the water, drier toward the meadow
+            btCol.copy(btShade).lerp(btDeep, Math.random() * 0.45).lerp(btBase, Math.max(0, tLat - 2.5) * 0.5)
+              .offsetHSL((Math.random() - 0.5) * 0.015, 0, (Math.random() - 0.5) * 0.05);
+            bankTufts.setColorAt(btN, btCol);
+            btN++;
+          }
+        }
+        bankTufts.count = btN;
+        if (bankTufts.instanceColor) bankTufts.instanceColor.needsUpdate = true;
+        worldGroup.add(bankTufts);
+      }
+
+      // lily pads in the slow sections, riding just above the ripple crest
+      const lilies = new THREE.InstancedMesh(
+        new THREE.CylinderGeometry(0.26, 0.3, 0.03, 7), flat(PAL.leafMid), 7);
+      lilies.receiveShadow = true; lilies.frustumCulled = false;
+      const lilyCol = new THREE.Color();
+      const lilyMid = SRGB(PAL.leafMid), lilyLime = SRGB(PAL.leafLime);
+      [[14.5, 0.4], [16.8, -0.6], [22.5, 0.2], [-14.5, -0.4], [-19.5, 0.5], [-26.5, -0.3], [28.5, 0.4]].forEach(([lz, loff], li) => {
+        instDummy.position.set(RIVER_X(lz) + loff, -0.095, lz);
+        instDummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+        const ls = 0.75 + Math.random() * 0.5;
+        instDummy.scale.set(ls, 1, ls);
+        instDummy.updateMatrix();
+        lilies.setMatrixAt(li, instDummy.matrix);
+        lilyCol.copy(lilyMid).lerp(lilyLime, Math.random() * 0.6).offsetHSL(0.01, -0.16, (Math.random() - 0.5) * 0.05 - 0.02);
+        lilies.setColorAt(li, lilyCol);
+      });
+      if (lilies.instanceColor) lilies.instanceColor.needsUpdate = true;
+      pebbles.count = pebN;
+      worldGroup.add(pebbles, lilies);
 
       // arched wooden bridge — whole for youth-group members, collapsed otherwise
       const bridge = new THREE.Group();
       const deckH = (x) => 0.34 * Math.sin(((x + 16.4) / 6.4) * Math.PI);
+      // dock-wood treatment: 3 warm albedo steps per plank + baked dark undersides/end-grain
+      const PLANK_TONES = [
+        new THREE.Color(PAL.wood).offsetHSL(0, 0.01, -0.045), // workhorse bleached tan
+        new THREE.Color(PAL.wood).offsetHSL(0.006, -0.02, 0.035), // sun-dried pale step
+        new THREE.Color(PAL.wood).offsetHSL(-0.004, 0.03, -0.105), // aged damp step
+      ];
+      const bakePlankShade = (bg) => {
+        // top face full, side walls dipped, undersides + sawn ends darkest — weight without cost
+        const nrm = bg.attributes.normal, pc = new Float32Array(nrm.count * 3);
+        for (let vi = 0; vi < nrm.count; vi++) {
+          const ny = nrm.getY(vi), nz = Math.abs(nrm.getZ(vi));
+          const v = ny > 0.5 ? 1 : ny < -0.5 ? 0.52 : nz > 0.5 ? 0.68 : 0.82;
+          pc[vi * 3] = v; pc[vi * 3 + 1] = v; pc[vi * 3 + 2] = v * 0.97;
+        }
+        bg.setAttribute("color", new THREE.BufferAttribute(pc, 3));
+        return bg;
+      };
+      const plankGeo = bakePlankShade(new THREE.BoxGeometry(0.68, 0.09, 2.3));
+      const plankTone = (bx) => PLANK_TONES[Math.floor(Math.abs(Math.sin(bx * 37.7)) * 3) % 3];
       const mkPlank = (bx, ry = 0, drop = 0, rz = null) => {
-        const plank = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.09, 2.3), flat(Math.round(bx * 10) % 2 ? 0x8a6238 : 0x9a7245));
+        const plank = new THREE.Mesh(plankGeo, flat(plankTone(bx), { vertexColors: true }));
         const slope = 0.34 * (Math.PI / 6.4) * Math.cos(((bx + 16.4) / 6.4) * Math.PI);
         plank.rotation.z = rz != null ? rz : Math.atan(slope);
         plank.rotation.y = ry;
@@ -2874,16 +3868,30 @@ export default function DragonGardenQuest() {
         [0, 1, 2, 6, 7, 8].forEach((bi) => mkPlank(plankXs[bi]));
         mkPlank(plankXs[3], 0.25, 0.42, -0.85); // snapped, hanging into the water
         mkPlank(plankXs[5], -0.2, 0.5, 0.8);
-        const drift = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.08, 1.4), flat(0x8a6238));
+        const drift = new THREE.Mesh(bakePlankShade(new THREE.BoxGeometry(0.66, 0.08, 1.4)),
+          flat(PLANK_TONES[2], { vertexColors: true }));
         drift.position.set(-13.6, -0.08, 4.6);
         drift.rotation.set(0.06, 0.7, 0.1);
+        drift.castShadow = true;
         worldGroup.add(drift);
+        // contact-shadow decals on the water under the collapsed spans + the drifted plank —
+        // gives the collapse vignette weight the 2048 shadow map can't resolve at this scale
+        const aoGeoA = new THREE.PlaneGeometry(2.7, 2.0);
+        aoGeoA.rotateX(-Math.PI / 2); aoGeoA.translate(-13.35, 0, 3.15);
+        const aoGeoB = new THREE.PlaneGeometry(1.8, 1.15);
+        aoGeoB.rotateX(-Math.PI / 2); aoGeoB.rotateY(0.7);
+        aoGeoB.translate(-13.6, 0.001, 4.6);
+        const wreckAO = new THREE.Mesh(mergeGeoms([aoGeoA, aoGeoB]),
+          flat(new THREE.Color(PAL.waterDeep).offsetHSL(0, -0.12, -0.15),
+            { transparent: true, opacity: 0.38, depthWrite: false }));
+        wreckAO.position.y = -0.104; // above the ripple crest, below the planks
+        worldGroup.add(wreckAO);
       }
       const postXs = G.youthGroup ? [-16.2, -14.7, -13.2, -11.7, -10.2] : [-16.2, -14.7, -11.7, -10.2];
       [-1, 1].forEach((side) => {
         let prev = null;
         postXs.forEach((px) => {
-          const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.62, 0.12), flat(0x6e4a2c));
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.62, 0.12), flat(new THREE.Color(PAL.wood).offsetHSL(0, 0.02, -0.09)));
           post.position.set(px, deckH(px) + 0.29, 3 + side * 1.08);
           post.castShadow = true;
           bridge.add(post);
@@ -2891,12 +3899,12 @@ export default function DragonGardenQuest() {
           if (prev !== null && !gapJump) {
             const midx = (prev + px) / 2;
             const rlen = px - prev;
-            const rail = new THREE.Mesh(new THREE.BoxGeometry(Math.hypot(rlen, deckH(px) - deckH(prev)) + 0.05, 0.09, 0.09), flat(0x8a6238));
+            const rail = new THREE.Mesh(new THREE.BoxGeometry(Math.hypot(rlen, deckH(px) - deckH(prev)) + 0.05, 0.09, 0.09), flat(new THREE.Color(PAL.wood).offsetHSL(0, 0, -0.03)));
             rail.position.set(midx, deckH(midx) + 0.56, 3 + side * 1.08);
             rail.rotation.z = Math.atan2(deckH(px) - deckH(prev), rlen);
             bridge.add(rail);
           } else if (gapJump) {
-            const stub = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.09, 0.09), flat(0x8a6238));
+            const stub = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.09, 0.09), flat(new THREE.Color(PAL.wood).offsetHSL(0, 0, -0.03)));
             stub.position.set(prev + 0.35, deckH(prev) + 0.42, 3 + side * 1.08);
             stub.rotation.z = -0.7;
             bridge.add(stub);
@@ -2917,7 +3925,7 @@ export default function DragonGardenQuest() {
         addBoxCol(-15.45, 4.22, 1.0, 0.12, 0);
         addBoxCol(-15.45, 1.78, 1.0, 0.12, 0);
         // BRIDGE OUT sign by the east approach
-        const signPost = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.15, 6), flat(0x6e4a2c));
+        const signPost = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.15, 6), flat(PAL.bark));
         signPost.position.set(-9.3, 0.57, 4.5);
         const outPlate = makeTextPlate("BRIDGE OUT", { w: 1.8, h: 0.55, bg: "#e8d8b0", fg: "#8a2f24" });
         outPlate.position.set(-9.3, 1.25, 4.5);
@@ -2928,10 +3936,8 @@ export default function DragonGardenQuest() {
       }
       addBoxCol(-14, -19.4, 2.6, 21.0, 0);
       addBoxCol(-14, 22.4, 2.6, 18.0, 0);
-      addFlagstonePath([[0, 7.0], [0, 1], [0, -4]]);
-      addFlagstonePath([[0, 3], [14, 3], [24, 3]]);
-      addFlagstonePath([[0, 3], [-9.0, 3]]); // stops short of the bridge deck (planks reach x≈-10)
-      addFlagstonePath([[-17.2, 3], [-24, 3]]);
+      // stones laid over the worn ribbon (route 3 stops short of the bridge deck — planks reach x≈-10)
+      homeRoutes.forEach((rt) => addFlagstonePath(rt.pts, rt.w));
 
       // ---- Cottage: one clean solid body (extruded gable profile) + roof slabs ----
       const house = new THREE.Group();
@@ -2941,36 +3947,71 @@ export default function DragonGardenQuest() {
       prof.lineTo(0, 3.55); prof.lineTo(-2, 2.3); prof.lineTo(-2, 0);
       const bodyGeo = new THREE.ExtrudeGeometry(prof, { depth: 5, bevelEnabled: false });
       bodyGeo.translate(0, 0, -2.5);
-      const bodyMesh = new THREE.Mesh(bodyGeo, flat(0xcf9a58));
+      // warm honeyed-walnut walls (PAL.bark lifted well clear of chocolate), darker timber accents
+      const wallTone = new THREE.Color(PAL.bark).offsetHSL(0.012, 0.07, 0.17);
+      const timberTone = new THREE.Color(PAL.bark).offsetHSL(0.004, 0.04, 0.06);
+      const plankLineTone = new THREE.Color(PAL.bark).offsetHSL(0.008, 0.05, 0.115);
+      const bodyMesh = new THREE.Mesh(bodyGeo, flat(wallTone));
       bodyMesh.rotation.y = Math.PI / 2; // ridge runs along X, front face at z=+2
       bodyMesh.castShadow = true; bodyMesh.receiveShadow = true;
       house.add(bodyMesh);
       // timber corner posts + base trim, flush against the walls
+      const timberMat = flat(timberTone);
       [[-2.42, -1.9], [2.42, -1.9], [-2.42, 1.9], [2.42, 1.9]].forEach(([px, pz]) => {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.17, 2.34, 0.17), flat(0x8a6238));
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.17, 2.34, 0.17), timberMat);
         post.position.set(px, 1.17, pz); post.castShadow = true;
         house.add(post);
       });
-      const baseTrim = new THREE.Mesh(new THREE.BoxGeometry(5.15, 0.2, 4.15), flat(0x8f6a3c));
-      baseTrim.position.y = 0.1;
+      // stone plinth strip — separates the timber walls from the grass (ground connection)
+      const baseTrim = new THREE.Mesh(new THREE.BoxGeometry(5.24, 0.34, 4.24), flat(new THREE.Color(PAL.stone).offsetHSL(0.006, 0.02, -0.05), { roughness: 1 }));
+      baseTrim.position.y = 0.17; baseTrim.receiveShadow = true; baseTrim.castShadow = true;
       house.add(baseTrim);
+      // darker footing course under the plinth — the wall never meets bare grass
+      const footing = new THREE.Mesh(new THREE.BoxGeometry(5.44, 0.14, 4.44), flat(new THREE.Color(PAL.stone).offsetHSL(0.004, 0.01, -0.14), { roughness: 1 }));
+      footing.position.y = 0.07; footing.receiveShadow = true;
+      house.add(footing);
+      // trodden-dirt skirt hugging the footprint: the cabin sits IN the lawn, grass
+      // reads cleared at the walls instead of clipping the planks
+      const skirt = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.78, 0.06, 18),
+        flat(new THREE.Color(PAL.soil).lerp(new THREE.Color(PAL.pathStone), 0.42).offsetHSL(0.002, -0.06, -0.025), { roughness: 1 }));
+      skirt.scale.set(1.0, 1, 0.76);
+      skirt.position.y = 0.012;
+      skirt.receiveShadow = true;
+      house.add(skirt);
       // thin plank lines, flush on each face (frames cover them at openings)
+      const plankLineMat = flat(plankLineTone);
       [0.62, 1.18, 1.74].forEach((py) => {
-        const f = new THREE.Mesh(new THREE.BoxGeometry(4.55, 0.05, 0.04), flat(0x9c7444));
+        const f = new THREE.Mesh(new THREE.BoxGeometry(4.55, 0.05, 0.04), plankLineMat);
         f.position.set(0, py, 2.02); house.add(f);
         const bk = f.clone(); bk.position.z = -2.02; house.add(bk);
-        const sl = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 3.7), flat(0x9c7444));
+        const sl = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 3.7), plankLineMat);
         sl.position.set(-2.52, py, 0); house.add(sl);
         const sr = sl.clone(); sr.position.x = 2.52; house.add(sr);
       });
-      // roof: two sloped slabs, shingle bands laid ON the slabs, ridge cap
+      // plank lines continue up the gable peaks so the end faces keep the same board
+      // frequency as the long walls (no stretched bare triangle)
+      [[2.32, 3.5], [2.72, 2.4], [3.1, 1.3]].forEach(([py, ln]) => {
+        const gl = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, ln), plankLineMat);
+        gl.position.set(-2.52, py, 0); house.add(gl);
+        const gr2 = gl.clone(); gr2.position.x = 2.52; house.add(gr2);
+      });
+      // baked eave shadow: a darker AO band where the walls tuck under the roof overhang
+      const eaveMat = flat(wallTone.clone().offsetHSL(0.004, 0.015, -0.125));
+      [2.03, -2.03].forEach((ez) => {
+        const band = new THREE.Mesh(new THREE.BoxGeometry(4.55, 0.2, 0.045), eaveMat);
+        band.position.set(0, 2.19, ez);
+        house.add(band);
+      });
+      // roof: muted terracotta (A Short Hike cabin) — slabs, alternating shingle bands, ridge cap
       const buildRoofSide = (sign) => {
         const grp = new THREE.Group();
-        const slab = new THREE.Mesh(new THREE.BoxGeometry(6.0, 0.15, 2.85), flat(0x74512e, { roughness: 0.85 }));
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(6.0, 0.15, 2.85), flat(PAL.roof, { roughness: 0.85 }));
         slab.castShadow = true; slab.receiveShadow = true;
         grp.add(slab);
+        const rowA = flat(new THREE.Color(PAL.roof).offsetHSL(0, -0.03, -0.045));
+        const rowB = flat(new THREE.Color(PAL.roof).offsetHSL(0.006, -0.02, 0.025));
         [-1.02, -0.34, 0.34, 1.02].forEach((rz, i) => {
-          const row = new THREE.Mesh(new THREE.BoxGeometry(6.04, 0.06, 0.58), flat(i % 2 ? 0x60422a : 0x6c4c30));
+          const row = new THREE.Mesh(new THREE.BoxGeometry(6.04, 0.06, 0.58), i % 2 ? rowA : rowB);
           row.position.set(0, 0.1, rz);
           grp.add(row);
         });
@@ -2979,36 +4020,82 @@ export default function DragonGardenQuest() {
         return grp;
       };
       house.add(buildRoofSide(1), buildRoofSide(-1));
-      const ridgeCap = new THREE.Mesh(new THREE.BoxGeometry(6.1, 0.16, 0.42), flat(0x5f4228));
+      const ridgeCap = new THREE.Mesh(new THREE.BoxGeometry(6.1, 0.16, 0.42), flat(new THREE.Color(PAL.roof).offsetHSL(0, -0.05, -0.08)));
       ridgeCap.position.y = 3.64; ridgeCap.castShadow = true;
       house.add(ridgeCap);
-      // door with frame + step
-      const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.72, 0.1), flat(0x5f4228));
-      doorFrame.position.set(0, 0.86, 2.03);
-      const door = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.52, 0.1), flat(0x5f3f22));
-      door.position.set(0, 0.76, 2.07);
-      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), smooth(0xd9b95a, { metalness: 0.4, roughness: 0.4 }));
-      knob.position.set(0.28, 0.76, 2.14);
-      const step = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.14, 0.6), flat(0x9a938c));
-      step.position.set(0, 0.07, 2.38);
-      house.add(doorFrame, door, knob, step);
-      // framed cross-pane windows
-      [-1.5, 1.5].forEach((wx) => {
-        const frame = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.95, 0.08), flat(0xf2e6cc));
-        frame.position.set(wx, 1.42, 2.03);
-        const glass = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.78, 0.08),
-          smooth(0x9fd0e8, { emissive: 0xffe9b8, emissiveIntensity: 0.3, roughness: 0.2 }));
-        glass.position.set(wx, 1.42, 2.06);
-        const barV = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.78, 0.09), flat(0xf2e6cc));
-        barV.position.set(wx, 1.42, 2.07);
-        const barH = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.05, 0.09), flat(0xf2e6cc));
-        barH.position.set(wx, 1.42, 2.07);
-        house.add(frame, glass, barV, barH);
+      // door: cream border trim standing PROUD of a recessed warm-brown panel (never black),
+      // with a lit transom pane above — the cabin reads inhabited
+      const creamMat = flat(new THREE.Color(PAL.plaster).offsetHSL(0, -0.06, 0.005));
+      const doorPanel = new THREE.Mesh(new THREE.BoxGeometry(0.88, 1.56, 0.09), flat(new THREE.Color(PAL.bark).offsetHSL(0.01, 0.06, 0.015)));
+      doorPanel.position.set(0, 0.78, 2.02);
+      // vertical plank grooves on the door face
+      const grooveMat = flat(new THREE.Color(PAL.bark).offsetHSL(0.006, 0.04, -0.05));
+      [-0.16, 0.16].forEach((gx) => {
+        const gr = new THREE.Mesh(new THREE.BoxGeometry(0.035, 1.44, 0.02), grooveMat);
+        gr.position.set(gx, 0.78, 2.07);
+        house.add(gr);
       });
-      // stone chimney sitting on the roof slope
-      const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.9, 0.62), flat(0x8d8d94));
+      const trimL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.78, 0.14), creamMat);
+      trimL.position.set(-0.5, 0.89, 2.05);
+      const trimR = trimL.clone(); trimR.position.x = 0.5;
+      const trimT = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.14, 0.14), creamMat);
+      trimT.position.set(0, 1.71, 2.05);
+      const transom = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.2, 0.06),
+        smooth(new THREE.Color(PAL.sun).offsetHSL(0, 0.05, -0.06), { emissive: new THREE.Color(PAL.sun).offsetHSL(0.005, 0.1, -0.12), emissiveIntensity: 0.85, roughness: 0.3 }));
+      transom.position.set(0, 1.38, 2.08);
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), smooth(0xd9b95a, { metalness: 0.4, roughness: 0.4 }));
+      knob.position.set(0.3, 0.76, 2.1);
+      const step = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.14, 0.7), flat(new THREE.Color(PAL.stone).offsetHSL(0, 0, 0.03)));
+      step.position.set(0, 0.07, 2.42); step.receiveShadow = true;
+      house.add(doorPanel, trimL, trimR, trimT, transom, knob, step);
+      // windows: cream border trim + sill, glass recessed BEHIND the trim with a calm
+      // sky tint (no more blown white quads), cross mullions between
+      [-1.5, 1.5].forEach((wx) => {
+        const glass = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.05),
+          smooth(new THREE.Color(PAL.skyMid).offsetHSL(0.02, 0.06, -0.14), { emissive: new THREE.Color(PAL.sun).offsetHSL(0, 0.02, -0.28), emissiveIntensity: 0.22, roughness: 0.15 }));
+        glass.position.set(wx, 1.42, 2.02);
+        const wtL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.98, 0.12), creamMat);
+        wtL.position.set(wx - 0.44, 1.42, 2.05);
+        const wtR = wtL.clone(); wtR.position.x = wx + 0.44;
+        const wtT = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.1, 0.12), creamMat);
+        wtT.position.set(wx, 1.9, 2.05);
+        const sill = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.09, 0.2), creamMat);
+        sill.position.set(wx, 0.93, 2.07); sill.castShadow = true;
+        const barV = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.8, 0.05), creamMat);
+        barV.position.set(wx, 1.42, 2.045);
+        const barH = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.05), creamMat);
+        barH.position.set(wx, 1.42, 2.045);
+        house.add(glass, wtL, wtR, wtT, sill, barV, barH);
+      });
+      // foundation dressing: rain barrel by the door + firewood stack under the east window
+      const barrelWood = new THREE.Color(PAL.wood).lerp(new THREE.Color(PAL.bark), 0.45).offsetHSL(0, 0.1, -0.02);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.24, 0.52, 8), flat(barrelWood));
+      barrel.position.set(-0.95, 0.26, 2.35); barrel.castShadow = true;
+      const bandMat = flat(new THREE.Color(PAL.bark).offsetHSL(0, -0.02, -0.1));
+      [0.12, 0.4].forEach((by) => {
+        const band = new THREE.Mesh(new THREE.CylinderGeometry(0.235, 0.245, 0.05, 8), bandMat);
+        band.position.set(-0.95, by, 2.35);
+        house.add(band);
+      });
+      house.add(barrel);
+      const logEnd = new THREE.Color(PAL.wood).offsetHSL(0.004, 0.02, 0.06);
+      const logSide = new THREE.Color(PAL.bark).offsetHSL(0.006, 0.05, 0.03);
+      [[1.15, 0.12, 0], [1.45, 0.12, 0.2], [1.75, 0.12, -0.15], [1.3, 0.32, 0.1], [1.6, 0.32, -0.05], [1.45, 0.5, 0]].forEach(([lx, ly, lj]) => {
+        const log = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.115, 0.62, 7),
+          flat(logSide.clone().offsetHSL(0, 0, (Math.random() - 0.5) * 0.05)));
+        log.rotation.x = Math.PI / 2;
+        log.rotation.z = (Math.random() - 0.5) * 0.06;
+        log.position.set(lx + lj * 0.1, ly, 2.28);
+        log.castShadow = true;
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.03, 7), flat(logEnd));
+        cap.rotation.x = Math.PI / 2;
+        cap.position.set(lx + lj * 0.1, ly, 2.6);
+        house.add(log, cap);
+      });
+      // stone chimney sitting on the roof slope — warm pale stone
+      const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.9, 0.62), flat(PAL.stone));
       chimney.position.set(1.5, 3.7, -0.95); chimney.castShadow = true;
-      const chimTop = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.2, 0.78), flat(0x767680));
+      const chimTop = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.2, 0.78), flat(new THREE.Color(PAL.stone).offsetHSL(0, 0, -0.07)));
       chimTop.position.set(1.5, 4.72, -0.95);
       house.add(chimney, chimTop);
       addChimneySmoke(house, 1.5, 4.95, -0.95);
@@ -3023,6 +4110,118 @@ export default function DragonGardenQuest() {
       worldGroup.add(makeFence(FT.x1, FT.z2, FT.x2, FT.z2));
       worldGroup.add(makeFence(FT.x1, FT.z1, FT.x1, FT.z2));
       worldGroup.add(makeFence(FT.x2, FT.z1, FT.x2, FT.z2));
+      // hand-dressing: small pebbles kicked along the fence line so the enclosure
+      // reads as a worked space, not a prim drawn on the lawn (decor only, no collision)
+      for (let i = 0; i < 9; i++) {
+        const side = Math.random();
+        let pbx, pbz;
+        if (side < 0.5) {
+          pbx = FT.x1 + 0.5 + Math.random() * (FT.x2 - FT.x1 - 1);
+          pbz = (side < 0.25 ? FT.z1 : FT.z2) + (Math.random() - 0.5) * 0.65;
+        } else {
+          pbx = (side < 0.75 ? FT.x1 : FT.x2) + (Math.random() - 0.5) * 0.65;
+          pbz = FT.z1 + 0.5 + Math.random() * (FT.z2 - FT.z1 - 1);
+        }
+        if (Math.abs(pbx) < 1.4 && Math.abs(pbz - FT.z1) < 0.9) continue; // keep the gate clear
+        worldGroup.add(makeRock(pbx, pbz, 0.12 + Math.random() * 0.12, false, { noCol: true, noMoss: true }));
+      }
+      // Garden storytelling set — scarecrow, leaning tools, watering can, crates, clay
+      // pot, compost heap, stepping stones. Pure decor (no colliders), every position
+      // off the build-cell grid, ALL merged into ONE vertex-colored mesh (+1 draw call).
+      {
+        const gpParts = [];
+        const fill = (bg, c) => {
+          const lc = c.clone().convertSRGBToLinear();
+          const cnt = bg.attributes.position.count, cols = new Float32Array(cnt * 3);
+          for (let vi = 0; vi < cnt; vi++) { cols[vi * 3] = lc.r; cols[vi * 3 + 1] = lc.g; cols[vi * 3 + 2] = lc.b; }
+          bg.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+          gpParts.push(bg);
+          return bg;
+        };
+        const woodTool = new THREE.Color(PAL.wood).lerp(new THREE.Color(PAL.bark), 0.42).offsetHSL(0, 0.05, 0);
+        const metal = new THREE.Color(PAL.stone).lerp(new THREE.Color(PAL.ambientSky), 0.3).offsetHSL(0, -0.04, -0.02);
+        const straw = new THREE.Color(PAL.grassSun).offsetHSL(0.01, 0.16, 0.1);
+        const shirt = new THREE.Color(PAL.roof).offsetHSL(0, -0.08, 0.02);
+        const crateC = new THREE.Color(PAL.wood).offsetHSL(0.004, 0.04, -0.05);
+        const potC = new THREE.Color(PAL.roof).offsetHSL(0.012, -0.02, 0.07);
+        const compostC = new THREE.Color(PAL.soil).offsetHSL(0.006, -0.06, 0.06);
+        const stoneC = new THREE.Color(PAL.pathStone).offsetHSL(-0.004, -0.04, -0.03);
+        const jit = (c, a = 0.04) => c.clone().offsetHSL(0, 0, (Math.random() - 0.5) * a * 2);
+        // -- scarecrow: the focal vertical behind the plots, just outside the north
+        //    fence right of the gate (never a build cell, road is 2.3 units further on)
+        {
+          const sx = 2.6, sz = FT.z1 - 0.85, lean = 0.06, S = 1.18;
+          const pole = fill(new THREE.CylinderGeometry(0.045 * S, 0.055 * S, 1.62 * S, 6), woodTool);
+          pole.rotateZ(lean); pole.translate(sx, 0.81 * S, sz);
+          const arms = fill(new THREE.CylinderGeometry(0.035 * S, 0.035 * S, 1.06 * S, 6), woodTool);
+          arms.rotateZ(Math.PI / 2 + 0.05); arms.rotateY(0.18); arms.translate(sx + 0.02, 1.18 * S, sz);
+          const tunic = fill(new THREE.BoxGeometry(0.4 * S, 0.52 * S, 0.22 * S), shirt);
+          tunic.rotateY(0.16); tunic.rotateZ(lean); tunic.translate(sx + 0.015, 0.98 * S, sz);
+          const sleeveL = fill(new THREE.BoxGeometry(0.4 * S, 0.15 * S, 0.16 * S), jit(shirt, 0.03));
+          sleeveL.rotateZ(0.09); sleeveL.translate(sx - 0.38 * S, 1.18 * S, sz);
+          const sleeveR = fill(new THREE.BoxGeometry(0.4 * S, 0.15 * S, 0.16 * S), jit(shirt, 0.03));
+          sleeveR.rotateZ(-0.07); sleeveR.translate(sx + 0.42 * S, 1.19 * S, sz);
+          const head = fill(new THREE.IcosahedronGeometry(0.17 * S, 0), straw);
+          head.translate(sx + 0.04, 1.42 * S, sz);
+          const hat = fill(new THREE.ConeGeometry(0.24 * S, 0.2 * S, 7), jit(straw, 0.05).offsetHSL(0, -0.04, -0.05));
+          hat.rotateZ(-0.12); hat.translate(sx + 0.05, 1.58 * S, sz);
+          const brim = fill(new THREE.CylinderGeometry(0.26 * S, 0.28 * S, 0.03, 8), jit(straw, 0.04).offsetHSL(0, -0.05, -0.08));
+          brim.rotateZ(-0.12); brim.translate(sx + 0.05, 1.5 * S, sz);
+          const skirt = fill(new THREE.ConeGeometry(0.2 * S, 0.34 * S, 7), jit(straw, 0.05));
+          skirt.translate(sx + 0.01, 0.6 * S, sz);
+        }
+        // -- leaning tools against the inside of the west fence (rake + spade)
+        {
+          const tx = FT.x1 + 0.14, tz = FT.z2 - 1.35;
+          const rakeH = fill(new THREE.CylinderGeometry(0.028, 0.028, 1.24, 5), jit(woodTool));
+          rakeH.rotateZ(-0.42); rakeH.translate(tx + 0.26, 0.56, tz);
+          const rakeHead = fill(new THREE.BoxGeometry(0.05, 0.07, 0.34), metal);
+          rakeHead.translate(tx + 0.5, 0.06, tz);
+          const spadeH = fill(new THREE.CylinderGeometry(0.028, 0.028, 1.1, 5), jit(woodTool));
+          spadeH.rotateZ(-0.36); spadeH.rotateY(0.3); spadeH.translate(tx + 0.22, 0.5, tz + 0.55);
+          const spadeB = fill(new THREE.BoxGeometry(0.16, 0.24, 0.035), metal.clone().offsetHSL(0, 0, -0.04));
+          spadeB.rotateX(0.16); spadeB.translate(tx + 0.4, 0.12, tz + 0.62);
+        }
+        // -- watering can resting by the front-left bed (mid-frame from the south camera)
+        {
+          const wx = FT.cols[0] + 1.55, wz = FT.rows[1] + 0.75, rot = 0.7;
+          const body = fill(new THREE.CylinderGeometry(0.17, 0.2, 0.3, 8), metal.clone().offsetHSL(0, 0, 0.04));
+          body.translate(wx, 0.15, wz);
+          const spout = fill(new THREE.CylinderGeometry(0.03, 0.055, 0.36, 5), jit(metal, 0.03));
+          spout.rotateZ(1.05); spout.rotateY(rot); spout.translate(wx + Math.cos(rot) * 0.27, 0.25, wz - Math.sin(rot) * 0.27);
+          const handle = fill(new THREE.BoxGeometry(0.06, 0.17, 0.035), jit(metal, 0.03));
+          handle.rotateY(rot); handle.translate(wx - Math.cos(rot) * 0.21, 0.3, wz + Math.sin(rot) * 0.21);
+        }
+        // -- crate pair + terracotta pot tucked in the near-right fence corner
+        {
+          const cx = FT.x2 - 0.62, cz = FT.z2 - 0.66;
+          const c1 = fill(new THREE.BoxGeometry(0.52, 0.34, 0.44), jit(crateC));
+          c1.rotateY(0.22); c1.translate(cx, 0.17, cz);
+          const c2 = fill(new THREE.BoxGeometry(0.4, 0.28, 0.36), jit(crateC, 0.06));
+          c2.rotateY(-0.35); c2.translate(cx - 0.12, 0.48, cz + 0.05);
+          const pot = fill(new THREE.CylinderGeometry(0.13, 0.09, 0.2, 7), potC);
+          pot.translate(cx - 0.62, 0.1, cz + 0.28);
+          const potSoil = fill(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 7), compostC);
+          potSoil.translate(cx - 0.62, 0.19, cz + 0.28);
+        }
+        // -- compost heap against the outside of the west fence, hand fork stuck in
+        {
+          const mx = FT.x1 - 0.62, mz = FT.z2 - 0.42;
+          const heap = fill(new THREE.IcosahedronGeometry(0.34, 0), compostC);
+          heap.scale(1.15, 0.55, 1); heap.rotateY(0.6); heap.translate(mx, 0.14, mz);
+          const forkH = fill(new THREE.CylinderGeometry(0.022, 0.022, 0.62, 5), jit(woodTool));
+          forkH.rotateZ(0.5); forkH.rotateY(0.4); forkH.translate(mx + 0.14, 0.44, mz - 0.1);
+        }
+        // -- worn stepping stones up the central walkway from the gate
+        for (let si = 0; si < 5; si++) {
+          const st = fill(new THREE.CylinderGeometry(0.2 + Math.random() * 0.07, 0.24 + Math.random() * 0.07, 0.055, 6), jit(stoneC, 0.05));
+          st.rotateY(Math.random() * Math.PI);
+          st.translate((Math.random() - 0.5) * 0.24, 0.03, FT.z1 + 0.7 + si * 1.12);
+        }
+        const gardenProps = new THREE.Mesh(mergeGeoms(gpParts), flat(0xffffff, { vertexColors: true, roughness: 1 }));
+        gardenProps.castShadow = true; gardenProps.receiveShadow = true;
+        worldGroup.add(gardenProps);
+      }
       // plots: 6 starters on the first two rows + every purchased kit
       syncHomePlotCount();
       const basePlotPos = [];
@@ -3038,10 +4237,10 @@ export default function DragonGardenQuest() {
       // ghost plot for Build Mode
       ghostMesh = new THREE.Group();
       const gRim = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 1.7),
-        new THREE.MeshStandardMaterial({ color: SRGB(0x8a6238), transparent: true, opacity: 0.5, emissive: SRGB(0x6ee87a), emissiveIntensity: 0.5, flatShading: true }));
+        new THREE.MeshStandardMaterial({ color: SRGB(PAL.wood), transparent: true, opacity: 0.5, emissive: SRGB(0x6ee87a), emissiveIntensity: 0.5, flatShading: true }));
       gRim.position.y = 0.05;
       const gSoil = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.22, 1.5),
-        new THREE.MeshStandardMaterial({ color: SRGB(0x6b4a2f), transparent: true, opacity: 0.5, emissive: SRGB(0x6ee87a), emissiveIntensity: 0.4, flatShading: true }));
+        new THREE.MeshStandardMaterial({ color: SRGB(PAL.soil), transparent: true, opacity: 0.5, emissive: SRGB(0x6ee87a), emissiveIntensity: 0.4, flatShading: true }));
       gSoil.position.y = 0.11;
       ghostMesh.add(gRim, gSoil);
       ghostMesh.visible = false;
@@ -3051,13 +4250,19 @@ export default function DragonGardenQuest() {
 
       // Cave: rock archway (pillars + lintel) with a true dark interior room.
       // The big mound sits well BEHIND the entrance so nothing intersects it.
-      const mound = new THREE.Mesh(new THREE.IcosahedronGeometry(5.4, 0), flat(0x46465a, { roughness: 1 }));
+      // cool gray-mauve stone (ties the cave to the background mountains) with a faint
+      // self-glow floor so no unlit facet can ever reach black
+      const caveStone = (dl) => {
+        const c = new THREE.Color(PAL.stone).lerp(new THREE.Color(PAL.ambientSky), 0.24).offsetHSL(0.01, 0.03, dl);
+        return flat(c, { roughness: 1, emissive: c.clone().offsetHSL(0.01, 0.04, -0.02), emissiveIntensity: 0.16 });
+      };
+      const mound = new THREE.Mesh(new THREE.IcosahedronGeometry(5.4, 0), caveStone(-0.13));
       mound.position.set(0, 1.7, -19.6);
       mound.scale.set(1.6, 1.15, 1.0);
       mound.rotation.set(0.15, 0.5, 0.05);
       mound.castShadow = true; mound.receiveShadow = true;
       worldGroup.add(mound);
-      const mound2 = new THREE.Mesh(new THREE.IcosahedronGeometry(3.1, 0), flat(0x3e3e50, { roughness: 1 }));
+      const mound2 = new THREE.Mesh(new THREE.IcosahedronGeometry(3.1, 0), caveStone(-0.17));
       mound2.position.set(-5.6, 1.0, -16.8);
       mound2.rotation.set(0.5, 1.2, 0.2);
       mound2.scale.set(1.2, 0.9, 1);
@@ -3067,40 +4272,91 @@ export default function DragonGardenQuest() {
       mound3.position.set(5.6, 0.9, -16.6);
       mound3.rotation.set(1.1, 2.3, 0.4);
       worldGroup.add(mound3);
-      // unlit interior room — reads as true cave darkness from any angle
-      const dark = new THREE.MeshBasicMaterial({ color: 0x0b0814 });
-      const caveBack = new THREE.Mesh(new THREE.BoxGeometry(4.6, 3.4, 0.3), dark);
-      caveBack.position.set(0, 1.7, -16.4);
-      const caveL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.4, 4.6), dark);
-      caveL.position.set(-2.3, 1.7, -14.3);
-      const caveR = caveL.clone(); caveR.position.x = 2.3;
-      const caveTop = new THREE.Mesh(new THREE.BoxGeometry(4.9, 0.3, 4.6), dark);
-      caveTop.position.set(0, 3.3, -14.3);
-      const caveFloorD = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.06, 4.6), dark);
-      caveFloorD.position.set(0, 0.03, -14.3);
-      worldGroup.add(caveBack, caveL, caveR, caveTop, caveFloorD);
+      // NO moss caps on the cave mass: the hand-placed flat caps hovered off the
+      // irregular boulder faces (and showed dark undersides from the entrance
+      // view) — the cave reads better as bare stone, grounded by base grass.
+      // interior room: ONE merged vertex-colored shell with a mouth->depths gradient —
+      // warm ember-brown at the opening falling toward near-black at the back wall, so
+      // the cavity reads DEEP instead of a flat evenly-lit backdrop. The ember point
+      // light layers its warm falloff on top of the baked gradient.
+      const innerNear = new THREE.Color(PAL.soil).offsetHSL(0.004, -0.09, -0.075).convertSRGBToLinear();
+      const innerFar = new THREE.Color(PAL.soil).offsetHSL(-0.01, -0.22, -0.245).convertSRGBToLinear();
+      const paintDepth = (bg) => {
+        const posA = bg.attributes.position, cols = new Float32Array(posA.count * 3);
+        const dc = new THREE.Color();
+        for (let vi = 0; vi < posA.count; vi++) {
+          // t: 0 at the mouth plane (z=-12) -> 1 deep inside (z=-16.4); slight extra
+          // darkening low in the corners so the floor line melts into shadow
+          const t = Math.min(1, Math.max(0, (-12 - posA.getZ(vi)) / 4.4));
+          const corner = Math.min(1, Math.abs(posA.getX(vi)) / 2.3) * 0.14;
+          // ceilings are shadowed from the very mouth — without this the warm
+          // ceiling band read as a bright floating shelf from outside
+          const ceil = posA.getY(vi) > 2.9 ? 0.5 : 0;
+          dc.copy(innerNear).lerp(innerFar, Math.min(1, Math.pow(t, 0.75) + corner * t + ceil));
+          cols[vi * 3] = dc.r; cols[vi * 3 + 1] = dc.g; cols[vi * 3 + 2] = dc.b;
+        }
+        bg.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+        return bg;
+      };
+      const roomParts = [];
+      const roomBox = (w, h, d, x, y, z) => {
+        const bgeo = new THREE.BoxGeometry(w, h, d);
+        bgeo.translate(x, y, z);
+        roomParts.push(paintDepth(bgeo));
+      };
+      roomBox(4.6, 3.4, 0.3, 0, 1.7, -16.4);   // back wall
+      roomBox(0.3, 3.4, 4.6, -2.3, 1.7, -14.3); // left wall
+      roomBox(0.3, 3.4, 4.6, 2.3, 1.7, -14.3);  // right wall
+      roomBox(4.9, 0.3, 4.6, 0, 3.3, -14.3);    // ceiling
+      roomBox(4.6, 0.06, 4.6, 0, 0.03, -14.3);  // floor
+      const caveRoom = new THREE.Mesh(mergeGeoms(roomParts),
+        // whisper of ember-warm self-glow so the deepest corner never hits pure #000
+        flat(0xffffff, { vertexColors: true, roughness: 1, emissive: innerNear.clone().offsetHSL(0.014, 0.18, -0.04), emissiveIntensity: 0.14 }));
+      worldGroup.add(caveRoom);
+      // facade fill: plug every sightline beside/above the room out to the mounds so
+      // no backface or sky void can peek through the entrance frame (the old black
+      // rectangular hole above the mouth)
+      const fillMat = caveStone(-0.11);
+      const mkFill = (r, sx, sy, sz, x, y, z, rx, ry, rz) => {
+        const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), fillMat);
+        m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.rotation.set(rx, ry, rz);
+        m.castShadow = true; m.receiveShadow = true;
+        worldGroup.add(m);
+      };
+      // shoulder boulders over the room, tucked behind the lintel + under the mound crown
+      mkFill(2.6, 1.9, 0.85, 1.0, -1.1, 4.35, -15.2, 0.2, 0.7, 0.1);
+      mkFill(2.6, 1.8, 0.8, 1.0, 1.6, 4.3, -15.1, 0.4, 2.1, 0.15);
+      // flank boulders plugging the pillar-to-mound gaps left and right of the room
+      mkFill(2.0, 1.15, 1.5, 1.2, -4.0, 1.7, -14.6, 0.3, 1.4, 0.1);
+      mkFill(2.0, 1.15, 1.5, 1.2, 4.0, 1.7, -14.6, 0.7, 2.6, 0.2);
+      // rubble seating the mouth: small decorative stones (no collision, no moss)
+      [[-2.7, -11.7, 0.3], [-1.9, -11.4, 0.2], [2.4, -11.5, 0.26], [3.1, -11.9, 0.34], [1.2, -11.3, 0.16], [-3.9, -11.9, 0.22], [4.3, -11.6, 0.18]]
+        .forEach(([rx, rz, rs]) => worldGroup.add(makeRock(rx, rz, rs, false, { noCol: true, noMoss: true })));
       // entrance frame: stacked pillar boulders + a lintel stone across the top
       const mkPillar = (x) => {
-        const p1 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 0), flat(0x52526a, { roughness: 1 }));
+        const p1 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 0), caveStone(-0.08));
         p1.position.set(x, 1.0, -12.4);
         p1.rotation.set(Math.random(), Math.random(), Math.random());
         p1.scale.set(0.95, 1.25, 1.1);
         p1.castShadow = true; p1.receiveShadow = true;
-        const p2 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0, 0), flat(0x46465a, { roughness: 1 }));
+        const p2 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0, 0), caveStone(-0.12));
         p2.position.set(x * 0.92, 2.6, -12.7);
         p2.rotation.set(Math.random(), Math.random(), Math.random());
         p2.castShadow = true;
         worldGroup.add(p1, p2);
       };
       mkPillar(-3.3); mkPillar(3.3);
-      const lintel = new THREE.Mesh(new THREE.IcosahedronGeometry(1.7, 0), flat(0x4c4c60, { roughness: 1 }));
+      const lintel = new THREE.Mesh(new THREE.IcosahedronGeometry(1.7, 0), caveStone(-0.10));
       lintel.position.set(0, 3.75, -13.1);
       lintel.scale.set(2.5, 0.95, 0.95);
       lintel.rotation.set(0.2, 0.4, 0.1);
       lintel.castShadow = true;
       worldGroup.add(lintel);
-      worldGroup.add(makeRock(5.4, -13.2, 1.3, true));
-      worldGroup.add(makeRock(-5.4, -12.8, 1.2, true));
+      // plug the lintel-to-mound sliver where the interior ceiling (warm brown)
+      // showed through above the mouth's right corner
+      mkFill(1.1, 2.0, 0.95, 1.0, 1.95, 3.5, -12.9, 0.3, 1.2, 0.15);
+      worldGroup.add(makeRock(5.4, -13.2, 1.3, true, { noMoss: true }));
+      worldGroup.add(makeRock(-5.4, -12.8, 1.2, true, { noMoss: true }));
       // colliders: pillars, sealed cavity, and the rock mass behind
       addCircleCol(-3.3, -12.4, 1.5);
       addCircleCol(3.3, -12.4, 1.5);
@@ -3111,7 +4367,7 @@ export default function DragonGardenQuest() {
       addCircleCol(-5.6, -16.8, 2.6);
       addCircleCol(5.6, -16.6, 2.6);
 
-      caveLight = new THREE.PointLight(SRGB(0xff8a3a), 1.2, 12);
+      caveLight = new THREE.PointLight(SRGB(0xff8a3a), 1.5, 13);
       caveLight.position.set(0, 1.6, -13.8);
       worldGroup.add(caveLight);
       for (let i = 0; i < 7; i++) {
@@ -3121,6 +4377,13 @@ export default function DragonGardenQuest() {
         worldGroup.add(em); embers.push(em);
       }
 
+      // soft contact shadow under Ember — anchors the dragon to the cave threshold
+      const dragonShadow = new THREE.Mesh(new THREE.CircleGeometry(1.0, 16),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(PAL.soil).offsetHSL(0, -0.18, -0.27).convertSRGBToLinear(), transparent: true, opacity: 0.38, depthWrite: false }));
+      dragonShadow.rotation.x = -Math.PI / 2;
+      dragonShadow.scale.set(1.25, 0.9, 1);
+      dragonShadow.position.set(0, 0.04, -11.35);
+      worldGroup.add(dragonShadow);
       dragon = makeDragon();
       dragon.position.set(0, 0, -11.4);
       dragon.scale.setScalar(0.7); // lab rig is taller than the old model
@@ -3139,24 +4402,49 @@ export default function DragonGardenQuest() {
       [[-9.5, -8, 1.3], [12, -10, 1.1], [-9, 15.5, 1.4], [14, 12, 1.2], [-19, 6.5, 1.0], [18, -3, 1.3], [9, 16, 1.1], [-20.5, -14, 1.4], [20, 15, 1.2], [-19, 18, 1.1], [16, 18, 1.3], [24, 6, 1.0], [-21, -4, 1.2]]
         .forEach(([x, z, s]) => { if (!inGarden(x, z, 1.3)) worldGroup.add(makeTree(x, z, s)); });
       addPetals([[12, -10], [9, 16], [20, 15], [-9, 15.5]], [0x8fbe62, 0xd8c05a], 14, 3.6);
-      [[-8, 0, 0.8, false], [7, 7, 0.7, false], [-3, -6, 0.85, false], [11, 5, 0.6, false], [-9.4, -2.5, 0.65, true]]
+      // 3 size classes: pebble-cluster smalls, mids, plus half-buried boulders with grass skirts
+      [[-8, 0, 0.8, false], [7, 7, 0.7, false], [-3, -6, 0.85, false], [11, 5, 0.6, false], [-9.4, -2.5, 0.65, true],
+       [13.5, 17.5, 0.42, false], [-6.2, 8.6, 0.38, false], [19.5, 12.5, 0.45, false], [8.5, -3.2, 0.4, true]]
         .forEach(([x, z, s, d]) => { if (!inGarden(x, z, 1.2)) worldGroup.add(makeRock(x, z, s, d)); });
+      [[15.5, 22.5, 1.5, false], [-12.5, 12.5, 1.35, false], [10.5, 10.8, 1.2, true]]
+        .forEach(([x, z, s, d]) => { if (!inGarden(x, z, 1.2)) worldGroup.add(makeRock(x, z, s, d, { sink: true })); });
       const homeAvoid = (x, z) =>
         (Math.abs(z - 3) < 1.6 && Math.abs(x) < 26) ||
         (Math.abs(x) < 1.5 && z > -5 && z < 7) ||
         inGarden(x, z, 0.9) ||
         Math.hypot(x, z + 16) < 7 ||
         Math.abs(x - RIVER_X(z)) < 3.6;
-      for (let i = 0; i < 46; i++) {
-        const fx = (Math.random() - 0.5) * 46, fz = (Math.random() - 0.5) * 46;
-        if (!homeAvoid(fx, fz)) worldGroup.add(mixFlower(fx, fz));
+      // hero flowers: clumps of 2-4 seeded where the eye travels — path shoulders,
+      // the garden fence line — plus a few free meadow drifts (never far-corner-only)
+      const heroSeeds = [];
+      for (let ci = 0; ci < 9; ci++) heroSeeds.push([(Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40]);
+      for (let ci = 0; ci < 8; ci++) heroSeeds.push([(Math.random() - 0.5) * 44, 3 + (Math.random() < 0.5 ? -1 : 1) * (2.4 + Math.random() * 1.6)]); // road shoulders
+      for (let ci = 0; ci < 6; ci++) { // garden fence line, just outside the rails
+        const t = Math.random();
+        heroSeeds.push(Math.random() < 0.5
+          ? [FT.x1 + (FT.x2 - FT.x1) * t, (Math.random() < 0.5 ? FT.z1 : FT.z2) + (Math.random() < 0.5 ? -1 : 1) * 1.6]
+          : [(Math.random() < 0.5 ? FT.x1 : FT.x2) + (Math.random() < 0.5 ? -1 : 1) * 1.6, FT.z1 + (FT.z2 - FT.z1) * t]);
+      }
+      for (const [cx, cz] of heroSeeds) {
+        if (homeAvoid(cx, cz)) continue;
+        const k = 2 + Math.floor(Math.random() * 3);
+        for (let fi = 0; fi < k; fi++) {
+          const fa = Math.random() * Math.PI * 2, fr = 0.35 + Math.random() * 0.85;
+          const fx = cx + Math.cos(fa) * fr, fz = cz + Math.sin(fa) * fr;
+          if (!homeAvoid(fx, fz)) worldGroup.add(mixFlower(fx, fz));
+        }
       }
       [[9.5, 9.5, 1], [-9.5, 17, 0.9], [16, 6.5, 1.1], [-19, -6, 1], [11, -13, 0.9], [-8.5, -3.5, 0.8], [21, 9, 1]]
         .forEach(([x, z, bs]) => { if (!inGarden(x, z, 1.2)) worldGroup.add(makeBush(x, z, bs)); });
       addSprouts(430, 64, homeAvoid);
 
-      addGrass(2000, 70, homeAvoid);
-      addWildflowers(280, 66, homeAvoid);
+      const fenceEdges = [
+        [FT.x1, FT.z1 - 1.5, FT.x2, FT.z1 - 1.5], [FT.x1, FT.z2 + 1.5, FT.x2, FT.z2 + 1.5],
+        [FT.x1 - 1.5, FT.z1, FT.x1 - 1.5, FT.z2], [FT.x2 + 1.5, FT.z1, FT.x2 + 1.5, FT.z2],
+      ];
+      addGrass(7800, 70, homeAvoid);
+      addGroundPatches(90, 70, homeAvoid);
+      addWildflowers(400, 66, homeAvoid, fenceEdges);
       addForestRing(34, 40, 60, [[24, 3], [-24, 3]]);
       addMountains([[-34, -52, 17, 21, true], [8, -58, 21, 26, true], [44, -46, 15, 17, false], [-52, 20, 14, 15, true], [52, 26, 16, 18, false]]);
       addClouds(6);
@@ -3297,7 +4585,7 @@ export default function DragonGardenQuest() {
     // -------- TOWN --------
     function buildTown() {
       clearWorld();
-      setAtmosphere(0x4284c6, 0xa5cede, 0xeae2c2, 0xc0dade, 0xffe2b2, 1.62, 0xbcd8ec, 0x5a7a42);
+      setAtmosphere(PAL.skyTop, PAL.skyMid, PAL.skyHorizon, PAL.fog, PAL.sun, 1.45, PAL.ambientSky, PAL.ambientGnd);
 
       terrainY = makeTerrain(
         [{ x: 14, z: -13, r: 6, h: 1.2 }, { x: -14, z: 13, r: 6, h: 1.3 }, { x: 16, z: 12, r: 6, h: 1.2 }, { x: -16, z: -12, r: 7, h: 1.4 }],
@@ -3306,12 +4594,27 @@ export default function DragonGardenQuest() {
          { x1: -8.6, z1: -10.4, x2: 8.6, z2: -3, f: 3 }, { c: 1, x: 0, z: 5, r: 3.6, f: 3 },
          { x1: -16.1, z1: -11.5, x2: 11.9, z2: 12.9, f: 3 }]
       );
-      worldGroup.add(makeGround(66, 0x72ad4a, (x, z, c) => {
+      const townRoutes = [
+        { pts: [[-20, 0], [-15.9, 0]], w: 2.2 },
+        { pts: [[11.6, 0], [16, 0]], w: 2.2 },
+      ];
+      setPathRoutes(townRoutes);
+      worldGroup.add(makeGround(66, PAL.grassBase, (x, z, c) => {
         if (x > -16.1 && x < 11.9 && z > -11.5 && z < 12.9) c.lerp(MORTAR, 0.85);
       }));
       addPavedPlaza(-15.6, -11, 11.4, 12.4); // wide enough that no building overhangs the edge
-      addFlagstonePath([[-20, 0], [-15.9, 0]], 2.2);
-      addFlagstonePath([[11.6, 0], [16, 0]], 2.2);
+      townRoutes.forEach((rt) => addFlagstonePath(rt.pts, rt.w));
+
+      // warm plaster set (all derived from PAL.plaster) + roof desaturator (~25%)
+      // so every roof keeps its hue identity but sits inside the palette
+      const PLASTER_CREAM = new THREE.Color(PAL.plaster);
+      const PLASTER_SAGE = new THREE.Color(PAL.plaster).offsetHSL(0.101, -0.21, -0.115);
+      const PLASTER_LAV = new THREE.Color(PAL.plaster).offsetHSL(0.614, -0.28, -0.07);
+      const roofTone = (hex) => {
+        const c = new THREE.Color(hex), hsl = { h: 0, s: 0, l: 0 };
+        c.getHSL(hsl);
+        return c.setHSL(hsl.h, hsl.s * 0.75, hsl.l);
+      };
 
       function makeBuilding(x, z, w, d, h, wallC, roofC, rotY = 0) {
         const b = new THREE.Group();
@@ -3339,9 +4642,9 @@ export default function DragonGardenQuest() {
         const cap = new THREE.Mesh(new THREE.BoxGeometry(w + 0.8, 0.13, 0.3), flat(roofC));
         cap.position.y = h + rise + 0.05; cap.castShadow = true;
         b.add(cap);
-        const door = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.4, 0.1), flat(0x6b4a2f));
+        const door = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.4, 0.1), flat(new THREE.Color(PAL.bark).offsetHSL(0, 0.02, -0.04)));
         door.position.set(0, 0.7, d / 2 + 0.05);
-        const frame = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.85, 0.1), flat(0xf2e6cc));
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.85, 0.1), flat(PLASTER_CREAM));
         frame.position.set(w / 4 + 0.3, h * 0.55, d / 2 + 0.04);
         const win = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.68, 0.1),
           smooth(0x9fd0e8, { emissive: 0xfff2c0, emissiveIntensity: 0.3, roughness: 0.2 }));
@@ -3354,16 +4657,16 @@ export default function DragonGardenQuest() {
       // dressing houses arc along the BOTTOM of town, well past the pavement —
       // the follow-camera trails ~7 units south of the player, so anything
       // closer would put the camera inside a roof on the south plaza strip
-      worldGroup.add(makeBuilding(11, 19, 4.5, 4, 2.6, 0xd8b482, 0xa8503a, -0.2));
-      worldGroup.add(makeBuilding(-13.5, 18.5, 4, 4, 2.4, 0xbcccdc, 0x40639c, 0.2));
-      worldGroup.add(makeBuilding(-4.5, 20.5, 4, 3.6, 2.3, 0xd8b6c8, 0x7d4270, -0.1));
+      worldGroup.add(makeBuilding(11, 19, 4.5, 4, 2.6, PLASTER_CREAM, PAL.roof, -0.2));
+      worldGroup.add(makeBuilding(-13.5, 18.5, 4, 4, 2.4, PLASTER_SAGE, roofTone(0x40639c), 0.2));
+      worldGroup.add(makeBuilding(-4.5, 20.5, 4, 3.6, 2.3, PLASTER_LAV, roofTone(0x7d4270), -0.1));
 
       // ---- three branded shops you can actually walk into ----
       function shopFront(x, z, brand) {
         const cfg = {
-          seeds: { wall: 0xe4eecf, roof: 0x4da34a, sign: "ROSIE'S SEEDS", fg: "#1d5a2a", bg: "#eaf6d8" },
-          market: { wall: 0xf4e2c4, roof: 0xd8842f, sign: "BERRY MARKET", fg: "#7a3a10", bg: "#ffedc8" },
-          tools: { wall: 0xd8d4e4, roof: 0x6a5a9a, sign: "TOOLWORKS", fg: "#2f2a4a", bg: "#e8e2f6" },
+          seeds: { wall: PLASTER_SAGE, roof: roofTone(0x4da34a), sign: "ROSIE'S SEEDS", fg: "#1d5a2a", bg: "#eaf6d8" },
+          market: { wall: PLASTER_CREAM, roof: roofTone(0xd8842f), sign: "BERRY MARKET", fg: "#7a3a10", bg: "#ffedc8" },
+          tools: { wall: PLASTER_LAV, roof: roofTone(0x6a5a9a), sign: "TOOLWORKS", fg: "#2f2a4a", bg: "#e8e2f6" },
         }[brand];
         worldGroup.add(makeBuilding(x, z, 5, 4.2, 2.7, cfg.wall, cfg.roof));
         const plate = makeTextPlate(cfg.sign, { w: 3.1, h: 0.68, bg: cfg.bg, fg: cfg.fg });
@@ -3374,15 +4677,15 @@ export default function DragonGardenQuest() {
         worldGroup.add(mat);
         if (brand === "seeds") {
           [[x - 1.8, z + 2.5], [x + 1.9, z + 2.6]].forEach(([px, pz]) => {
-            const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.18, 0.32, 7), flat(0xb5432f));
+            const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.18, 0.32, 7), flat(new THREE.Color(PAL.roof).offsetHSL(-0.015, 0.08, -0.06)));
             pot.position.set(px, 0.16, pz);
-            const bushy = new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 0), flat(0x4da34a));
+            const bushy = new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 0), flat(PAL.leafMid));
             bushy.position.set(px, 0.48, pz);
             worldGroup.add(pot, bushy);
           });
         } else if (brand === "market") {
           [[x - 1.9, z + 2.6, 0xe8384f], [x + 1.9, z + 2.7, 0x4f6de8]].forEach(([px, pz, c]) => {
-            const crate = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.4, 0.52), flat(0x9a7245));
+            const crate = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.4, 0.52), flat(new THREE.Color(PAL.bark).offsetHSL(0.006, 0, 0.06)));
             crate.position.set(px, 0.2, pz); crate.castShadow = true;
             worldGroup.add(crate);
             for (let i = 0; i < 4; i++) {
@@ -3413,15 +4716,15 @@ export default function DragonGardenQuest() {
       makeVillager(0, -1.4, 0, { shirt: 0x6ab8a0, hair: 0x4a3a2a, scale: 0.82, solid: false,
         walk: { a: [-7, -1.4], b: [7, -1.4], speed: 0.24 } });
 
-      const fBase = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2, 0.5, 9), flat(0xaeb4bd));
+      const fBase = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2, 0.5, 9), flat(new THREE.Color(PAL.stone).offsetHSL(0, 0, 0.06)));
       fBase.position.set(0, 0.25, 5); fBase.castShadow = true;
       const fWater = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.2, 9),
-        smooth(0x5ab8e8, { roughness: 0.15, emissive: 0x2a6a9a, emissiveIntensity: 0.25 }));
+        smooth(PAL.waterSurf, { roughness: 0.22, emissive: PAL.waterDeep, emissiveIntensity: 0.25 }));
       fWater.position.set(0, 0.5, 5);
       const foam = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.07, 5, 14),
         smooth(0xdff4ff, { emissive: 0xbfe8ff, emissiveIntensity: 0.4 }));
       foam.rotation.x = -Math.PI / 2; foam.position.set(0, 0.62, 5);
-      const fSpire = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.1, 6), flat(0xaeb4bd));
+      const fSpire = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.1, 6), flat(new THREE.Color(PAL.stone).offsetHSL(0, 0, 0.06)));
       fSpire.position.set(0, 1.05, 5);
       worldGroup.add(fBase, fWater, foam, fSpire);
       addCircleCol(0, 5, 2.2);
@@ -3449,7 +4752,7 @@ export default function DragonGardenQuest() {
       const ripBase = [];
       const rpAttr = ripGeo.attributes.position;
       for (let ri = 0; ri < rpAttr.count; ri++) ripBase.push(Math.hypot(rpAttr.getX(ri), rpAttr.getZ(ri)));
-      const ripple = new THREE.Mesh(ripGeo, smooth(0x8fd4f0, { transparent: true, opacity: 0.75, roughness: 0.1, emissive: 0x3a8ab8, emissiveIntensity: 0.3 }));
+      const ripple = new THREE.Mesh(ripGeo, smooth(new THREE.Color(PAL.waterSurf).offsetHSL(0, 0, 0.1), { transparent: true, opacity: 0.75, roughness: 0.15, emissive: new THREE.Color(PAL.waterDeep).offsetHSL(0, 0, 0.06), emissiveIntensity: 0.3 }));
       ripple.position.set(0, 0.615, 5);
       worldGroup.add(ripple);
       const splashRings = [];
@@ -3469,16 +4772,23 @@ export default function DragonGardenQuest() {
       const townAvoid = (x, z) =>
         (x > -15 && x < 10.5 && z > -11.5 && z < 12.9) ||
         (Math.abs(z) < 1.7 && x > -21 && x < 17);
-      for (let i = 0; i < 28; i++) {
-        const fx = (Math.random() - 0.5) * 40, fz = (Math.random() - 0.5) * 34;
-        if (!townAvoid(fx, fz)) worldGroup.add(mixFlower(fx, fz));
+      for (let ci = 0; ci < 9; ci++) {
+        const cx = (Math.random() - 0.5) * 40, cz = (Math.random() - 0.5) * 34;
+        if (townAvoid(cx, cz)) continue;
+        const k = 2 + Math.floor(Math.random() * 3);
+        for (let fi = 0; fi < k; fi++) {
+          const fa = Math.random() * Math.PI * 2, fr = 0.35 + Math.random() * 0.85;
+          const fx = cx + Math.cos(fa) * fr, fz = cz + Math.sin(fa) * fr;
+          if (!townAvoid(fx, fz)) worldGroup.add(mixFlower(fx, fz));
+        }
       }
       [[10, 7.5, 0.9], [-10.5, 9.5, 0.8], [12, -4, 0.9], [-14, -6, 1]]
         .forEach(([x, z, bs]) => worldGroup.add(makeBush(x, z, bs)));
       addSprouts(300, 56, townAvoid);
 
-      addGrass(1100, 60, townAvoid);
-      addWildflowers(150, 58, townAvoid);
+      addGrass(4400, 60, townAvoid);
+      addGroundPatches(50, 60, townAvoid);
+      addWildflowers(190, 58, townAvoid);
       addForestRing(28, 34, 52, [[-20, 0]]);
       addMountains([[-28, -50, 16, 19, true], [20, -54, 20, 24, true], [48, -30, 13, 14, false], [-50, 18, 15, 16, true]]);
       addClouds(5);
@@ -3500,11 +4810,12 @@ export default function DragonGardenQuest() {
       clearWorld();
       const kind = name === "SHOP_SEEDS" ? "seeds" : name === "SHOP_MARKET" ? "market" : "tools";
       const CFG = {
-        seeds: { floor: 0x8a9a6a, wall: 0xdfe8c8, trim: 0x4da34a, keeper: { shirt: 0x4da34a, hat: "straw" }, sign: "ROSIE'S RARE SEEDS", fg: "#1d5a2a", bg: "#eaf6d8", lamp: 0xd8ffc0, back: [0, -3.3] },
+        // sage-cream plaster walls, warm plank floor, desaturated-leaf trim — no pure green
+        seeds: { floor: new THREE.Color(PAL.pathStone).offsetHSL(0.004, 0.02, -0.055), wall: new THREE.Color(PAL.plaster).offsetHSL(0.05, -0.12, -0.05), trim: new THREE.Color(PAL.leafMid).offsetHSL(0, -0.18, 0.05), keeper: { shirt: 0x4da34a, hat: "straw" }, sign: "ROSIE'S RARE SEEDS", fg: "#1d5a2a", bg: "#eaf6d8", lamp: 0xd8ffc0, back: [0, -3.3] },
         market: { floor: 0x9a8a72, wall: 0xf2e2c2, trim: 0xd8842f, keeper: { shirt: 0xc9963c, hair: 0x2a1a0e }, sign: "THE BERRY MARKET", fg: "#7a3a10", bg: "#ffedc8", lamp: 0xffd9a0, back: [-8.2, -3.3] },
         tools: { floor: 0x6a6472, wall: 0xcfcadd, trim: 0x6a5a9a, keeper: { shirt: 0x8a6fd0, hair: 0x2a1a0e, beard: true }, sign: "GRIMBLE'S TOOLWORKS", fg: "#2f2a4a", bg: "#e8e2f6", lamp: 0xffc890, back: [8.2, -3.3] },
       }[kind];
-      setAtmosphere(0x241f33, 0x35304a, 0x4a4460, 0x2a2438, 0xffd9a0, 0.55, 0x8a84a8, 0x4a4458, 8, 42);
+      setAtmosphere(ATMO_NIGHT.top, ATMO_NIGHT.mid, ATMO_NIGHT.bot, ATMO_NIGHT.fog, ATMO_NIGHT.sun, 0.55, ATMO_NIGHT.hemiSky, ATMO_NIGHT.hemiGnd, 8, 42, 0.52);
       terrainY = () => 0;
       const floor = new THREE.Mesh(new THREE.BoxGeometry(15, 0.2, 11), flat(CFG.floor, { roughness: 0.95 }));
       floor.position.set(0, -0.1, -0.5); floor.receiveShadow = true;
@@ -3527,7 +4838,7 @@ export default function DragonGardenQuest() {
       const plate = makeTextPlate(CFG.sign, { w: 4.6, h: 0.9, bg: CFG.bg, fg: CFG.fg });
       plate.position.set(0, 2.55, -5.78);
       worldGroup.add(plate);
-      const counter = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.05, 1.1), flat(0x9a7245));
+      const counter = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.05, 1.1), flat(new THREE.Color(PAL.bark).offsetHSL(0.006, -0.05, 0.12)));
       counter.position.set(0, 0.52, -2.4); counter.castShadow = true; counter.receiveShadow = true;
       const counterTop = new THREE.Mesh(new THREE.BoxGeometry(4.9, 0.12, 1.3), flat(CFG.trim));
       counterTop.position.set(0, 1.12, -2.4);
@@ -3550,7 +4861,7 @@ export default function DragonGardenQuest() {
       worldGroup.add(rug);
 
       if (kind === "seeds") {
-        const shelf = new THREE.Mesh(new THREE.BoxGeometry(6, 0.14, 0.8), flat(0x8a6238));
+        const shelf = new THREE.Mesh(new THREE.BoxGeometry(6, 0.14, 0.8), flat(new THREE.Color(PAL.bark).offsetHSL(0, 0.02, 0.03)));
         shelf.position.set(-3.4, 1.5, -5.4); worldGroup.add(shelf);
         const sackCols = [0xe8384f, 0x4f6de8, 0xffb020, 0x7dfcd0, 0x9ab87a, 0xd06a8a];
         for (let i = 0; i < 6; i++) {
@@ -3562,15 +4873,15 @@ export default function DragonGardenQuest() {
           worldGroup.add(sack, tie);
         }
         [[-6.4, 0.6], [6.4, 0.2], [6.2, -3.9]].forEach(([px, pz]) => {
-          const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.22, 0.42, 7), flat(0xb5432f));
+          const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.22, 0.42, 7), flat(new THREE.Color(PAL.roof).offsetHSL(-0.015, 0.08, -0.06)));
           pot.position.set(px, 0.21, pz);
-          const pl2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32, 0), flat(0x4da34a));
+          const pl2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32, 0), flat(PAL.leafMid));
           pl2.position.set(px, 0.62, pz);
           worldGroup.add(pot, pl2);
           addCircleCol(px, pz, 0.42);
         });
         for (let i = 0; i < 4; i++) {
-          const herb = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.4, 5), flat(0x3f8f3f));
+          const herb = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.4, 5), flat(new THREE.Color(PAL.leafMid).offsetHSL(0, -0.06, -0.03)));
           herb.rotation.x = Math.PI;
           herb.position.set(2 + i * 1.1, 2.62, -5.5);
           worldGroup.add(herb);
@@ -3634,7 +4945,7 @@ export default function DragonGardenQuest() {
     // -------- GRACE COMMUNITY GARDEN (golden hour, 324 sacred plots) --------
     function buildChurch() {
       clearWorld();
-      setAtmosphere(0x54408c, 0xf0a670, 0xffd9a0, 0xe8a878, 0xff9a4c, 1.5, 0xf0b890, 0x6a5438);
+      setAtmosphere(ATMO_SUNSET.top, ATMO_SUNSET.mid, ATMO_SUNSET.bot, ATMO_SUNSET.fog, ATMO_SUNSET.sun, 1.5, ATMO_SUNSET.hemiSky, ATMO_SUNSET.hemiGnd, 34, 92, 0.6);
 
       terrainY = makeTerrain(
         [{ x: -22, z: -17, r: 8, h: 1.6 }, { x: 22, z: -17, r: 8, h: 1.5 }, { x: -24, z: 15, r: 8, h: 1.5 },
@@ -3646,15 +4957,19 @@ export default function DragonGardenQuest() {
          { c: 1, x: 3.3, z: -16.6, r: 1.8, f: 2 }, { c: 1, x: 9, z: -19, r: 3, f: 2.5 },
          { x1: -24, z1: -1.7, x2: 32, z2: 1.7, f: 3 }, { x1: -1.5, z1: -18, x2: 1.5, z2: 15, f: 3 }]
       );
-      worldGroup.add(makeGround(86, 0x63a047));
-      // promenade, cross paths, and plaza rings
-      addFlagstonePath([[30, 0], [6, 0]], 2.0);
-      addFlagstonePath([[-6, 0], [-22, 0]], 1.7);
-      addFlagstonePath([[0, 6], [0, 14]], 1.6);
-      addFlagstonePath([[0, -6], [0, -17]], 1.6);
+      // promenade, cross paths, and plaza rings — registered before the ground so it carries the worn ribbon
       const ringPts = (r, n) => Array.from({ length: n + 1 }, (_, i) => [Math.cos((i / n) * Math.PI * 2) * r, Math.sin((i / n) * Math.PI * 2) * r]);
-      addFlagstonePath(ringPts(4.4, 14), 1.3);
-      addFlagstonePath(ringPts(2.4, 10), 1.1);
+      const churchRoutes = [
+        { pts: [[30, 0], [6, 0]], w: 2.0 },
+        { pts: [[-6, 0], [-22, 0]], w: 1.7 },
+        { pts: [[0, 6], [0, 14]], w: 1.6 },
+        { pts: [[0, -6], [0, -17]], w: 1.6 },
+        { pts: ringPts(4.4, 14), w: 1.3 },
+        { pts: ringPts(2.4, 10), w: 1.1 },
+      ];
+      setPathRoutes(churchRoutes);
+      worldGroup.add(makeGround(86, PAL.grassBase));
+      churchRoutes.forEach((rt) => addFlagstonePath(rt.pts, rt.w));
 
       const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(4.6, 12, 10),
         new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
@@ -3881,16 +5196,23 @@ export default function DragonGardenQuest() {
         (x > -4 && x < 4 && z > -26.5 && z < -17.5) ||
         Math.hypot(x - 9, z + 19) < 3.2 ||
         (Math.abs(Math.abs(x) - 11.5) < 5.5 && Math.abs(Math.abs(z) - 7) < 5.5);
-      for (let i = 0; i < 52; i++) {
-        const fx = (Math.random() - 0.5) * 56, fz = (Math.random() - 0.5) * 44;
-        if (!churchAvoid(fx, fz)) worldGroup.add(mixFlower(fx, fz));
+      for (let ci = 0; ci < 16; ci++) {
+        const cx = (Math.random() - 0.5) * 56, cz = (Math.random() - 0.5) * 44;
+        if (churchAvoid(cx, cz)) continue;
+        const k = 2 + Math.floor(Math.random() * 3);
+        for (let fi = 0; fi < k; fi++) {
+          const fa = Math.random() * Math.PI * 2, fr = 0.35 + Math.random() * 0.85;
+          const fx = cx + Math.cos(fa) * fr, fz = cz + Math.sin(fa) * fr;
+          if (!churchAvoid(fx, fz)) worldGroup.add(mixFlower(fx, fz));
+        }
       }
       [[-19, 10.5, 1], [19, 10.5, 1], [-19, -10.5, 1], [19, -10.5, 0.9], [7, 15, 0.9], [-7, 15, 0.9], [-7, -10, 0.8], [25, 4.5, 0.9]]
         .forEach(([x, z, bs]) => worldGroup.add(makeBush(x, z, bs)));
       addSprouts(470, 74, churchAvoid);
 
-      addGrass(2000, 78, churchAvoid);
-      addWildflowers(300, 74, churchAvoid);
+      addGrass(7200, 78, churchAvoid);
+      addGroundPatches(90, 78, churchAvoid);
+      addWildflowers(340, 74, churchAvoid);
       addForestRing(38, 45, 76, [[30, 0]]);
       addMountains([[-48, -52, 18, 21, true], [16, -60, 20, 24, true], [-62, 10, 15, 16, false], [52, -34, 14, 15, true]]);
       addClouds(5);
@@ -3932,7 +5254,7 @@ export default function DragonGardenQuest() {
         G.selectedSeed = ["strawberry", "blueberry", "sunfruit"].find((k) => G.inv.seeds[k] > 0) || "strawberry";
       }
       if (spawn) playerPos.set(spawn[0], 0, spawn[1]);
-      camera.position.set(playerPos.x, 8.5, playerPos.z + 9.6);
+      camera.position.set(playerPos.x, 7.8, playerPos.z + 9.6);
       G.exitLatch = true; // don't re-trigger a doorway we just spawned beside
     }
     loadMap("HOME");
@@ -4855,12 +6177,23 @@ export default function DragonGardenQuest() {
           wp.setY(ii, Math.sin(wz * 0.6 + G.time * 2.2 + lat * 1.3) * 0.045);
         wp.needsUpdate = true;
       }
-      for (const fm of foams) {
-        const fd = fm.userData;
-        fd.z += fd.sp * dt;
-        if (fd.z > 38) fd.z = -38;
-        fm.position.set(RIVER_X(fd.z) + fd.off * 0.7, -0.1 + Math.sin(G.time * 3 + fd.z) * 0.03, fd.z);
-        fm.rotation.y += dt * 0.6;
+      if (riverFoam) {
+        for (let fi = 0; fi < foams.length; fi++) {
+          const fd = foams[fi];
+          fd.z += fd.sp * dt;
+          if (fd.z > 38) fd.z = -38;
+          instDummy.position.set(RIVER_X(fd.z) + fd.off * 0.7, -0.1 + Math.sin(G.time * 3 + fd.z) * 0.03, fd.z);
+          // everything follows the local flow tangent; drifting glints add only a small
+          // per-glint offset + slow wobble on top (no more perpendicular lane markers)
+          const tang = Math.atan(0.288 * Math.cos(fd.z * 0.18));
+          const fry = fd.hug ? tang
+            : fd.anch ? fd.ry : tang + fd.ry * 0.6 + Math.sin(G.time * 0.8 + fi) * 0.14;
+          instDummy.rotation.set(0, fry, 0);
+          instDummy.scale.set(fd.w || 1, 1, fd.ln);
+          instDummy.updateMatrix();
+          riverFoam.setMatrixAt(fi, instDummy.matrix);
+        }
+        riverFoam.instanceMatrix.needsUpdate = true;
       }
       if (ghostMesh) {
         const bActive = G.buildActive && G.map === "HOME";
@@ -5100,8 +6433,14 @@ export default function DragonGardenQuest() {
         // Portrait (mobile) pulls the camera back ~22% — the default framing
         // reads too tight on phones.
         const zoomK = H() > W() ? 1.22 : 1.0;
-        camTarget = new THREE.Vector3(playerPos.x, (8.2 + groundY * 0.55) * zoomK, playerPos.z + 9.4 * zoomK);
-        lookX = playerPos.x; lookZ = playerPos.z; lookY = groundY + 1.2;
+        // pitch lifted a few degrees vs the old (8.2, +1.2) framing so the fogged
+        // distance / tree line enters the top of hero shots (aerial perspective read)
+        // look target raised (1.75 -> 3.55): tilts the frame up so the horizon,
+        // backdrop mountains, and a band of sky enter the top of every shot.
+        // With the old 1.75 the top frustum edge sat 9° BELOW horizontal — the
+        // backdrop could mathematically never appear on screen.
+        camTarget = new THREE.Vector3(playerPos.x, (7.8 + groundY * 0.55) * zoomK, playerPos.z + 9.6 * zoomK);
+        lookX = playerPos.x; lookZ = playerPos.z; lookY = groundY + 3.55;
       }
       camera.position.lerp(camTarget, G.quizActive || G.styleActive || G.counterActive || G.introFocus ? 0.06 : 0.08);
       if (G.shakeT > 0) {
@@ -5111,7 +6450,8 @@ export default function DragonGardenQuest() {
       }
       camera.lookAt(lookX, lookY, lookZ);
       sky.position.set(playerPos.x, 0, playerPos.z);
-      sun.position.set(playerPos.x + 14, 20, playerPos.z + 10);
+      // follow the player but keep the brief's lower golden-hour sun angle (16,17,9)
+      sun.position.set(playerPos.x + 16, 17, playerPos.z + 9);
       sun.target.position.set(playerPos.x, 0, playerPos.z);
       sun.target.updateMatrixWorld();
 
@@ -5252,10 +6592,7 @@ export default function DragonGardenQuest() {
       hudTick += dt;
       if (hudTick > 0.15) { hudTick = 0; syncHud(); }
 
-      renderer.setRenderTarget(postRT);
       renderer.render(scene, camera);
-      renderer.setRenderTarget(null);
-      renderer.render(postScene, postCamera);
     }
     animate();
 
@@ -5263,7 +6600,6 @@ export default function DragonGardenQuest() {
       camera.aspect = W() / H();
       camera.updateProjectionMatrix();
       renderer.setSize(W(), H());
-      sizeRT();
     };
     window.addEventListener("resize", onResize);
 
@@ -5459,6 +6795,9 @@ export default function DragonGardenQuest() {
   return (
     <div style={S.wrap}>
       <div ref={mountRef} style={S.canvas} />
+
+      {/* free vignette — replaces the removed post-process grade pass */}
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "radial-gradient(ellipse 130% 115% at 50% 42%, transparent 62%, rgba(18,28,22,0.16) 100%)" }} />
 
       {rampage && <div style={{ position: "absolute", inset: 0, pointerEvents: "none", boxShadow: "inset 0 0 120px 40px rgba(232,60,40,0.55)", animation: "pulse 0.5s infinite alternate" }} />}
 
