@@ -1,6 +1,27 @@
 import React, { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
 import { SNORE_B64, EAT_B64 } from "./dragon-sfx.js";
+// ---- Glowlands (Phase 1 gateway slice) — all new systems live under ./glowlands/ ----
+import {
+  initGlowlandsAudio, playLightfoundFanfare, playEncounterSting,
+  startEastRoadTravelLoop, stopEastRoadTravelLoop,
+  duckAmbient as glowDuckAmbient, releaseAmbientDuck,
+} from "./glowlands/audio-motifs.js";
+import {
+  initLantern, mountLanternHud, unmountLanternHud, getLantern,
+  canEnter as lanternCanEnter, showGateRefusal, setLantern as glowSetLantern,
+  refreshLantern, LANTERN_TIERS,
+} from "./glowlands/lantern.js";
+import createSatchel from "./glowlands/satchel.js";
+import createTownBook from "./glowlands/townbook.js";
+import createPrologue from "./glowlands/prologue.js";
+import { startEncounter as glowStartEncounter } from "./glowlands/combat.js";
+import { STARTER_SERUMS, FIRST_STUDY_SESSION_MINTS } from "./glowlands/data/combat-data.js";
+import buildHomeAdditions from "./glowlands/maps/home-additions.js";
+import buildMeadowAdditions, { MEADOW_TRIGGERS, MEADOW_TUNING } from "./glowlands/maps/meadow-additions.js";
+import * as EastRoad from "./glowlands/maps/east-road.js";
+// Already loaded by main.jsx — reused here for fetchPassage (get-bible-passage).
+import { supabase } from "./supabaseClient.js";
 
 /* ============================================================
    DRAGON GARDEN QUEST — v3 "Painted Meadow"
@@ -80,6 +101,7 @@ const VOICES = [
 const MAP_LABELS = {
   HOME: "🏡 Home Meadow", TOWN: "🏘️ Meadow Town", CHURCH: "⛪ Grace Community Garden",
   SHOP_SEEDS: "🌱 Rosie's Rare Seeds", SHOP_MARKET: "🧺 The Berry Market", SHOP_TOOLS: "⚒️ Grimble's Toolworks",
+  EASTROAD: "🛤️ The East Road",
 };
 
 const FENCE_TIERS = [
@@ -407,6 +429,8 @@ export default function DragonGardenQuest() {
       musicBus = AC.createGain(); musicBus.gain.value = 0.15; musicBus.connect(audioOut); musicBus.connect(verb);
       sfxBus = AC.createGain(); sfxBus.gain.value = 0.55; sfxBus.connect(audioOut);
       const sfxSend = AC.createGain(); sfxSend.gain.value = 0.12; sfxBus.connect(sfxSend); sfxSend.connect(verb);
+      // Glowlands audio rides the host buses (Ch. 5.7); safe no-op until here.
+      try { initGlowlandsAudio({ ctx: AC, sfxBus, musicBus, isMuted: () => AUDIO.muted }); } catch (e) {}
       // looping water babble for the fountain (gain driven by proximity)
       const fnBuf = AC.createBuffer(1, Math.floor(AC.sampleRate * 1.5), AC.sampleRate);
       const fnD = fnBuf.getChannelData(0);
@@ -2715,6 +2739,157 @@ export default function DragonGardenQuest() {
     G.doPendingMap = () => { if (G.pendingMap) { loadMap(G.pendingMap.to, G.pendingMap.spawn); G.pendingMap = null; } };
     G.endTransition = () => { G.transitioning = false; };
 
+    // ================= GLOWLANDS FOUNDATIONS (Wire Step A) =================
+    // Everything below is glue only: passage fetching, glow-state persistence,
+    // the shared ctx bridge, and the dev hook skeleton. Maps / HUD / prologue
+    // are wired in later steps (buildGlowHome / buildGlowMeadow / buildEastRoad
+    // / glowEnterTown stubs further down).
+
+    // ---- fetchPassage: RUNTIME ESV via the deployed get-bible-passage edge
+    // function. Verse text is NEVER bundled; successes cache in-memory for the
+    // session (errors are not cached so a 503 recovers once the key exists).
+    const glowPassageCache = new Map();
+    async function glowFetchPassage(reference, translation = "ESV") {
+      const ref = String(reference || "").trim();
+      if (!ref) return { error: "missing_reference" };
+      const key = translation + ":" + ref.toLowerCase().replace(/\s+/g, " ");
+      if (glowPassageCache.has(key)) return glowPassageCache.get(key);
+      try {
+        let token = null;
+        try { token = (await supabase.auth.getSession()).data.session?.access_token || null; } catch (e) {}
+        if (!token) return { error: "not_signed_in" };
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-bible-passage`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ reference: ref, translation }),
+        });
+        const j = await res.json().catch(() => null);
+        if (!res.ok || !j || j.error) return { error: (j && j.error) || `http_${res.status}` };
+        const out = { reference: j.reference, translation: j.translation, text: j.text };
+        glowPassageCache.set(key, out);
+        return out;
+      } catch (e) {
+        return { error: "network_failed" };
+      }
+    }
+
+    // ---- glow-state: the one storage blob shared by every glowlands module
+    // (satchel serums, quest beats, reading days...). Modules read-modify-write
+    // it preserving fields they don't own; reads go THROUGH to storage so the
+    // satchel's own persistence never races a stale cache here. glowStateCache
+    // exists for boot hydration + the dev hook snapshot only.
+    let glowStateCache = null;
+    async function readGlowStateRaw() {
+      try {
+        if (!window.storage) return glowStateCache;
+        const r = await window.storage.get("glow-state").catch(() => null);
+        const raw = r && typeof r === "object" && "value" in r ? r.value : r;
+        glowStateCache = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : (glowStateCache || {});
+      } catch (e) { glowStateCache = glowStateCache || {}; }
+      return glowStateCache;
+    }
+    function getGlowState() { return glowStateCache != null && !window.storage ? glowStateCache : readGlowStateRaw(); }
+    function setGlowState(next) {
+      glowStateCache = next || {};
+      try { if (window.storage) window.storage.set("glow-state", JSON.stringify(glowStateCache)); } catch (e) {}
+    }
+    async function glowMutate(fn) { // read-modify-write preserving unowned fields
+      const gs = (await readGlowStateRaw()) || {};
+      try { fn(gs); } catch (e) {}
+      setGlowState(gs);
+    }
+
+    // ---- the shared ctx bridge (per the module-header contracts in
+    // src/glowlands/*.js). World/map hooks (ctx.world, terrain/collider/scatter
+    // helpers) are appended by the map wire steps.
+    const glowStorage = { // late-binds window.storage (installed pre-mount in prod)
+      get: (k) => (window.storage ? window.storage.get(k) : Promise.resolve(null)),
+      set: (k, v) => (window.storage ? window.storage.set(k, v) : Promise.resolve()),
+    };
+    const glowCtx = {
+      fetchPassage: glowFetchPassage,
+      storage: glowStorage,
+      getGlowState, setGlowState,
+      // Rewards ride the host wallets (optimistic-local, same as red bags).
+      awardXp: (n) => { const v = Math.max(0, Math.round(n || 0)); if (v) G.xp += v; },
+      awardGold: (n) => { const v = Math.max(0, Math.round(n || 0)); if (v) { G.gold += v; try { G.flyCoins && G.flyCoins(Math.min(8, v)); } catch (e) {} } },
+      awardFruit: (n) => { const v = Math.max(0, Math.round(n || 0)); if (v) G.inv.fruit.strawberry += v; },
+      getFruitCount: () => Object.values(G.inv.fruit).reduce((a, b) => a + (b || 0), 0),
+      spendFruit: (n) => {
+        let need = Math.max(0, Math.round(n || 0));
+        if (Object.values(G.inv.fruit).reduce((a, b) => a + (b || 0), 0) < need) return false;
+        for (const k of Object.keys(G.inv.fruit)) {
+          const take = Math.min(need, G.inv.fruit[k] || 0);
+          G.inv.fruit[k] -= take; need -= take;
+          if (!need) break;
+        }
+        return true;
+      },
+      awardSparks: (n) => { const v = Math.max(0, Math.round(n || 0)); if (v) glowMutate((gs) => { gs.sparks = (gs.sparks || 0) + v; }); },
+      logMiss: (m) => glowMutate((gs) => { (gs.missLog = gs.missLog || []).push(m); if (gs.missLog.length > 200) gs.missLog.splice(0, gs.missLog.length - 200); }),
+      grantItem: (item) => glowMutate((gs) => { (gs.items = gs.items || []).push({ id: item && item.id, name: item && item.name, at: Date.now() }); }),
+      onSealEarned: (n) => glowMutate((gs) => { const s = new Set(gs.seals || []); s.add(n); gs.seals = [...s].sort(); }),
+      // Encounter plumbing (combat.js is self-contained off this ctx).
+      startEncounter: (id) => glowStartEncounter(glowCtx, id),
+      setTimeDilation: (m) => { G.glowTimeDilation = typeof m === "number" && m > 0 ? m : 1; }, // applied to dt by a later wire step
+      duckAmbient: (on) => { try { on === false ? releaseAmbientDuck() : glowDuckAmbient(); } catch (e) {} },
+      isDusk: () => false, // host has no day cycle yet; road dusk density lands with the map step
+      // Host services
+      sfx: SFX,
+      fanfare: (weight) => { try { playLightfoundFanfare(weight); } catch (e) {} },
+      openTodaysPlan: () => { try { if (window.YGTEEV_API && window.YGTEEV_API.openTodaysPlan) window.YGTEEV_API.openTodaysPlan(); } catch (e) {} },
+      settings: { calmMode: false, reducedFlash: false, reducedMotion: false },
+      mount: document.body,
+      now: () => Date.now(),
+      random: Math.random,
+    };
+    G.glowTimeDilation = 1;
+
+    // ---- the Verse Satchel: persistent serum collection (no HUD mounted yet —
+    // the HUD button + panel entry points land with the HUD wire step).
+    const glowSatchel = createSatchel({
+      storage: glowStorage,
+      fetchPassage: glowFetchPassage,
+      fanfare: glowCtx.fanfare,
+      sfx: SFX,
+      settings: glowCtx.settings,
+    });
+    glowCtx.getEquippedSerums = glowSatchel.getEquippedSerums;
+    glowCtx.spendSerumCharge = glowSatchel.spendSerumCharge;
+    glowCtx.satchel = { mintSerum: glowSatchel.mintSerum, mintByVerseId: glowSatchel.mintByVerseId, recharge: glowSatchel.recharge };
+
+    // ---- dev hook skeleton (contract: window.__BY_G.__glow.*) ----
+    if (import.meta.env && import.meta.env.DEV) {
+      G.__glow = {
+        tpMap: (name, x, z) => {
+          let n = String(name || "").toUpperCase();
+          if (n === "EAST_ROAD") n = "EASTROAD";
+          let s = Array.isArray(x) ? [x[0], x[1]] : typeof x === "number" ? [x, z] : undefined;
+          if (!s && n === "EASTROAD") s = [...EastRoad.SPAWNS.default];
+          loadMap(n, s);
+          return G.map;
+        },
+        startEncounter: (id) => glowStartEncounter(glowCtx, id),
+        openBook: () => { const tb = glowEnsureTownBook(); return tb && tb.open ? tb.open() : Promise.reject(new Error("townbook unavailable")); },
+        setLantern: (tier) => glowSetLantern(tier),
+        grantSerums: () => {
+          const ids = [...STARTER_SERUMS, ...FIRST_STUDY_SESSION_MINTS];
+          return ids.map((id) => glowSatchel.mintByVerseId(id, { source: "dev" }));
+        },
+        state: async () => ({
+          glow: await readGlowStateRaw(),
+          lantern: getLantern(),
+          satchel: glowSatchel.getEquippedSerums ? glowSatchel.getEquippedSerums() : null,
+          timeDilation: G.glowTimeDilation,
+        }),
+        ctx: glowCtx,
+      };
+    }
+
     const syncHud = () => setHud({
       gold: G.gold, xp: G.xp, level: G.level, hunger: Math.max(0, G.hunger),
       map: G.map, prompt: promptText, selectedSeed: G.selectedSeed,
@@ -2747,6 +2922,8 @@ export default function DragonGardenQuest() {
     let butterflies = [], glowNodes = [], embers = [], smokes = [], caveLight = null, npcs = [], zzz = [];
     let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, winsSprite = null, water = null, foams = [], riverFoam = null, swayers = [], petals = [], fountainFx = null;
     let buildCells = [], ghostMesh = null, buildMarkers = null, counterKeeper = null;
+    // Glowlands per-map handles live further down (glowHomeHandle /
+    // glowMeadowHandle / glowRoadHandle) and are torn down in clearWorld.
 
     // "Z" sprite texture for Ember's snoring
     const zzzCanvas = document.createElement("canvas");
@@ -2986,17 +3163,24 @@ export default function DragonGardenQuest() {
     }
     (async () => {
       try {
-        if (!window.storage) { stateLoaded = true; return; }
-        const r = await window.storage.get("garden-build").catch(() => null);
-        if (r && r.value) {
-          Object.assign(G.build, JSON.parse(r.value));
-          syncHomePlotCount(); // extra plots exist before state restores into them
+        if (!window.storage) { stateLoaded = true; }
+        else {
+          const r = await window.storage.get("garden-build").catch(() => null);
+          if (r && r.value) {
+            Object.assign(G.build, JSON.parse(r.value));
+            syncHomePlotCount(); // extra plots exist before state restores into them
+          }
+          const s = await window.storage.get("garden-state").catch(() => null);
+          if (s && s.value) applyState(JSON.parse(s.value));
+          if ((r && r.value) || (s && s.value)) { if (G.map === "HOME") loadMap("HOME"); }
         }
-        const s = await window.storage.get("garden-state").catch(() => null);
-        if (s && s.value) applyState(JSON.parse(s.value));
-        if ((r && r.value) || (s && s.value)) { if (G.map === "HOME") loadMap("HOME"); }
       } catch (e) { /* fresh save */ }
       stateLoaded = true;
+      // Glowlands: hydrate glow-state alongside the garden save, then read the
+      // lantern through its source ladder (server > derivation > Spark).
+      // Read-only + optional-safe; a failure here never blocks the garden.
+      try { await readGlowStateRaw(); } catch (e) {}
+      try { initLantern(glowCtx); } catch (e) {}
     })();
     G.startCounter = (kind) => {
       if (G.counterActive) return;
@@ -3239,6 +3423,11 @@ export default function DragonGardenQuest() {
     scene.add(ring);
 
     function clearWorld() {
+      // Glowlands handles first: their dispose() unhooks listeners (e.g. the
+      // Lantern Post's onLanternChange subscription) before the group drops.
+      if (glowHomeHandle) { try { glowHomeHandle.dispose(); } catch (e) {} glowHomeHandle = null; }
+      if (glowMeadowHandle) { try { glowMeadowHandle.dispose(); } catch (e) {} glowMeadowHandle = null; }
+      if (glowRoadHandle) { try { glowRoadHandle.dispose(); } catch (e) {} glowRoadHandle = null; }
       if (worldGroup) scene.remove(worldGroup);
       worldGroup = new THREE.Group();
       scene.add(worldGroup);
@@ -4456,6 +4645,10 @@ export default function DragonGardenQuest() {
       ];
       hotspots = [{ x: 0, z: -10.4, r: 3.4, type: "dragon", label: "Feed Ember the dragon" }];
 
+      // —— Glowlands: Home Garden annex (Eastgate arch, Lantern Post,
+      //    Wayfarer's Table, Satchel Hook) — additive, after props are placed.
+      buildGlowHome();
+
       // one-time find: a glowing pouch dropped on the road toward town
       if (!G.goldBagFound) {
         goldBag = new THREE.Group();
@@ -4803,6 +4996,10 @@ export default function DragonGardenQuest() {
         { x: 8.2, z: -5.05, r: 1.3, to: "SHOP_TOOLS", spawn: [0, 2] },
       ];
       hotspots = [];
+
+      // —— Glowlands: Meadow Town dressing (library, chapel, East Gate,
+      //    gloom stain, public plots) + prologue trigger zones.
+      buildGlowMeadow();
     }
 
     // -------- SHOP INTERIORS: walk in, browse, talk at the counter --------
@@ -5222,6 +5419,154 @@ export default function DragonGardenQuest() {
       hotspots = [];
     }
 
+    // —— Glowlands map/story wiring (Phase 1 gateway slice) ——
+    let glowHomeHandle = null, glowMeadowHandle = null, glowRoadHandle = null;
+    let glowTownBook = null, glowPrologue = null, glowHudMounted = false;
+    let glowTriggers = []; // proximity triggers for the current map only
+    function glowWorldCtx(extra = {}) {
+      return Object.assign({}, glowCtx, {
+        THREE, worldGroup, terrainY, PAL, flat, smooth,
+        addCircleCol, addBoxCol, glowNodes,
+        world: {
+          getPlayerPos: () => ({ x: playerPos.x, z: playerPos.z }),
+          tp: (x, z) => { playerPos.x = x; playerPos.z = z; },
+          map: () => G.map,
+          loadMap: (n, s) => loadMap(n, s),
+          spawnBurst, spawnFloatie,
+        },
+      }, extra);
+    }
+    function glowEnsureHud() {
+      if (glowHudMounted && document.querySelector("[data-glow-hud-satchel]")) return;
+      glowHudMounted = true;
+      // Component remounts (HMR/dev) appended orphaned buttons straight into
+      // <body> where they flowed into the HUD pill row — dedupe + position.
+      document.querySelectorAll("[data-glow-hud-satchel]").forEach((n) => n.remove());
+      try { initLantern(glowCtx); } catch (e) {}
+      try { mountLanternHud(document.body); } catch (e) {}
+      try {
+        const holder = document.createElement("div");
+        holder.setAttribute("data-glow-hud-satchel", "1");
+        holder.style.cssText = "position:absolute;left:14px;top:118px;z-index:30;";
+        document.body.appendChild(holder);
+        glowSatchel.mountHudButton(holder);
+      } catch (e) {}
+    }
+    function glowEnsureTownBook() {
+      if (!glowTownBook) {
+        try { glowTownBook = createTownBook(glowWorldCtx()); } catch (e) { console.warn("[glow] townbook", e); }
+      }
+      return glowTownBook;
+    }
+    function buildGlowHome() {
+      glowTriggers = [];
+      try {
+        glowHomeHandle = buildHomeAdditions(glowWorldCtx());
+        if (glowHomeHandle && glowHomeHandle.group && !glowHomeHandle.group.parent) worldGroup.add(glowHomeHandle.group);
+      } catch (e) { console.warn("[glow] home additions", e); }
+      glowEnsureHud();
+    }
+    function buildGlowMeadow() {
+      try { glowMeadowHandle = buildMeadowAdditions(glowWorldCtx()); }
+      catch (e) { console.warn("[glow] meadow additions", e); glowMeadowHandle = null; }
+      glowTriggers = (MEADOW_TRIGGERS || []).map((t) => ({ ...t }));
+      // The East Gate opens ONLY once the town is saved (design bible Ch. 7).
+      const saved = !!(glowMeadowHandle && glowMeadowHandle.state && glowMeadowHandle.state.saved);
+      if (saved) {
+        const gate = (MEADOW_TRIGGERS || []).find((t) => /gate/i.test(t.id || "")) || { x: 26.5, z: 3 };
+        exits = [...exits, {
+          x: gate.x, z: gate.z, r: 2.2, to: "EASTROAD",
+          spawn: (EastRoad.SPAWNS && EastRoad.SPAWNS.fromMeadowTown) || [-45.5, 0],
+          label: "The East Road →",
+        }];
+      }
+      glowEnsureHud();
+    }
+    function buildEastRoad() {
+      clearWorld();
+      glowTriggers = [];
+      try {
+        // keep host ambient scatter off the road spine + Wren's creek band
+        const roadDist = (x, z) => {
+          let bd = Infinity;
+          const P = EastRoad.ROAD_PTS;
+          for (let i = 0; i < P.length - 1; i++) {
+            const [x1, z1] = P[i], [x2, z2] = P[i + 1];
+            const dx = x2 - x1, dz = z2 - z1;
+            const L2 = dx * dx + dz * dz || 1;
+            const tt = Math.max(0, Math.min(1, ((x - x1) * dx + (z - z1) * dz) / L2));
+            bd = Math.min(bd, Math.hypot(x - (x1 + dx * tt), z - (z1 + dz * tt)));
+          }
+          return bd;
+        };
+        const roadAvoid = (x, z) => roadDist(x, z) < 2.2 || (x > -12.4 && x < -4.6);
+        glowRoadHandle = EastRoad.build(glowWorldCtx({
+          // host world builders so the road rides the game's exact art systems
+          makeTerrain,
+          setTerrain: (fn) => { terrainY = fn; },
+          setPathRoutes,
+          makeGround, addFlagstonePath,
+          makeOak, makePine, makeBush,
+          makeSign, makeTextPlate,
+          setAtmosphere,
+          // ambient scatter, adapted to the corridor (module calls these with
+          // loose args; host signatures are (count, area, avoid)):
+          addWildflowers: (count) => addWildflowers(count || 46, 100, (x, z) => roadAvoid(x, z) || Math.abs(z) > 16 || x > 10),
+          addGrass: () => addGrass(4800, 104, (x, z) => roadAvoid(x, z) || Math.abs(z) > 22),
+          addGroundPatches: () => addGroundPatches(60, 104, (x, z) => roadAvoid(x, z) || Math.abs(z) > 22),
+          addMountains: () => addMountains([[-30, -58, 18, 22, true], [22, -60, 20, 24, true], [-44, 56, 16, 18, false], [10, 60, 20, 23, true]]),
+          addClouds, addButterflies,
+        }));
+        if (glowRoadHandle.terrainY) terrainY = glowRoadHandle.terrainY;
+        exits = [];
+        for (const e2 of glowRoadHandle.exits || []) {
+          if (e2.locked) {
+            glowTriggers.push({ id: "locked_" + (e2.to || "gate"), x: e2.x, z: e2.z, r: e2.r || 2.2, label: e2.lockedLine || "It's sealed for now.", lockedLine: e2.lockedLine });
+            continue;
+          }
+          exits.push({ x: e2.x, z: e2.z, r: e2.r || 2.2, to: e2.to === "MEADOW_TOWN" ? "TOWN" : e2.to, spawn: e2.spawn, label: e2.label || "" });
+        }
+        hotspots = [];
+        for (const s of glowRoadHandle.challengeSites || []) {
+          glowTriggers.push({ id: s.id, x: s.x, z: s.z, r: s.r || 2.6, label: s.prompt || s.label || "Take a closer look", site: s });
+        }
+        if (glowRoadHandle.travelerAid) {
+          const ta = glowRoadHandle.travelerAid;
+          glowTriggers.push({ id: ta.id || "traveler_aid", x: ta.x, z: ta.z, r: ta.r || 2.4, label: ta.prompt || "Someone needs help", site: ta });
+        }
+      } catch (e) {
+        console.warn("[glow] east road", e);
+        glowRoadHandle = null;
+        exits = [{ x: -49.6, z: 0, r: 2.4, to: "TOWN", spawn: [15, 0], label: "← Meadow Town" }];
+      }
+      glowEnsureHud();
+    }
+    async function glowInteract(t) {
+      try {
+        if (!t) return;
+        if (t.lockedLine) { spawnFloatie(playerPos.x, playerPos.z, t.lockedLine); return; }
+        if (/book|library_desk|reading/i.test(t.id || "")) { const tb = glowEnsureTownBook(); if (tb && tb.open) { await tb.open(); return; } }
+        if (t.site && t.site.encounterId) { await glowCtx.startEncounter(t.site.encounterId); return; }
+        if (glowPrologue && glowPrologue.interact) { await glowPrologue.interact(t.id); return; }
+      } catch (e) { console.warn("[glow] interact", e); }
+    }
+    function glowEnterTown() {
+      glowEnsureHud();
+      (async () => {
+        try {
+          if (!glowPrologue) {
+            glowPrologue = createPrologue(glowWorldCtx({
+              meadow: () => glowMeadowHandle,
+              townBook: () => glowEnsureTownBook(),
+            }));
+            await glowPrologue.start();
+          } else if (glowPrologue.resume) {
+            await glowPrologue.resume();
+          }
+        } catch (e) { console.warn("[glow] prologue", e); }
+      })();
+    }
+
     function loadMap(name, spawn) {
       if (G.introActive) {
         stopVoiceClip();
@@ -5232,12 +5577,18 @@ export default function DragonGardenQuest() {
         G.introLock = false;
         G.saveIntroDone();
       }
+      if (name === "EAST_ROAD") name = "EASTROAD"; // module id alias
       G.map = name;
       SFX.whoosh();
-      if (name === "HOME") buildHome();
-      else if (name === "TOWN") buildTown();
-      else if (name === "CHURCH") buildChurch();
-      else buildShopInterior(name);
+      if (name === "HOME") buildHome(); // buildHome calls buildGlowHome itself
+      else if (name === "TOWN") buildTown(); // buildTown calls buildGlowMeadow itself
+      else if (name === "CHURCH") { buildChurch(); glowTriggers = []; }
+      else if (name === "EASTROAD") buildEastRoad();
+      else { buildShopInterior(name); glowTriggers = []; }
+      // Glowlands map-entry hooks (prologue resume in town, road travel bed)
+      if (name === "TOWN") setTimeout(() => { if (G.map === "TOWN" && !G.transitioning) glowEnterTown(); }, 1400);
+      if (name === "EASTROAD") { try { startEastRoadTravelLoop(); } catch (e) {} }
+      else { try { stopEastRoadTravelLoop(); } catch (e) {} }
       if (window.YGTEEV_API) { if (name === "CHURCH") joinLiveGarden(); else leaveLiveGarden(); }
       // First community-garden visit: Eli walks up and explains the rules.
       // Fire after the transition settles (and only if still on CHURCH).
@@ -5377,6 +5728,7 @@ export default function DragonGardenQuest() {
       if (G.quizActive) return;
       if (!currentPrompt) return;
       const { type, node } = currentPrompt;
+      if (type === "glow") { const t = currentPrompt.glow; currentPrompt = null; glowInteract(t); return; }
       if (type === "plant") {
         const key = G.selectedSeed;
         if (!G.inv.seeds[key] || G.inv.seeds[key] <= 0) { toast("No seeds — cycle with Q or buy in town", "warn"); return; }
@@ -5886,6 +6238,10 @@ export default function DragonGardenQuest() {
     function animate() {
       raf = requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.05);
+      // Glowlands per-map animation beds (foam, creep, waymarkers, stain)
+      if (glowRoadHandle && G.map === "EASTROAD" && glowRoadHandle.update) glowRoadHandle.update(dt * (G.glowTimeDilation || 1));
+      if (glowMeadowHandle && G.map === "TOWN" && glowMeadowHandle.update) glowMeadowHandle.update(dt * (G.glowTimeDilation || 1));
+      if (glowHomeHandle && G.map === "HOME" && glowHomeHandle.update) glowHomeHandle.update(dt * (G.glowTimeDilation || 1), G.time);
       G.time += dt;
 
       let mx = 0, mz = 0;
@@ -5901,9 +6257,15 @@ export default function DragonGardenQuest() {
         mx /= Math.max(1, mLen); mz /= Math.max(1, mLen);
         playerPos.x += mx * speed * dt;
         playerPos.z += mz * speed * dt;
-        const bound = G.map === "HOME" ? 33 : G.map === "CHURCH" ? 34 : 26;
-        playerPos.x = Math.max(-bound, Math.min(bound, playerPos.x));
-        playerPos.z = Math.max(-bound, Math.min(bound, playerPos.z));
+        if (G.map === "EASTROAD") {
+          // the road corridor is long east-west (town exit -49.6 … sealed gate 55)
+          playerPos.x = Math.max(-51, Math.min(56, playerPos.x));
+          playerPos.z = Math.max(-24, Math.min(24, playerPos.z));
+        } else {
+          const bound = G.map === "HOME" ? 33 : G.map === "CHURCH" ? 34 : 26;
+          playerPos.x = Math.max(-bound, Math.min(bound, playerPos.x));
+          playerPos.z = Math.max(-bound, Math.min(bound, playerPos.z));
+        }
         playerAngle = Math.atan2(mx, mz);
         stepT += dt;
         if (stepT > 0.3) {
@@ -6396,6 +6758,16 @@ export default function DragonGardenQuest() {
           ringTarget = null;
         }
       }
+      // Glowlands proximity triggers (prologue nodes, library desk, road sites)
+      for (const t of glowTriggers) {
+        const d = Math.hypot(playerPos.x - t.x, playerPos.z - t.z);
+        if (d < (t.r || 2.2) && d < best + 1) {
+          best = d;
+          currentPrompt = { type: "glow", glow: t };
+          promptText = t.label || t.prompt || "Take a look";
+          ringTarget = null;
+        }
+      }
       if (ringTarget) {
         ring.visible = true;
         ring.position.set(ringTarget.x, 0.14, ringTarget.z);
@@ -6711,7 +7083,7 @@ export default function DragonGardenQuest() {
   const basketFruitKeys = seedKeys.filter((k) => !SEEDS[k].glow || k === "glowberry" || hud.inv.fruit[k] > 0);
   const hungerPct = Math.max(0, Math.min(100, hud.hunger));
   const FRUIT_EMOJI = { strawberry: "🍓", blueberry: "🫐", sunfruit: "🍑", glowberry: "✨", starberry: "⭐", dawnberry: "🌅", gloryberry: "👑" };
-  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", bridge: "🌉", goldbag: "💰", redbag: "🎒" };
+  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", bridge: "🌉", goldbag: "💰", redbag: "🎒", glow: "✨" };
   const marketTotal = seedKeys.reduce((t, k) => t + hud.inv.fruit[k] * SEEDS[k].sell, 0);
   // Berry Market sell selection: fruit key -> qty to sell. Defaults to the
   // full basket when the market opens (one tap still sells everything);
