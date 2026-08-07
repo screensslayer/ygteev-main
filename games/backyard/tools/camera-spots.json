@@ -1,0 +1,68 @@
+{
+  "spots": [
+    {
+      "name": "garden-beds",
+      "map": "HOME",
+      "tp": "-1.5,15.8",
+      "note": "Six starter garden plots inside the wooden fence, viewed from the south. Flagstone path to the house runs up the middle; BRIDGE OUT sign and river visible top-left. Plots are empty on a fresh boot; plant via G.inv/actions if grown crops are wanted.",
+      "evalJs": "const G=window.__BY_G; G.skipIntro(); setTimeout(()=>G.skipIntro(), 900);"
+    },
+    {
+      "name": "house",
+      "map": "HOME",
+      "tp": "6.5,-0.5",
+      "note": "Frontal of the wooden house (door, windows, chimney) at (6.5,-7). Sleeping dragon peeks in at the cave edge top-left; one-time gold pouch with '!' marker sits on the road bottom-right on fresh boots.",
+      "evalJs": "const G=window.__BY_G; G.skipIntro(); setTimeout(()=>G.skipIntro(), 900);"
+    },
+    {
+      "name": "dragon-cave",
+      "map": "HOME",
+      "tp": "0,-5",
+      "note": "Rock archway cave with Ember the dragon sleeping (ZZZ) in the glowing interior at (0,-11.4). House fills the right side, river top-left, stepping-stone path leads up to the cave mouth.",
+      "evalJs": "const G=window.__BY_G; G.skipIntro(); setTimeout(()=>G.skipIntro(), 900);"
+    },
+    {
+      "name": "river-bridge",
+      "map": "HOME",
+      "tp": "-9.5,9.5",
+      "note": "River (runs north-south near x=-14) with the COLLAPSED bridge + BRIDGE OUT sign at z=3. Harness boots with YGTEEV_MEMBER=false so the bridge is broken; set window.YGTEEV_MEMBER=true before mount for the intact arched bridge. Garden fence frames the right edge.",
+      "evalJs": "const G=window.__BY_G; G.skipIntro(); setTimeout(()=>G.skipIntro(), 900);"
+    },
+    {
+      "name": "meadow",
+      "map": "HOME",
+      "tp": "13,20",
+      "note": "Open meadow: broadleaf + pine trees, wildflowers, bushes, grass tufts; garden fence at left edge and the east-west road along the top of frame.",
+      "evalJs": "const G=window.__BY_G; G.skipIntro(); setTimeout(()=>G.skipIntro(), 900);"
+    },
+    {
+      "name": "road-east",
+      "map": "HOME",
+      "tp": "18,8",
+      "note": "Flagstone road (z=3, x -26..26) winding east toward the Meadow Town exit at (24,3). Blank wooden signpost at (20,1.4); house top-left. Do not tp within r=2.2 of (24,3) or the map transition fires.",
+      "evalJs": "const G=window.__BY_G; G.skipIntro(); setTimeout(()=>G.skipIntro(), 900);"
+    },
+    {
+      "name": "town-square",
+      "map": "TOWN",
+      "tp": "0,8",
+      "note": "Meadow Town plaza: fountain (0,5) centered with spray, villagers milling, and all three shop signs readable along the top (BERRY MARKET / ROSIE'S SEEDS / TOOLWORKS). Do NOT pass --tp; the evalJs runs the HOME->TOWN exit transition and overrides the spawn so the camera snaps in place. Use --wait 4500.",
+      "evalJs": "const G=window.__BY_G; G.skipIntro(); G.__tp(24,3); const iv=setInterval(()=>{ if(G.pendingMap){ G.pendingMap.spawn=[0,8]; clearInterval(iv); } }, 30);"
+    },
+    {
+      "name": "town-shops",
+      "map": "TOWN",
+      "tp": "0,-2.5",
+      "note": "Close row of the three branded storefronts at z=-8 (Berry Market orange, Rosie's Seeds green, Toolworks purple) with door mats, produce crates, potted plants and villagers. Do NOT pass --tp; evalJs handles the transition + spawn override. Shop-door exit zones are at (+/-8.2|0,-5.05) r=1.3 -- stay south of z=-3.8. Use --wait 4500.",
+      "evalJs": "const G=window.__BY_G; G.skipIntro(); G.__tp(24,3); const iv=setInterval(()=>{ if(G.pendingMap){ G.pendingMap.spawn=[0,-2.5]; clearInterval(iv); } }, 30);"
+    },
+    {
+      "name": "seed-shop-interior",
+      "map": "SHOP_SEEDS",
+      "tp": "0,2",
+      "note": "Inside ROSIE'S RARE SEEDS: keeper behind the green counter, seed-sack shelf on the back wall, potted plants, rug, browsing villager. Two-stage transition HOME->TOWN->SHOP_SEEDS handled entirely by evalJs (do NOT pass --tp). Use --wait 6000. Same recipe with G.__tp(-8.2,-5.05)/G.__tp(8.2,-5.05) reaches SHOP_MARKET / SHOP_TOOLS.",
+      "evalJs": "const G=window.__BY_G; G.skipIntro(); G.__tp(24,3); let stage=0; const iv=setInterval(()=>{ if(stage===0 && G.pendingMap){ G.pendingMap.spawn=[0,2.5]; stage=1; } else if(stage===1 && G.map==='TOWN' && !G.transitioning){ G.__tp(0,-5.05); stage=2; } else if(stage===2 && G.map==='SHOP_SEEDS' && !G.transitioning){ clearInterval(iv); } }, 40);"
+    }
+  ],
+  "town_access": "REACHABLE. Meadow Town cannot be loaded directly, but teleporting into the HOME exit zone at (24,3) r=2.2 fires the normal map transition (reqTransition: 420ms fade-in -> loadMap -> 640ms fade-out). exitLatch is a non-issue on a fresh boot: the player spawns at (0,4), outside all exit zones, so the latch clears on the first frame and a single G.__tp(24,3) triggers the exit. IMPORTANT: after the exit fires, override G.pendingMap.spawn=[x,z] (poll ~30ms until G.pendingMap exists) instead of teleporting after arrival -- loadMap snaps the camera to the spawn point, whereas a post-arrival __tp leaves the follow camera lerping from the default spawn (-16,0) for many seconds under headless swiftshader's low fps, mis-framing the shot. Shop interiors (SHOP_SEEDS/SHOP_MARKET/SHOP_TOOLS) are reachable by a second staged teleport into the door zones at (0|+/-8.2,-5.05) r=1.3 once G.map==='TOWN' && !G.transitioning. CHURCH map exists too (exit at (-24,3)) but was out of scope. Call G.skipIntro() at the start of every run: Eli's intro auto-starts ~1.5s after mount and its overlay/NPC would pollute HOME shots."
+}

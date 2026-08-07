@@ -67,6 +67,14 @@ export function createApi() {
       return data ?? [];
     },
 
+    // Splash-screen single-player weekly board. Interim metric = rare trees
+    // planted this UTC week; swaps to "levels" when those ship.
+    async getSplashPlayers() {
+      const { data, error } = await supabase.rpc("by_splash_players");
+      if (error) throw error;
+      return data ?? { rows: [], me: null };
+    },
+
     async getPulse(groupId) {
       const { data, error } = await supabase.rpc("by_garden_pulse", groupId ? { _gid: groupId } : {});
       if (error) throw error;

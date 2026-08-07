@@ -1,0 +1,8 @@
+# Build output + deps
+dist/
+node_modules/
+
+# Art masters (42MB): source PSD-equivalents for public/ui assets.
+# Not used by the build — kept local so they don't live in git history
+# forever. Force-add with `git add -f` if you ever want them versioned.
+design-ref/
