@@ -7697,8 +7697,30 @@ export default function DragonGardenQuest() {
           </div>
         </div>
       )}
-      {/* interact prompt label removed — the context action button (bottom
-          right) already signals what a tap will do */}
+      {/* Growth readout — the timers on a plant you're standing next to:
+          sacred-tree maturity, next-berry cadence + tree life left, and the
+          home regrow countdown. Gated on !hud.promptType so it only shows
+          INFORMATIONAL states; actionable ones ("Plant X", "Harvest X!")
+          stay off, since tapping already conveys those. */}
+      {hud.prompt && !hud.promptType && started && !shop && !quiz && !buildMode
+        && !counterTalk && !introDlg && !bridgeTalk && churchIntro == null && (
+        <div
+          style={{
+            position: "absolute", bottom: "calc(96px + env(safe-area-inset-bottom, 0px))",
+            left: "50%", transform: "translateX(-50%)", zIndex: 12,
+            maxWidth: "88vw", padding: "7px 16px", borderRadius: 10,
+            background: "linear-gradient(180deg, #8a6440, #6b4626 62%, #533618)",
+            border: "2px solid #4a2f16",
+            boxShadow: "inset 0 2px 0 rgba(255,226,180,.22), 0 3px 6px rgba(30,20,10,.45)",
+            fontFamily: T_UI.font, fontWeight: 700, fontSize: 13.5,
+            color: T_UI.idleText, textShadow: "0 1px 2px rgba(35,18,4,.75)",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            pointerEvents: "none", userSelect: "none",
+          }}
+        >
+          {hud.prompt}
+        </div>
+      )}
 
       {/* seed selector + expandable pouch tray */}
       {tray && !quiz && shop !== "style" && !buildMode && (
