@@ -23,6 +23,24 @@ export const T = {
 
 const KIT = "/ui/kit/";
 
+// Gate a painted board on its art being loaded — otherwise the live DOM
+// layer (pills, counts, labels) pops in a beat before the image and the
+// menu looks broken for a flash. Resolves instantly for cached art.
+function useArtReady(...srcs) {
+  const [n, setN] = React.useState(0);
+  React.useEffect(() => {
+    let dead = false;
+    let done = 0;
+    srcs.forEach((src) => {
+      const im = new Image();
+      im.onload = im.onerror = () => { if (!dead) { done++; setN(done); } };
+      im.src = src;
+    });
+    return () => { dead = true; };
+  }, [srcs.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+  return n >= srcs.length;
+}
+
 // Horizontal 3-slice: paints `src` across any width, keeping the painted
 // ends. sliceL/R are in ASSET pixels; height in display px.
 // overlay=true spans children across the WHOLE element (painted ends
@@ -470,10 +488,9 @@ const PLAQUE_ASPECT = 1301 / 493;
 export function EmberPlaque({ pct = 100, slots = 7, width = 340, happy = false, style }) {
   const hangry = !happy && pct < 25;
   const clamped = Math.max(0, Math.min(100, pct));
-  // always leave one lit gem while Ember is alive — an all-dark meter reads
-  // as "broken UI" rather than "starving"
-  // full belly => every gem lit (and green)
-  const lit = happy ? slots : Math.max(1, Math.round((clamped / 100) * slots));
+  // full belly => every gem lit (and green); an EMPTY meter is deliberate —
+  // it's the "he's about to charge" beat right before the rampage
+  const lit = happy ? slots : Math.round((clamped / 100) * slots);
   const gw = (GROOVE.x1 - GROOVE.x0 - 0.008 * (slots - 1)) / slots;
 
   return (
@@ -763,94 +780,92 @@ export function LevelBar({ level = 1, gems = 0, fx = null, height = 300, style }
 // rosie-locked.png, 760x1292) — names, tiers, prices and the padlocks are
 // baked in, matching SEEDS exactly. Only the tap targets are live.
 // Row geometry measured from the art, as fractions of the panel:
-const SHOP_ROW_X = [0.09, 0.91];
-const SHOP_ROW_Y0 = 0.2745;     // top of row 1
-const SHOP_ROW_H = 0.0625;      // plank height
-const SHOP_ROW_STEP = 0.0728;   // row pitch
+const SHOP_ROW_X = [0.10, 0.91];
+// measured on rosie-rare-v3.png (756x1346): 7 plank centres, even ~0.0742 pitch
+const SHOP_ROW_C = [0.298, 0.376, 0.449, 0.523, 0.597, 0.672, 0.747];
+const SHOP_ROW_H = 0.071;
 // measured off the art: the gold plank sits BETWEEN the bottom corner stones,
 // and its drop shadow runs to 0.958 — clipping short of either left a static
 // sliver behind when the button pushed in
-const SHOP_CLOSE = { x0: 0.105, x1: 0.878, y0: 0.888, y1: 0.958 };
-const SHOP_ASPECT = 760 / 1292;
+const SHOP_CLOSE = { x0: 0.147, x1: 0.837, y0: 0.862, y1: 0.914 };
+const SHOP_ASPECT = 756 / 1346;
 
-export function SeedShop({ member = false, width = 340, onBuy, onClose, style }) {
-  const [pressed, setPressed] = React.useState(null);
-  const [flash, setFlash] = React.useState(null);
+export function SeedShop({ member = false, width = 340, rows = [], onBuy, onExplain, onClose, style }) {
+  const [hold, setHold] = React.useState(null); // { i, pct }
   const [closeDown, setCloseDown] = React.useState(false);
+  const timer = React.useRef(null);
+  const stopHold = () => { if (timer.current) clearInterval(timer.current); timer.current = null; setHold(null); };
+  React.useEffect(() => stopHold, []);
+  const startHold = (i2) => {
+    stopHold();
+    const t0 = performance.now();
+    timer.current = setInterval(() => {
+      const pct = Math.min(1, (performance.now() - t0) / 750);
+      setHold({ i: i2, pct });
+      if (pct >= 1) { stopHold(); onBuy && onBuy(i2); }
+    }, 33);
+  };
+  const ART = `${KIT}rosie-rare-v3.png`;
+  const ready = useArtReady(ART);
+  const pillH = width * 0.088;
   return (
     <div
       style={{
         position: "relative", width, aspectRatio: String(SHOP_ASPECT),
         fontFamily: T.font, userSelect: "none",
         filter: "drop-shadow(0 16px 32px rgba(25,20,10,.55))",
+        opacity: ready ? 1 : 0, transition: "opacity .18s ease",
         ...style,
       }}
     >
-      <img
-        src={`${KIT}rosie-${member ? "member" : "locked"}.png`}
-        alt="Rosie's Rare Seeds"
-        draggable={false}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
-      />
-      {Array.from({ length: 7 }, (_, i) => {
-        const y = SHOP_ROW_Y0 + i * SHOP_ROW_STEP;
-        const down = pressed === i;
-        const bought = flash === i;
+      <img src={ART} alt="Rosie's Rare Seeds" draggable={false}
+           style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+      {SHOP_ROW_C.map((c, i2) => {
+        const r = rows[i2] || {};
+        if (r.cost == null) return null;
+        const lockedRow = !member && r.kind === "gold";
+        const holding = hold && hold.i === i2;
+        // the wallet pill IS the buy button: hold it and it fills gold
         return (
-          <React.Fragment key={i}>
-            {/* A second copy of the panel art, clipped to THIS plank. Because
-                it sits pixel-aligned over the base image, transforming it
-                makes just that plank push in — the rest stays put. */}
-            <div
-              style={{
-                position: "absolute", inset: 0, pointerEvents: "none",
-                clipPath: `inset(${y * 100}% ${(1 - SHOP_ROW_X[1]) * 100}% ${(1 - y - SHOP_ROW_H) * 100}% ${SHOP_ROW_X[0] * 100}%)`,
-                transform: down ? "scale(.977) translateY(2px)" : "scale(1)",
-                transformOrigin: `50% ${(y + SHOP_ROW_H / 2) * 100}%`,
-                filter: down ? "brightness(.86) saturate(1.05)"
-                     : bought ? "brightness(1.22) saturate(1.15)" : "none",
-                transition: down ? "transform .07s ease-out, filter .07s ease-out"
-                                 : "transform .22s cubic-bezier(.2,1.6,.4,1), filter .45s ease-out",
-              }}
-            >
-              <img src={`${KIT}rosie-${member ? "member" : "locked"}.png`} alt="" draggable={false}
-                   style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+          <div
+            key={i2}
+            role="button"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              if (lockedRow) { onExplain && onExplain(i2, "locked"); return; }
+              if (!r.afford) { onExplain && onExplain(i2, "poor"); return; }
+              startHold(i2);
+            }}
+            onPointerUp={stopHold}
+            onPointerLeave={stopHold}
+            onPointerCancel={stopHold}
+            style={{
+              position: "absolute", right: "9.5%", top: `${c * 100}%`,
+              transform: `translateY(-50%) ${holding ? "scale(1.06)" : "scale(1)"}`,
+              cursor: "pointer", WebkitTapHighlightColor: "transparent",
+              opacity: lockedRow ? 0.55 : r.afford ? 1 : 0.72,
+              filter: lockedRow ? "grayscale(.45)" : "none",
+              transition: holding ? "transform .1s ease-out" : "transform .22s cubic-bezier(.2,1.6,.4,1)",
+            }}
+          >
+            <div style={{ position: "relative", overflow: "hidden", borderRadius: pillH * 0.5 }}>
+              <PlatePill kind={r.kind === "gold" ? "gold" : "xp"} value={r.cost} height={pillH} />
+              {holding && (
+                <div style={{
+                  position: "absolute", left: 0, top: 0, bottom: 0, width: `${hold.pct * 100}%`,
+                  background: "rgba(255,214,120,.5)", pointerEvents: "none",
+                  boxShadow: "0 0 12px rgba(255,199,102,.8)",
+                }} />
+              )}
             </div>
-            <div
-              role="button"
-              onPointerDown={() => setPressed(i)}
-              onPointerUp={() => setPressed(null)}
-              onPointerLeave={() => setPressed(null)}
-              onPointerCancel={() => setPressed(null)}
-              onClick={() => {
-                const ok = onBuy && onBuy(i);
-                if (ok !== false) { setFlash(i); setTimeout(() => setFlash(null), 420); }
-              }}
-              style={{
-                position: "absolute",
-                left: `${SHOP_ROW_X[0] * 100}%`, width: `${(SHOP_ROW_X[1] - SHOP_ROW_X[0]) * 100}%`,
-                top: `${y * 100}%`, height: `${SHOP_ROW_H * 100}%`,
-                cursor: "pointer", WebkitTapHighlightColor: "transparent",
-                borderRadius: "3%",
-              }}
-            />
-          </React.Fragment>
+            {lockedRow && (
+              <span style={{ position: "absolute", right: -6, top: -9, fontSize: width * 0.045,
+                             filter: "drop-shadow(0 1px 2px rgba(20,12,4,.6))" }}>🔒</span>
+            )}
+          </div>
         );
       })}
-      <div
-        style={{
-          position: "absolute", inset: 0, pointerEvents: "none",
-          clipPath: `inset(${SHOP_CLOSE.y0 * 100}% ${(1 - SHOP_CLOSE.x1) * 100}% ${(1 - SHOP_CLOSE.y1) * 100}% ${SHOP_CLOSE.x0 * 100}%)`,
-          transform: closeDown ? "scale(.975) translateY(2px)" : "scale(1)",
-          transformOrigin: `50% ${((SHOP_CLOSE.y0 + SHOP_CLOSE.y1) / 2) * 100}%`,
-          filter: closeDown ? "brightness(.86)" : "none",
-          transition: closeDown ? "transform .07s ease-out, filter .07s ease-out"
-                                : "transform .22s cubic-bezier(.2,1.6,.4,1), filter .2s",
-        }}
-      >
-        <img src={`${KIT}rosie-${member ? "member" : "locked"}.png`} alt="" draggable={false}
-             style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
-      </div>
+      {/* CLOSE plank */}
       <div
         role="button"
         onPointerDown={() => setCloseDown(true)}
@@ -864,14 +879,22 @@ export function SeedShop({ member = false, width = 340, onBuy, onClose, style })
           cursor: "pointer", WebkitTapHighlightColor: "transparent",
         }}
       />
+      {closeDown && (
+        <div style={{
+          position: "absolute", inset: 0, pointerEvents: "none",
+          clipPath: `inset(${SHOP_CLOSE.y0 * 100}% ${(1 - SHOP_CLOSE.x1) * 100}% ${(1 - SHOP_CLOSE.y1) * 100}% ${SHOP_CLOSE.x0 * 100}%)`,
+          transform: "scale(.98) translateY(2px)",
+          transformOrigin: `50% ${((SHOP_CLOSE.y0 + SHOP_CLOSE.y1) / 2) * 100}%`,
+          filter: "brightness(.85)",
+        }}>
+          <img src={ART} alt="" draggable={false}
+               style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+        </div>
+      )}
     </div>
   );
 }
 
-
-// ------------------------------------------------------------- CountBadge
-// A number that pops and flashes gold whenever it INCREASES — used on the
-// active-item button so a purchase is visible without opening anything.
 export function CountBadge({ value, style }) {
   const [pop, setPop] = React.useState(false);
   const prev = React.useRef(value);
@@ -949,13 +972,37 @@ const MKT_COL_W = 0.385;
 const MKT_ROW_Y = [0.208, 0.398, 0.588];   // top of each cell row
 const MKT_CELL_H = 0.185;
 // within a cell, as fractions of the PANEL
-const MKT_BTN = { y: 0.117, h: 0.050, minus: 0.015, plus: 0.205, all: 0.285, w: 0.070, allW: 0.082 };
-const MKT_BAR = { x0: 0.105, x1: 0.905, y0: 0.8207, y1: 0.8763 };
-const MKT_CLOSE = { x0: 0.105, x1: 0.905, y0: 0.888, y1: 0.952 };
+// three-row painted board (market-v2.png) + the green crystal sell bar
+// (market-sell-bar.png). Live layer: inventory counts in the stone tabs,
+// qty between - and +, per-row line totals with the standard coin, and the
+// sell bar's label. Rows/geometry measured on the art.
+const MKT2 = {
+  btnY: [0.3357, 0.5333, 0.7357],   // -/+/ALL row centres
+  minusX: 0.3386, plusX: 0.6507, allX: 0.7795, qtyX: 0.498,
+  btnW: 0.085, btnH: 0.052, allW: 0.115,
+  invY: [0.2612, 0.4635, 0.6650], invX: 0.862, // beside the "Inv:" label inside the tab
+  totY: [0.3812, 0.5788, 0.7812],
+  bar: { x0: 0.0996, x1: 0.8964, y0: 0.818, y1: 0.8847 },
+  close: { x0: 0.1262, x1: 0.8632, y0: 0.8965, y1: 0.9569 },
+  aspect: 753 / 1275,
+};
 
 export function BerryMarket({ items = [], total = 0, everything = true, width = 320,
                               onBump, onAll, onSell, onClose, style }) {
   const [down, setDown] = React.useState(null);
+  const [sellHold, setSellHold] = React.useState(0); // 0..1 fill while holding
+  const sellTimer = React.useRef(null);
+  const stopSellHold = () => { if (sellTimer.current) clearInterval(sellTimer.current); sellTimer.current = null; setSellHold(0); };
+  React.useEffect(() => stopSellHold, []);
+  const startSellHold = () => {
+    stopSellHold();
+    const t0 = performance.now();
+    sellTimer.current = setInterval(() => {
+      const pct = Math.min(1, (performance.now() - t0) / 750);
+      setSellHold(pct);
+      if (pct >= 1) { stopSellHold(); onSell && onSell(); }
+    }, 33);
+  };
   const press = (id) => ({
     onPointerDown: () => setDown(id),
     onPointerUp: () => setDown(null),
@@ -968,14 +1015,14 @@ export function BerryMarket({ items = [], total = 0, everything = true, width = 
     transition: down === id ? "transform .06s ease-out, filter .06s"
                             : "transform .2s cubic-bezier(.2,1.6,.4,1), filter .2s",
   });
-  const hit = (x, y, w, h, id, on, extra = {}) => (
+  const hit = (cx, cy, w, h, id, on, extra = {}) => (
     <div
       role="button"
       {...press(id)}
       onClick={on}
       style={{
         position: "absolute",
-        left: `${x * 100}%`, top: `${y * 100}%`,
+        left: `${(cx - w / 2) * 100}%`, top: `${(cy - h / 2) * 100}%`,
         width: `${w * 100}%`, height: `${h * 100}%`,
         cursor: "pointer", WebkitTapHighlightColor: "transparent",
         borderRadius: "18%",
@@ -984,69 +1031,107 @@ export function BerryMarket({ items = [], total = 0, everything = true, width = 
     />
   );
 
+  const ready = useArtReady(`${KIT}market-v2.png`, `${KIT}market-sell-bar.png`);
   return (
-    <div style={{ position: "relative", width, aspectRatio: String(MKT_ASPECT), fontFamily: T.font,
-                  userSelect: "none", filter: "drop-shadow(0 16px 32px rgba(25,20,10,.55))", ...style }}>
-      <img src={`${KIT}market-panel.png`} alt="Berry Market" draggable={false}
+    <div style={{ position: "relative", width, aspectRatio: String(MKT2.aspect), fontFamily: T.font,
+                  userSelect: "none", filter: "drop-shadow(0 16px 32px rgba(25,20,10,.55))",
+                  opacity: ready ? 1 : 0, transition: "opacity .18s ease", ...style }}>
+      <img src={`${KIT}market-v2.png`} alt="Berry Market" draggable={false}
            style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
 
-      {items.slice(0, 6).map((it, i) => {
-        const cx = MKT_COL_X[i % 2], cy = MKT_ROW_Y[Math.floor(i / 2)];
+      {items.slice(0, 3).map((it, i2) => {
         const dim = it.have <= 0;
         return (
           <React.Fragment key={it.key}>
-            {/* have / unit price / line total, under the baked name */}
+            {/* live inventory count in the stone tab */}
             <div style={{
-              position: "absolute", left: `${(cx + 0.135) * 100}%`, top: `${(cy + 0.062) * 100}%`,
-              width: `${(MKT_COL_W - 0.15) * 100}%`,
-              fontSize: width * 0.029, fontWeight: 700, lineHeight: 1.3,
-              color: dim ? "#9c8f80" : "#e9d9b8", textShadow: "0 1px 2px rgba(20,10,4,.8)",
-              pointerEvents: "none",
-            }}>
-              have ×{it.have} · {it.unit}g ea
-              <div style={{ color: dim ? "#9c8f80" : "#ffd77a", fontWeight: 800, fontSize: width * 0.036 }}>
-                {it.qty * it.unit}g
-              </div>
-            </div>
-            {/* qty, between the − and + buttons */}
-            <div style={{
-              position: "absolute",
-              left: `${(cx + MKT_BTN.minus + MKT_BTN.w) * 100}%`,
-              width: `${(MKT_BTN.plus - MKT_BTN.minus - MKT_BTN.w) * 100}%`,
-              top: `${(cy + MKT_BTN.y) * 100}%`, height: `${MKT_BTN.h * 100}%`,
-              display: "grid", placeItems: "center", pointerEvents: "none",
-              fontSize: width * 0.042, fontWeight: 800,
+              position: "absolute", left: `${(MKT2.invX - 0.07) * 100}%`, width: "14%",
+              top: `${MKT2.invY[i2] * 100}%`, transform: "translateY(-50%)",
+              textAlign: "center", pointerEvents: "none",
+              fontSize: width * 0.044, fontWeight: 800,
               color: dim ? "#9c8f80" : "#fff6e0", textShadow: "0 1px 2px rgba(20,10,4,.85)",
-            }}>{it.qty}/{it.have}</div>
-            {hit(cx + MKT_BTN.minus, cy + MKT_BTN.y, MKT_BTN.w, MKT_BTN.h, `m${i}`, () => onBump && onBump(it.key, -1))}
-            {hit(cx + MKT_BTN.plus,  cy + MKT_BTN.y, MKT_BTN.w, MKT_BTN.h, `p${i}`, () => onBump && onBump(it.key, +1))}
-            {hit(cx + MKT_BTN.all,   cy + MKT_BTN.y, MKT_BTN.allW, MKT_BTN.h, `a${i}`, () => onAll && onAll(it.key))}
+            }}>{it.have}</div>
+            {/* qty selected, between - and + */}
+            <div style={{
+              position: "absolute", left: `${(MKT2.qtyX - 0.12) * 100}%`, width: "24%",
+              top: `${MKT2.btnY[i2] * 100}%`, transform: "translateY(-50%)",
+              textAlign: "center", pointerEvents: "none",
+              fontSize: width * 0.05, fontWeight: 800,
+              color: dim ? "#9c8f80" : "#fff6e0", textShadow: "0 1px 2px rgba(20,10,4,.85)",
+            }}>{it.qty}</div>
+            {/* line total on the little plank, standard coin */}
+            <div style={{
+              position: "absolute", left: `${(MKT2.qtyX - 0.12) * 100}%`, width: "24%",
+              top: `${MKT2.totY[i2] * 100}%`, transform: "translateY(-50%)",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: width * 0.012,
+              pointerEvents: "none", opacity: it.qty > 0 ? 1 : 0.5,
+            }}>
+              <CoinIcon size={width * 0.038} />
+              <b style={{ fontSize: width * 0.036, color: "#ffd77a", textShadow: "0 1px 2px rgba(20,10,4,.85)" }}>{it.qty * it.unit}</b>
+            </div>
+            {hit(MKT2.minusX, MKT2.btnY[i2], MKT2.btnW, MKT2.btnH, `m${i2}`, () => onBump && onBump(it.key, -1))}
+            {hit(MKT2.plusX,  MKT2.btnY[i2], MKT2.btnW, MKT2.btnH, `p${i2}`, () => onBump && onBump(it.key, +1))}
+            {hit(MKT2.allX,   MKT2.btnY[i2], MKT2.allW, MKT2.btnH, `a${i2}`, () => onAll && onAll(it.key))}
           </React.Fragment>
         );
       })}
 
-      {/* the green sell bar — live label */}
-      <div style={{
-        position: "absolute", left: `${MKT_BAR.x0 * 100}%`, width: `${(MKT_BAR.x1 - MKT_BAR.x0) * 100}%`,
-        top: `${MKT_BAR.y0 * 100}%`, height: `${(MKT_BAR.y1 - MKT_BAR.y0) * 100}%`,
-        display: "grid", placeItems: "center", pointerEvents: "none",
-        fontSize: width * 0.055, fontWeight: 800, color: "#123a12",
-        textShadow: "0 1px 0 rgba(190,255,170,.55)", whiteSpace: "nowrap",
-      }}>
-        {total <= 0 ? "Tap + to choose fruit" : `💰 ${everything ? "Sell everything" : "Sell selected"} · +${total}g`}
+      {/* the green crystal sell bar — HOLD to confirm, gold fill sweep */}
+      <div
+        role="button"
+        onPointerDown={() => { if (total > 0) startSellHold(); }}
+        onPointerUp={stopSellHold}
+        onPointerLeave={stopSellHold}
+        onPointerCancel={stopSellHold}
+        style={{
+          position: "absolute",
+          left: `${MKT2.bar.x0 * 100}%`, width: `${(MKT2.bar.x1 - MKT2.bar.x0) * 100}%`,
+          top: `${MKT2.bar.y0 * 100}%`, height: `${(MKT2.bar.y1 - MKT2.bar.y0) * 100}%`,
+          cursor: total > 0 ? "pointer" : "default", WebkitTapHighlightColor: "transparent",
+          opacity: total > 0 ? 1 : 0.6, filter: total > 0 ? "none" : "grayscale(.35)",
+          transform: sellHold > 0 ? "scale(1.03)" : "scale(1)",
+          transition: "transform .12s ease-out",
+        }}
+      >
+        <img src={`${KIT}market-sell-bar.png`} alt="" draggable={false}
+             style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+        {sellHold > 0 && (
+          <div style={{
+            position: "absolute", inset: 0,
+            clipPath: "polygon(4% 0, 96% 0, 100% 50%, 96% 100%, 4% 100%, 0 50%)",
+            pointerEvents: "none",
+          }}>
+            <div style={{
+              position: "absolute", left: 0, top: 0, bottom: 0, width: `${sellHold * 100}%`,
+              background: "rgba(255,214,120,.55)",
+              boxShadow: "0 0 14px rgba(255,199,102,.9)",
+            }} />
+          </div>
+        )}
+        <div style={{
+          position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+          gap: width * 0.014, pointerEvents: "none",
+          fontSize: width * 0.046, fontWeight: 800, color: "#fff6e0",
+          textShadow: "0 2px 3px rgba(8,40,12,.95), 0 0 10px rgba(8,40,12,.6)",
+          whiteSpace: "nowrap", padding: "0 8%", boxSizing: "border-box",
+        }}>
+          {total <= 0 ? (
+            "Tap + to sell fruit"
+          ) : (
+            <>
+              <span>Hold to sell · +{total}</span>
+              <CoinIcon size={width * 0.05} />
+            </>
+          )}
+        </div>
       </div>
-      {hit(MKT_BAR.x0, MKT_BAR.y0, MKT_BAR.x1 - MKT_BAR.x0, MKT_BAR.y1 - MKT_BAR.y0, "sell",
-           () => total > 0 && onSell && onSell(), { borderRadius: "6%" })}
-      {hit(MKT_CLOSE.x0, MKT_CLOSE.y0, MKT_CLOSE.x1 - MKT_CLOSE.x0, MKT_CLOSE.y1 - MKT_CLOSE.y0, "close",
-           onClose, { borderRadius: "6%" })}
+
+      {hit((MKT2.close.x0 + MKT2.close.x1) / 2, (MKT2.close.y0 + MKT2.close.y1) / 2,
+           MKT2.close.x1 - MKT2.close.x0, MKT2.close.y1 - MKT2.close.y0, "close", onClose, { borderRadius: "6%" })}
     </div>
   );
 }
 
-// ------------------------------------------------- CommunityInventory
-// The community garden's own satchel: rare (glow) seeds ONLY — no fruit and
-// nothing from the home inventory. Framed in the shared stone panel since
-// there is no painted board for it.
 export function CommunityInventory({ items = [], width = 330, onClose, style }) {
   const S = width / 768;
   const pad = 30 * S * 1.55;
@@ -1142,7 +1227,9 @@ const PROF_ASPECT = 968 / 903;
 const PROF = {
   avatar: { x: 0.125, y: 0.152, w: 0.130, h: 0.165 },   // inside the carved frame
   text:   { x: 0.300 },
-  bar:    { x: 0.545, w: 0.365, y: 0.205 },
+  // bar sits centred directly under the PLAYER PROFILE plank (plank art
+  // bottoms out ~9.5% down the panel); label rides just above the track
+  bar:    { x: 0.3175, w: 0.365, label: 0.107, y: 0.147 },
   // widths chosen so each button's rendered height (w * panelAspect / imgAspect)
   // leaves a clear gap to the next. CLOSE deliberately straddles the bottom
   // frame and HANGS OFF the board, as in the reference design.
@@ -1155,7 +1242,7 @@ const PROF = {
 };
 
 export function PlayerProfile({ name = "Gardener", avatar, level = 1, gems = 0,
-                                gold = 0, xp = 0, width = 340, onAction, style }) {
+                                gold = 0, xp = 0, width = 340, onAction, onInfo, style }) {
   const [down, setDown] = React.useState(null);
   return (
     <div style={{ position: "relative", width, aspectRatio: String(PROF_ASPECT),
@@ -1172,25 +1259,37 @@ export function PlayerProfile({ name = "Gardener", avatar, level = 1, gems = 0,
         }} />
       )}
 
-      <div style={{ position: "absolute", left: `${PROF.text.x * 100}%`, top: "15%",
+      <div style={{ position: "absolute", left: `${PROF.text.x * 100}%`, top: "19.5%",
                     fontWeight: 800, fontSize: width * 0.062, color: "#241a0e",
                     textShadow: "0 1px 0 rgba(255,252,242,.85)", whiteSpace: "nowrap" }}>{name}</div>
-      <div style={{ position: "absolute", left: `${PROF.text.x * 100}%`, top: "22%",
+      <div style={{ position: "absolute", left: `${PROF.text.x * 100}%`, top: "26.5%",
                     fontWeight: 800, fontSize: width * 0.056, color: "#2e2213",
                     textShadow: "0 1px 0 rgba(255,252,242,.8)", letterSpacing: .5 }}>LEVEL {level}</div>
-      <div style={{ position: "absolute", left: `${PROF.text.x * 100}%`, top: "28.5%",
-                    fontWeight: 800, fontSize: width * 0.036, color: "#3a2c19",
-                    textShadow: "0 1px 0 rgba(255,252,242,.75)", whiteSpace: "nowrap" }}>
-        🪙 {gold} gold · ✨ {xp} gems
-      </div>
-
       <div style={{ position: "absolute", left: `${PROF.bar.x * 100}%`, width: `${PROF.bar.w * 100}%`,
-                    top: "15.5%", textAlign: "center", fontWeight: 800, fontSize: width * 0.033,
+                    top: `${PROF.bar.label * 100}%`, textAlign: "center", fontWeight: 800, fontSize: width * 0.033,
                     letterSpacing: 1, color: "#3a2c19",
                     textShadow: "0 1px 0 rgba(255,252,242,.75)" }}>LEVEL PROGRESS</div>
       <LevelBarH gems={gems} width={width * PROF.bar.w}
                  style={{ position: "absolute", left: `${PROF.bar.x * 100}%`, top: `${PROF.bar.y * 100}%` }} />
 
+      {/* carved info stud — opens the Gardener's Almanac */}
+      {onInfo && (
+        <div
+          role="button"
+          onClick={onInfo}
+          style={{
+            position: "absolute", right: "5%", top: "12%", width: "10.5%", aspectRatio: "1",
+            borderRadius: "50%", cursor: "pointer", WebkitTapHighlightColor: "transparent",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "linear-gradient(180deg, #a8794a, #7d5330 62%, #63401f)",
+            border: `${Math.max(2, width * 0.008)}px solid #4a2f16`,
+            boxShadow: "inset 0 2px 0 rgba(255,226,180,.3), 0 2px 5px rgba(30,20,10,.5)",
+            color: "#ffe9b8", fontFamily: "Georgia, serif", fontStyle: "italic",
+            fontWeight: 700, fontSize: width * 0.062, textShadow: "0 1px 2px rgba(35,18,4,.8)",
+            userSelect: "none",
+          }}
+        >i</div>
+      )}
       {PROF.btns.map((b) => (
         <img
           key={b.key}
@@ -1396,5 +1495,284 @@ function CatTab({ label, sel, h, onPick }) {
         transition: down ? "transform .07s ease-out" : "transform .2s cubic-bezier(.2,1.6,.4,1), box-shadow .2s",
       }}
     >{label}</div>
+  );
+}
+
+
+// ------------------------------------------------------------- Almanac
+// The "game bible" popup: what each crop costs, sells for, and earns in
+// level gems. Deliberately small — three rows and one footnote, no walls
+// of text. Opened from the info stud on the Player Profile.
+export function Almanac({ crops = [], width = 340, onClose, style }) {
+  const [closeDown, setCloseDown] = React.useState(false);
+  const edge = width * 0.086;
+  const fs = width * 0.041;
+  const cell = { flex: "0 0 16.5%", textAlign: "center", fontWeight: 800, fontSize: fs * 1.08, color: "#3a2c19", textShadow: "0 1px 0 rgba(255,252,242,.75)" };
+  return (
+    <div style={{ position: "relative", width, fontFamily: T.font, userSelect: "none",
+                  paddingBottom: width * 0.10, ...style }}>
+      <StonePanel edge={edge} corner={edge * 2.05}>
+        <WoodBar height={width * 0.115} fontSize={width * 0.05}
+                 style={{ margin: `0 ${width * 0.06}px ${width * 0.045}px`, cursor: "default" }}>
+          GARDENER'S ALMANAC
+        </WoodBar>
+
+        {/* header: what each column means */}
+        <div style={{ display: "flex", alignItems: "center", padding: `0 ${width * 0.015}px`, marginBottom: width * 0.02 }}>
+          <div style={{ flex: "1 1 auto" }} />
+          <div style={{ ...cell, fontSize: fs * 0.82, letterSpacing: 1, color: "#6b5232" }}>SEED<br/>✦</div>
+          <div style={{ ...cell, fontSize: fs * 0.82, letterSpacing: 1, color: "#6b5232" }}>SELL
+            <span style={{ display: "flex", justifyContent: "center", marginTop: 2 }}><CoinIcon size={fs * 1.25} /></span>
+          </div>
+          <div style={{ ...cell, fontSize: fs * 0.82, letterSpacing: 1, color: "#6b5232" }}>HARVEST<br/>💎</div>
+        </div>
+
+        {crops.map((cr) => (
+          <div key={cr.key} style={{
+            display: "flex", alignItems: "center", padding: `${width * 0.012}px ${width * 0.015}px`,
+            borderRadius: 10, marginBottom: width * 0.014,
+            background: "rgba(90,60,25,.10)",
+          }}>
+            <img src={`${KIT}inv-basket-${cr.key}.png`} alt="" draggable={false}
+                 style={{ width: width * 0.112, height: width * 0.112, objectFit: "contain", flex: "0 0 auto" }} />
+            <div style={{ flex: "1 1 auto", minWidth: 0, fontWeight: 800, fontSize: fs * 1.02,
+                          color: "#241a0e", textShadow: "0 1px 0 rgba(255,252,242,.85)",
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                          paddingLeft: width * 0.015 }}>{cr.name}</div>
+            <div style={cell}>{cr.cost}</div>
+            <div style={cell}>{cr.sell}</div>
+            <div style={cell}>+{cr.gems}</div>
+          </div>
+        ))}
+
+        <div style={{
+          margin: `${width * 0.03}px ${width * 0.02}px ${width * 0.05}px`,
+          fontSize: fs * 0.92, lineHeight: 1.55, fontWeight: 600, textAlign: "center",
+          color: "#5f584a", textShadow: "0 1px 0 rgba(255,255,255,.35)",
+        }}>
+          <div>Buy seeds with XP at Rosie's in town.</div>
+          <div>Sell fruit for gold at the Berry Market.</div>
+          <div>Gems fill your level bar with every harvest.</div>
+        </div>
+      </StonePanel>
+
+      {/* CLOSE hangs off the bottom frame, same as the profile board */}
+      <img
+        src={`${KIT}btn-close.png`} alt="Close" draggable={false} role="button"
+        onPointerDown={() => setCloseDown(true)}
+        onPointerUp={() => setCloseDown(false)}
+        onPointerLeave={() => setCloseDown(false)}
+        onClick={onClose}
+        style={{
+          position: "absolute", left: "50%", bottom: 0, width: width * 0.46,
+          transform: `translateX(-50%) ${closeDown ? "scale(.972) translateY(2px)" : ""}`,
+          cursor: "pointer", WebkitTapHighlightColor: "transparent", zIndex: 4,
+          filter: closeDown ? "brightness(.88)" : "none",
+          transition: closeDown ? "transform .07s ease-out, filter .07s"
+                                : "transform .22s cubic-bezier(.2,1.6,.4,1), filter .2s",
+        }}
+      />
+    </div>
+  );
+}
+
+
+// ------------------------------------------------------------ Toolworks
+// Grimble's shop on the painted board (toolworks-v2.png): names, blurbs and
+// the hold-hint are baked into the art; the live layer is the wallet pills —
+// HOLD one and it fills gold to complete the purchase (the game's standard
+// spend gesture). Locked / info rows open an explainer via onExplain.
+const TOOLS_ROW_C = [0.350, 0.498, 0.646, 0.786];
+const TOOLS_CLOSE = { x0: 0.16, x1: 0.84, y0: 0.896, y1: 0.954 };
+const TOOLS_ASPECT = 757 / 1289;
+
+export function Toolworks({ items = [], xp = 0, width = 340, onBuy, onExplain, onClose, style }) {
+  const [hold, setHold] = React.useState(null); // { key, pct }
+  const [closeDown, setCloseDown] = React.useState(false);
+  const timer = React.useRef(null);
+  const stopHold = () => { if (timer.current) clearInterval(timer.current); timer.current = null; setHold(null); };
+  React.useEffect(() => stopHold, []);
+  const startHold = (it) => {
+    stopHold();
+    const t0 = performance.now();
+    timer.current = setInterval(() => {
+      const pct = Math.min(1, (performance.now() - t0) / 750);
+      setHold({ key: it.key, pct });
+      if (pct >= 1) { stopHold(); onBuy && onBuy(it.key); }
+    }, 33);
+  };
+  const ART = `${KIT}toolworks-v2.png`;
+  const ready = useArtReady(ART);
+  const pillH = width * 0.088;
+  return (
+    <div
+      style={{
+        position: "relative", width, aspectRatio: String(TOOLS_ASPECT),
+        fontFamily: T.font, userSelect: "none",
+        filter: "drop-shadow(0 16px 32px rgba(25,20,10,.55))",
+        opacity: ready ? 1 : 0, transition: "opacity .18s ease",
+        ...style,
+      }}
+    >
+      <img src={ART} alt="Grimble's Toolworks" draggable={false}
+           style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+      {items.map((it, i2) => {
+        const c = TOOLS_ROW_C[i2];
+        if (c == null) return null;
+        const afford = it.cost != null && xp >= it.cost;
+        const holding = hold && hold.key === it.key;
+        if (it.kind === "owned") {
+          return (
+            <div key={it.key} style={{
+              position: "absolute", right: "9.5%", top: `${c * 100}%`, transform: "translateY(-50%)",
+              fontWeight: 800, fontSize: width * 0.042, color: "#8ee07a",
+              textShadow: "0 1px 3px rgba(15,30,8,.9)", letterSpacing: 0.5,
+            }}>OWNED ✓</div>
+          );
+        }
+        const dim = it.kind === "locked" || (it.kind === "buy" && !afford);
+        return (
+          <div
+            key={it.key}
+            role="button"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              if (it.kind === "locked") { onExplain && onExplain(it.key); return; }
+              if (it.kind === "info") { onExplain && onExplain(it.key); return; }
+              if (!afford) { onExplain && onExplain(it.key + ":poor"); return; }
+              startHold(it);
+            }}
+            onPointerUp={stopHold}
+            onPointerLeave={stopHold}
+            onPointerCancel={stopHold}
+            style={{
+              position: "absolute", right: "9.5%", top: `${c * 100}%`,
+              transform: `translateY(-50%) ${holding ? "scale(1.06)" : "scale(1)"}`,
+              cursor: "pointer", WebkitTapHighlightColor: "transparent",
+              opacity: dim ? 0.62 : 1,
+              filter: it.kind === "locked" ? "grayscale(.45)" : "none",
+              transition: holding ? "transform .1s ease-out" : "transform .22s cubic-bezier(.2,1.6,.4,1)",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ position: "relative", overflow: "hidden", borderRadius: pillH * 0.5 }}>
+              <PlatePill kind="xp" value={it.cost} height={pillH} />
+              {holding && (
+                <div style={{
+                  position: "absolute", left: 0, top: 0, bottom: 0, width: `${hold.pct * 100}%`,
+                  background: "rgba(255,214,120,.5)", pointerEvents: "none",
+                  boxShadow: "0 0 12px rgba(255,199,102,.8)",
+                }} />
+              )}
+            </div>
+            {it.kind === "locked" && (
+              <span style={{ position: "absolute", right: -6, top: -9, fontSize: width * 0.045,
+                             filter: "drop-shadow(0 1px 2px rgba(20,12,4,.6))" }}>🔒</span>
+            )}
+            {it.kind === "info" && (
+              <div style={{ fontSize: width * 0.026, letterSpacing: 1, fontWeight: 800, color: "#f7e7c8",
+                            textShadow: "0 1px 2px rgba(35,18,4,.8)", marginTop: 3 }}>IN BUILD MODE</div>
+            )}
+          </div>
+        );
+      })}
+      <div
+        role="button"
+        onPointerDown={() => setCloseDown(true)}
+        onPointerUp={() => setCloseDown(false)}
+        onPointerLeave={() => setCloseDown(false)}
+        onClick={onClose}
+        style={{
+          position: "absolute",
+          left: `${TOOLS_CLOSE.x0 * 100}%`, width: `${(TOOLS_CLOSE.x1 - TOOLS_CLOSE.x0) * 100}%`,
+          top: `${TOOLS_CLOSE.y0 * 100}%`, height: `${(TOOLS_CLOSE.y1 - TOOLS_CLOSE.y0) * 100}%`,
+          cursor: "pointer", WebkitTapHighlightColor: "transparent",
+        }}
+      />
+      {closeDown && (
+        <div style={{
+          position: "absolute", inset: 0, pointerEvents: "none",
+          clipPath: `inset(${TOOLS_CLOSE.y0 * 100}% ${(1 - TOOLS_CLOSE.x1) * 100}% ${(1 - TOOLS_CLOSE.y1) * 100}% ${TOOLS_CLOSE.x0 * 100}%)`,
+          transform: "scale(.98) translateY(2px)",
+          transformOrigin: `50% ${((TOOLS_CLOSE.y0 + TOOLS_CLOSE.y1) / 2) * 100}%`,
+          filter: "brightness(.85)",
+        }}>
+          <img src={ART} alt="" draggable={false}
+               style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// -------------------------------------------------------- InventoryBoard
+// One inventory for every map, on the painted parchment board with the
+// "Inventory" plank hanging off the top. Three rows — Regular Seeds,
+// Basket, Rare Seeds — with per-map availability: rows the current map
+// can't use render greyed and report taps via onLocked instead of picking.
+const INVB_ASPECT = 844 / 1006;
+const INV_PLANK_ASPECT = 1244 / 282;
+
+export function InventoryBoard({ width = 340, mode = "home", seeds = [], basket = [], rare = [],
+                                 onLocked, style }) {
+  const ready = useArtReady(`${KIT}inv-board-v2.png`, `${KIT}inv-title-plank.png`);
+  const rareLocked = mode !== "community";
+  const homeLocked = mode === "community";
+  const label = (txt) => (
+    <div style={{ fontFamily: T.font, fontWeight: 800, fontSize: width * 0.044, letterSpacing: 1.2,
+                  color: "#4b3a22", textShadow: "0 1px 0 rgba(255,250,238,.8)",
+                  margin: `0 0 ${width * 0.012}px` }}>{txt}</div>
+  );
+  const tile = (it, w, disabled) => (
+    <div
+      key={it.key}
+      role="button"
+      onClick={() => { if (disabled) { onLocked && onLocked(); } else it.onClick && it.onClick(); }}
+      style={{
+        position: "relative", width: w, flex: "0 0 auto", cursor: "pointer",
+        WebkitTapHighlightColor: "transparent",
+        borderRadius: w * 0.16,
+        boxShadow: it.selected && !disabled ? "0 0 0 3px #f0c261, 0 0 14px rgba(247,199,102,.75)" : "none",
+      }}
+    >
+      <img src={`${KIT}inv-${it.art}-${it.key}.png`} alt={it.key} draggable={false}
+           style={{ display: "block", width: "100%", height: "auto" }} />
+      {/* count sits INSIDE the tile's baked badge circle (centre 82.5%/15.5%) */}
+      <div style={{ position: "absolute", left: "82.5%", top: "15.5%", transform: "translate(-50%,-50%)",
+                    fontFamily: T.font, fontWeight: 800, fontSize: w * 0.165, color: "#fff",
+                    textShadow: "0 1px 2px rgba(30,15,4,.9)", pointerEvents: "none", lineHeight: 1 }}>
+        <CountBadge value={it.count} />
+      </div>
+    </div>
+  );
+  const row = (txt, items, w, disabled) => (
+    <div style={{ opacity: disabled ? 0.4 : 1, filter: disabled ? "grayscale(.85)" : "none" }}>
+      {label(txt)}
+      <div style={{ display: "flex", gap: width * 0.025, justifyContent: "flex-start" }}>
+        {items.map((it) => tile(it, w, disabled))}
+      </div>
+    </div>
+  );
+  return (
+    <div style={{ position: "relative", width, aspectRatio: String(INVB_ASPECT),
+                  fontFamily: T.font, userSelect: "none",
+                  filter: "drop-shadow(0 16px 32px rgba(25,20,10,.55))",
+                  opacity: ready ? 1 : 0, transition: "opacity .18s ease", ...style }}>
+      <img src={`${KIT}inv-board-v2.png`} alt="Inventory" draggable={false}
+           style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+      {/* the plank hangs off the top, centred */}
+      <img src={`${KIT}inv-title-plank.png`} alt="" draggable={false}
+           style={{ position: "absolute", left: "50%", transform: "translateX(-50%)",
+                    top: `-${(width * 0.66 / INV_PLANK_ASPECT) * 0.52}px`, width: "66%",
+                    filter: "drop-shadow(0 5px 9px rgba(30,20,10,.5))", zIndex: 2 }} />
+      <div style={{ position: "absolute", left: "10%", right: "10%", top: "9%", bottom: "9%",
+                    display: "flex", flexDirection: "column", justifyContent: "flex-start",
+                    gap: width * 0.055 }}>
+        {row("Regular Seeds", seeds, width * 0.185, homeLocked)}
+        {row("Basket", basket, width * 0.185, homeLocked)}
+        {row("Rare Seeds", rare, width * 0.155, rareLocked)}
+      </div>
+    </div>
   );
 }

@@ -9,7 +9,7 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  T, StonePanel, StoneSlab, TabToggle, ParchmentButton, SquareButton,
+  T, StonePanel, StoneSlab, TabToggle, ParchmentButton,
 } from "./ui-kit.jsx";
 import { useBoardData, BoardRows } from "./WeeklyBoard.jsx";
 
@@ -98,8 +98,6 @@ export default function SplashScreen({ hud, onStart, onRequestClose, onGone }) {
             Gold/XP plates and the profile medallion belong to the in-game HUD;
             the title screen only carries the "who's playing right now" signal. */}
         <div style={{ position: "relative", width: "100%", minHeight: 120 * S, display: "flex", alignItems: "center", padding: `0 ${14 * S}px`, boxSizing: "border-box" }}>
-          <SquareButton size={76 * S} onClick={close} style={{ position: "absolute", left: 14 * S, top: "50%", transform: "translateY(-50%)" }} />
-          {/* centred on the screen, not on the space left over beside the X */}
           <div
             style={{
               position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)",
@@ -115,11 +113,11 @@ export default function SplashScreen({ hud, onStart, onRequestClose, onGone }) {
             />
             <span
               style={{
-                fontFamily: T.font, fontWeight: 800, fontSize: 30 * S, color: "#f4ffe9",
+                fontFamily: T.font, fontWeight: 800, fontSize: 26 * S, color: "#f4ffe9",
                 textShadow: "0 2px 5px rgba(10,25,10,.75), 0 0 14px rgba(0,0,0,.35)",
               }}
             >
-              {Math.max(1, pulse.players_today || 0)} today
+              {Math.max(1, pulse.players_today || 0)} Active Players Today
             </span>
           </div>
         </div>

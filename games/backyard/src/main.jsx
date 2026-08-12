@@ -151,6 +151,13 @@ function DevSignIn({ onSignedIn }) {
 }
 
 (async () => {
+  // ?logout=1 — drop the persisted browser session and land on the sign-in
+  // form, so testers can switch accounts without digging through devtools.
+  const q = new URLSearchParams(window.location.search);
+  if (q.get("logout")) {
+    try { await supabase.auth.signOut(); } catch { /* already gone */ }
+    history.replaceState(null, "", window.location.pathname);
+  }
   const session = await resolveSession();
   if (session) {
     await mountGame(session);

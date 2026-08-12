@@ -19,7 +19,7 @@ import { startEncounter as glowStartEncounter } from "./glowlands/combat.js";
 import { STARTER_SERUMS, FIRST_STUDY_SESSION_MINTS } from "./glowlands/data/combat-data.js";
 import buildHomeAdditions from "./glowlands/maps/home-additions.js";
 import SplashScreen from "./splash/SplashScreen.jsx";
-import { PlatePill, Medallion, SquareButton, EmberPlaque, InventorySheet, StonePanel, LevelBar, SeedShop, CountBadge, LockedSeedNotice, BerryMarket, CommunityInventory, PlayerProfile, Wardrobe, T as T_UI } from "./splash/ui-kit.jsx";
+import { PlatePill, Medallion, SquareButton, EmberPlaque, InventorySheet, StonePanel, LevelBar, SeedShop, CountBadge, LockedSeedNotice, BerryMarket, CommunityInventory, PlayerProfile, Wardrobe, Almanac, Toolworks, InventoryBoard, T as T_UI } from "./splash/ui-kit.jsx";
 import WeeklyBoardModal from "./splash/WeeklyBoard.jsx";
 import buildMeadowAdditions, { MEADOW_TRIGGERS, MEADOW_TUNING } from "./glowlands/maps/meadow-additions.js";
 import * as EastRoad from "./glowlands/maps/east-road.js";
@@ -204,7 +204,7 @@ const INTRO_PAGES = [
   { t: "Mind the cave yonder. Ember sleeps there — a good-hearted dragon with a bottomless belly. Keep him fed, and he'll keep watch over you. Let him go hungry… and he'll help himself to your harvest.", focus: "cave" },
   { t: "Every gardener begins the same way: a seed, a little dirt, and a whole lot of hope. Those three strawberry seeds in your pouch? My gift. Show me what you can do.", focus: "eli", task: "plant", gift: { key: "strawberry", n: 3 } },
   { t: "Ha! Good hands, child. Now comes the gardener's hardest lesson — waiting. When the berries ripen, gather them up.", focus: "eli", task: "harvest" },
-  { t: "Hear that rumble from the cave? That's Ember dreaming of breakfast. Take him a strawberry, and you'll make a friend for life.", focus: "cave", task: "feed" },
+  { t: "Hear that rumble from the cave? That's Ember dreaming of breakfast. Throw him a Strawberry by clicking on him, and you'll make a friend for life.", focus: "cave", task: "feed" },
   { t: "Look at that smile! You've the heart of a true gardener. Here — a Blueberry seed. You've earned it.", focus: "eli", gift: { key: "blueberry", n: 1 } },
   { t: "Now hear me well: some seeds are too holy for ordinary dirt. Glowberries take root only in blessed soil — across the river, in the youth group garden.", focus: "bridge" },
   { t: "And if you haven't joined a youth group in the YGTeeV app, don't wait, child. No champion ever grew alone — that fellowship is the richest soil you'll ever plant yourself in.", focus: "eli" },
@@ -213,7 +213,7 @@ const INTRO_PAGES = [
 const INTRO_TASK_LABEL = {
   plant: "Plant a Strawberry in your garden",
   harvest: "Harvest your ripe Strawberries",
-  feed: "Bring Ember a Strawberry — he's in the cave!",
+  feed: "Throw Ember a Strawberry by clicking on him!",
 };
 
 // Eli's one-time welcome the first time a member enters the community garden.
@@ -299,6 +299,15 @@ export default function DragonGardenQuest() {
   const introInfo = hud.intro || { page: null, task: null };
   const introDlg = introInfo.page != null;
   const [taskSplash, setTaskSplash] = useState(null);
+  // "finish talking to Eli first" notice — rendered over the profile menu
+  // (NOT a toast: those can be dropped by the one-at-a-time rule and sit in
+  // a layer the user may miss; this is deterministic and self-clearing)
+  const [lockNote, setLockNote] = useState(false);
+  const [almanac, setAlmanac] = useState(false);
+  const [acquired, setAcquired] = useState(null); // { icon, name } — post-purchase moment
+  const [toolNote, setToolNote] = useState(null); // { title, body } — lock/info explainers
+  const acquiredTimer = useRef(null);
+  const lockNoteTimer = useRef(null);
   // Eli's seed gift card — { key, n, page }; claimed via "ADD TO POCKET"
   const [seedGift, setSeedGift] = useState(null);
   const reqSeedGiftRef = useRef(() => {});
@@ -427,7 +436,7 @@ export default function DragonGardenQuest() {
     function initAudio() {
       if (AC) return;
       try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
-      audioOut = AC.createGain(); audioOut.gain.value = 0.9; audioOut.connect(AC.destination);
+      audioOut = AC.createGain(); audioOut.gain.value = AUDIO.muted ? 0 : 0.9; audioOut.connect(AC.destination);
       const verb = AC.createConvolver();
       const vlen = Math.floor(AC.sampleRate * 1.8);
       const imp = AC.createBuffer(2, vlen, AC.sampleRate);
@@ -2383,6 +2392,19 @@ export default function DragonGardenQuest() {
         leaf.scale.set(1, 0.5, 1.4); leaf.rotation.y = -a;
         g.add(leaf);
       }
+      // crop-colored outline shell (backface trick): strawberry reads red,
+      // blueberry blue, sunfruit gold from the first sprout, so the garden
+      // tells you what's planted where at a glance
+      {
+        const outlineMat = new THREE.MeshBasicMaterial({ color: SRGB(s.color), side: THREE.BackSide });
+        [...g.children].forEach((m) => {
+          if (!m.isMesh) return;
+          const sh = new THREE.Mesh(m.geometry, outlineMat);
+          sh.position.copy(m.position); sh.rotation.copy(m.rotation);
+          sh.scale.copy(m.scale).multiplyScalar(1.14);
+          g.add(sh);
+        });
+      }
       if (stage === 2) {
         const berryMat = new THREE.MeshStandardMaterial({
           color: SRGB(s.color), roughness: 0.3,
@@ -2474,9 +2496,9 @@ export default function DragonGardenQuest() {
       const parts = [];
       const base = solid(new THREE.BoxGeometry(1.5, 0.2, 1.5), furrowC);
       base.translate(0, 0.1, 0); parts.push(base);
-      // ~1 in 3 beds reads "just watered": the far half's soil goes dark and moist so the
-      // six beds tell a chore-in-progress story instead of stamping one dry state
-      const watered = !special && Math.random() < 0.38;
+      // beds all read the same — the old random "just watered" dark half made
+      // some plots look dirty/broken next to their neighbours
+      const watered = false;
       const wetC = soilC.clone().offsetHSL(0.006, 0.05, -0.16).convertSRGBToLinear();
       [-0.54, -0.18, 0.18, 0.54].forEach((rz) => {
         const rw = 1.36 - Math.abs(rz) * 0.08;
@@ -2733,6 +2755,7 @@ export default function DragonGardenQuest() {
       buildActive: false, ghostOk: false, ghostCell: null,
       counterActive: false, counterKind: null, counterNear: false, exitLatch: false,
       introActive: false, introFocus: null, introLock: false, introTask: null, introTaskDone: null,
+      introCelebrate: null, introCelebrateT: 0, introCelebrateNext: null,
       introPage: null, introGave: false, introGiftClaimed: {},
       churchIntroPage: null, churchIntroDone: false,
       youthGroup: false, bridgeNoteShown: false, goldBagFound: false,
@@ -2744,9 +2767,11 @@ export default function DragonGardenQuest() {
     gameRef.current = G;
     loadWeekSave();
     G.SFX = SFX;
+    G.HARVEST_GEMS = HARVEST_GEMS;
     G.toggleMute = () => {
       AUDIO.muted = !AUDIO.muted;
       if (audioOut) audioOut.gain.value = AUDIO.muted ? 0 : 0.9;
+      try { if (window.storage) window.storage.set("by-muted", AUDIO.muted ? "1" : "0"); } catch (e) {}
       return AUDIO.muted;
     };
     G.reqTransition = (label) => reqTransitionRef.current(label);
@@ -2759,6 +2784,7 @@ export default function DragonGardenQuest() {
       G.__plots = (n) => plotNodes.slice(0, n || 8).map((nd) => ({ i: nd.idx, sp: nd.special, st: nd.stage, plant: !!nd.plant, seed: nd.data() && nd.data().seed, x: nd.x, z: nd.z }));
       G.__renderInfo = () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geoms: renderer.info.memory.geometries });
       G.__toast = toast; // headless tests drive the notification stack
+      G.__openShop = (k) => setShop(k); // headless tests jump straight into a shop
       G.__musicGain = () => (trackGain ? +trackGain.gain.value.toFixed(3) : null);
       G.__dragon = () => (dragon ? { x: dragon.position.x, z: dragon.position.z } : null);
       // world -> screen px, so headless tests can tap exact ground targets
@@ -2936,9 +2962,9 @@ export default function DragonGardenQuest() {
       avatarPortrait: avatarUrlCache,
       inv: JSON.parse(JSON.stringify(G.inv)),
       showHunger: G.dragonState !== "idle" || G.hunger < 32 || G.hungerAlertT > 0 || G.emberHappyT > 0,
-      emberHappy: G.hunger >= 95,
+      emberHappy: Math.round((Math.max(0, Math.min(100, G.hunger)) / 100) * 7) >= 7, // happy == meter full (same 7-slot math as the plaque)
       outfit: { ...G.outfit },
-      intro: { page: G.introPage, task: G.introTask },
+      intro: { page: G.introPage, task: G.introTask, celebrate: G.introCelebrate },
       youth: G.youthGroup,
       build: {
         hoe: G.build.hoe, fenceTier: G.build.fenceTier,
@@ -2960,6 +2986,9 @@ export default function DragonGardenQuest() {
     let plotNodes = [], exits = [], hotspots = [];
     let dragon = null, dragonHome = new THREE.Vector3();
     let goldBag = null; // one-time glowing pouch on the town road
+    let marketArrow = null; // 5s cue after the Berry Market flyer: arrow to town
+    let emberBar = null; // floating 7-gem hunger meter above Ember
+    let shopWords = []; // floating verb signs over the town shops
     let redBagMeshes = {}; // today's hidden question-pouches on HOME, by bag_idx
     let butterflies = [], glowNodes = [], embers = [], smokes = [], caveLight = null, npcs = [], zzz = [];
     let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, winsSprite = null, water = null, foams = [], riverFoam = null, swayers = [], petals = [], fountainFx = null;
@@ -3344,6 +3373,30 @@ export default function DragonGardenQuest() {
       SFX.click();
     };
     G.setIntroFocus = (f) => { G.introFocus = f; };
+    // After the Berry Market flyer: pan toward the town road and float a
+    // glowing arrow pointing the way. Clears itself after ~5 seconds.
+    G.startMarketCue = () => {
+      if (G.map !== "HOME" || marketArrow) return;
+      const g = new THREE.Group();
+      const gold = new THREE.MeshStandardMaterial({ color: SRGB(0xffc94a), emissive: SRGB(0xffb32e), emissiveIntensity: 0.9, flatShading: true, roughness: 0.35 });
+      const head = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.9, 6), gold);
+      head.rotation.z = -Math.PI / 2; // cone +Y -> +X (toward the town exit)
+      head.position.x = 0.75;
+      const shaft = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.3, 0.3), gold);
+      shaft.position.x = -0.15;
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffd76a), transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+      halo.scale.set(3.2, 3.2, 1);
+      g.add(shaft, head, halo);
+      g.position.set(13.0, 2.1, 3.4); // over the east road, aimed at the exit
+      worldGroup.add(g);
+      marketArrow = g;
+      G.marketCueT = 5;
+      SFX.sparkle();
+    };
+    G.clearMarketCue = () => {
+      if (marketArrow) { worldGroup.remove(marketArrow); marketArrow = null; }
+      G.marketCueT = 0;
+    };
     G.onIntroEvent = (ev) => { G.introTaskDone = ev; }; // game-loop advances the story
     function applyIntroPage(n) {
       G.introPage = n;
@@ -3380,7 +3433,11 @@ export default function DragonGardenQuest() {
     };
     G.replayIntro = () => {
       try { if (window.storage) window.storage.delete("garden-intro"); } catch (e) {}
-      if (G.map === "HOME" && !G.introActive && !gardener) { G.startIntro(); return true; }
+      if (G.map === "HOME" && !G.introActive && !gardener) {
+        G.hunger = 100; G.hungerAlertT = 0; // Ember sits out the replay happy
+        G.startIntro();
+        return true;
+      }
       toast("Return to the Home Meadow to replay Eli's welcome!", "warn");
       return false;
     };
@@ -3400,13 +3457,10 @@ export default function DragonGardenQuest() {
       G.introPage = null;
       G.introActive = false;
       G.introFocus = null; // camera glides back to the player
-      G.introLock = true;  // hold still and watch him go
+      G.introLock = false; // controls return immediately — Eli strolls off on his own
       saveIntroDone();
       if (gardener) {
         gardenerCtl = { mode: "leave", leavePath: G.youthGroup ? [[-13.2, 3], [-24, 3]] : [[-9.9, 3]], leaveIdx: 0, t: 0, post: [0, 0], postRot: 0 };
-        // introLock stays on until he's out of sight
-      } else {
-        G.introLock = false;
       }
     };
     G.skipIntro = () => {
@@ -3414,6 +3468,7 @@ export default function DragonGardenQuest() {
       // don't leave a skipper empty-handed — grant any unclaimed starter gifts
       INTRO_PAGES.forEach((pg, i) => { if (pg.gift) G.claimIntroGift(i); });
       G.introTask = null; G.introTaskDone = null;
+      G.introCelebrate = null; G.introCelebrateT = 0;
       G.introPage = null;
       G.introActive = false;
       G.introFocus = null;
@@ -3500,6 +3555,17 @@ export default function DragonGardenQuest() {
     };
     (async () => {
       try {
+        if (!window.storage) return;
+        const r = await window.storage.get("by-muted").catch(() => null);
+        if (r && r.value === "1") {
+          AUDIO.muted = true;
+          if (audioOut) audioOut.gain.value = 0;
+          setMuted(true); // keep the HUD button's icon in sync
+        }
+      } catch (e) {}
+    })();
+    (async () => {
+      try {
         if (!window.storage) { scheduleIntro(); return; }
         const r = await window.storage.get("garden-intro").catch(() => null);
         if (!r || !r.value) scheduleIntro();
@@ -3515,20 +3581,22 @@ export default function DragonGardenQuest() {
       } catch (e) {}
     })();
     G.buyHoe = () => {
-      if (G.build.hoe) { toast("You already own the hoe!", "warn"); return; }
-      if (G.xp < 500) { toast("Not enough XP — the hoe costs ✨500", "warn"); return; }
+      if (G.build.hoe) { toast("You already own the hoe!", "warn"); return false; }
+      if (G.xp < 500) { toast("Not enough XP — the hoe costs ✨500", "warn"); return false; }
       G.xp -= 500; G.build.hoe = true; saveBuild(); syncXpSpend(500, "hoe");
       SFX.pass();
       toast("⛏️ Hoe acquired! A 🔨 Build button awaits at your home garden.");
+      return true;
     };
     G.buyDeed = () => {
       const next = FENCE_TIERS[G.build.fenceTier + 1];
-      if (!next) { toast("Your fence is at its grandest already!", "warn"); return; }
-      if (G.xp < next.cost) { toast(`Not enough XP — this deed costs ✨${next.cost}`, "warn"); return; }
+      if (!next) { toast("Your fence is at its grandest already!", "warn"); return false; }
+      if (G.xp < next.cost) { toast(`Not enough XP — this deed costs ✨${next.cost}`, "warn"); return false; }
       G.xp -= next.cost; G.build.fenceTier++; saveBuild(); syncXpSpend(next.cost, "fence_deed");
       SFX.level();
       toast("🚧 The fence grows! Fresh ground opens for planting.", "gold");
       if (G.map === "HOME") loadMap("HOME");
+      return true;
     };
     G.placePlot = () => {
       if (!G.buildActive || !G.ghostOk || !G.ghostCell) return;
@@ -3569,7 +3637,7 @@ export default function DragonGardenQuest() {
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
-      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; riverFoam = null; swayers = []; petals = []; fountainFx = null; goldBag = null; redBagMeshes = {};
+      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; riverFoam = null; swayers = []; petals = []; fountainFx = null; goldBag = null; redBagMeshes = {}; shopWords = []; emberBar = null;
       throwns.forEach((t) => worldGroup.remove(t.m)); throwns = [];
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
       // the "already greeted" latch belongs to the keeper we just destroyed —
@@ -3603,6 +3671,51 @@ export default function DragonGardenQuest() {
       } else node.stage = -1;
     }
 
+    // radial progress ring over a plant growing toward its FIRST maturity —
+    // a scene sprite, so it stays visible even while dialogue hides the DOM
+    // readouts (the onboarding case)
+    function updateGrowRing(node, p, stage) {
+      const active = p.seed && p.regrowAt == null && stage !== 2 && !node.special;
+      if (!active) {
+        if (node.growRing) {
+          node.plotMesh.remove(node.growRing);
+          node.growRing.material.map.dispose();
+          node.growRing.material.dispose();
+          node.growRing = null;
+        }
+        return;
+      }
+      if (!node.growRing) {
+        const cv = document.createElement("canvas");
+        cv.width = 96; cv.height = 96;
+        const tex = new THREE.CanvasTexture(cv);
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+        sp.scale.set(0.62, 0.62, 1);
+        sp.position.set(0, 1.35, 0);
+        sp.userData = { cv, tex, lastStep: -1 };
+        node.plotMesh.add(sp);
+        node.growRing = sp;
+      }
+      const total = SEEDS[p.seed].grow;
+      const pct = Math.max(0, Math.min(1, (G.time - p.plantedAt) / total));
+      const ud = node.growRing.userData;
+      const step = Math.round(pct * 48);
+      if (step !== ud.lastStep) {
+        ud.lastStep = step;
+        const c = ud.cv.getContext("2d");
+        c.clearRect(0, 0, 96, 96);
+        c.beginPath(); c.arc(48, 48, 40, 0, Math.PI * 2);
+        c.fillStyle = "rgba(58,38,20,0.78)"; c.fill();
+        c.lineWidth = 5; c.strokeStyle = "rgba(30,18,8,0.9)"; c.stroke();
+        c.beginPath(); c.arc(48, 48, 32, -Math.PI / 2, -Math.PI / 2 + Math.max(0.02, pct) * Math.PI * 2);
+        c.lineWidth = 9; c.lineCap = "round"; c.strokeStyle = "#f0c261"; c.stroke();
+        c.font = "30px serif"; c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillText("🌱", 48, 50);
+        ud.tex.needsUpdate = true;
+      }
+      node.growRing.position.y = 1.35 + Math.sin(G.time * 1.6 + node.idx) * 0.05;
+    }
+
     // floating "next fruit in M:SS" pill over home plants that are regrowing after a harvest
     function updateRegrowBadge(node, p, stage) {
       const active = p.seed && p.regrowAt != null && stage !== 2;
@@ -3617,21 +3730,25 @@ export default function DragonGardenQuest() {
       }
       if (!node.regrowSprite) {
         const cv = document.createElement("canvas");
-        cv.width = 200; cv.height = 68;
+        cv.width = 220; cv.height = 108;
         const tex = new THREE.CanvasTexture(cv);
-        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-        sp.scale.set(1.45, 0.49, 1);
-        sp.position.set(0, 1.5, 0);
-        sp.userData = { cv, tex, lastSec: -1 };
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false }));
+        sp.scale.set(1.55, 0.76, 1);
+        sp.position.set(0, 1.62, 0);
+        sp.userData = { cv, tex, lastKey: "" };
         node.plotMesh.add(sp);
         node.regrowSprite = sp;
       }
       const sec = Math.max(0, Math.ceil(p.regrowAt - G.time));
+      const cost = Math.max(1, Math.ceil(sec / 10));
+      const holding = typeof rushHold !== "undefined" && rushHold && rushHold.idx === node.idx;
+      const holdPct = holding ? Math.min(1, (performance.now() - rushHold.t0) / 900) : 0;
       const ud = node.regrowSprite.userData;
-      if (sec !== ud.lastSec) {
-        ud.lastSec = sec;
+      const key = sec + "|" + cost + "|" + Math.round(holdPct * 30);
+      if (key !== ud.lastKey) {
+        ud.lastKey = key;
         const c = ud.cv.getContext("2d");
-        c.clearRect(0, 0, 200, 68);
+        c.clearRect(0, 0, 220, 108);
         const rr = (x, y, w, h, r) => {
           c.beginPath();
           c.moveTo(x + r, y);
@@ -3641,15 +3758,26 @@ export default function DragonGardenQuest() {
           c.arcTo(x, y, x + w, y, r);
           c.closePath();
         };
-        rr(6, 8, 188, 52, 24);
-        c.fillStyle = "rgba(26,16,6,0.82)"; c.fill();
+        rr(6, 6, 208, 96, 20);
+        c.fillStyle = "rgba(26,16,6,0.84)"; c.fill();
         c.strokeStyle = "#ffb845"; c.lineWidth = 4; c.stroke();
+        // hold progress: a gold fill sweeping the plaque from the left
+        if (holdPct > 0) {
+          c.save();
+          rr(6, 6, 208, 96, 20); c.clip();
+          c.fillStyle = "rgba(255,184,69,0.30)";
+          c.fillRect(6, 6, 208 * holdPct, 96);
+          c.restore();
+        }
         c.textAlign = "center"; c.textBaseline = "middle";
-        c.fillStyle = "#ffb845"; c.font = "bold 32px Georgia";
-        c.fillText(`⏳ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`, 100, 36);
+        c.fillStyle = "#ffb845"; c.font = "bold 34px Georgia";
+        c.fillText(`⏳ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`, 110, 34);
+        c.fillStyle = holding ? "#ffe9b8" : "rgba(255,226,180,0.85)";
+        c.font = "800 22px 'Baloo 2', 'Trebuchet MS', sans-serif";
+        c.fillText(holding ? "Hold to hurry…" : `HOLD ⏩ ${cost} ✦`, 110, 76);
         ud.tex.needsUpdate = true;
       }
-      node.regrowSprite.position.y = 1.5 + Math.sin(G.time * 1.6 + node.idx) * 0.05;
+      node.regrowSprite.position.y = 1.62 + Math.sin(G.time * 1.6 + node.idx) * 0.05;
     }
 
     function addPlots(arr, positions, special) {
@@ -3740,18 +3868,26 @@ export default function DragonGardenQuest() {
     // Small world-anchored "+2 🍓" text that rises off a plot and fades —
     // quieter than a toast for routine feedback the player is looking at.
     let floaties = [];
+    // AAA reward pop: gold-gradient display text with glow bed + deep outline,
+    // fog-proof, pops in with an overshoot then drifts up and fades
     function spawnFloatie(x, z, text, y0 = 1.0) {
-      const cv = document.createElement("canvas"); cv.width = 256; cv.height = 96;
+      const cv = document.createElement("canvas"); cv.width = 320; cv.height = 128;
       const cx = cv.getContext("2d");
-      cx.font = "700 46px system-ui, -apple-system, sans-serif";
       cx.textAlign = "center"; cx.textBaseline = "middle";
-      cx.lineWidth = 9; cx.strokeStyle = "rgba(24,44,18,0.55)"; cx.strokeText(text, 128, 50);
-      cx.fillStyle = "#ffffff"; cx.fillText(text, 128, 50);
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false }));
-      sp.scale.set(1.55, 0.58, 1);
+      cx.font = "900 62px 'Baloo 2', 'Trebuchet MS', sans-serif";
+      cx.shadowColor = "#ffd76a"; cx.shadowBlur = 26;
+      cx.fillStyle = "#ffd76a"; cx.fillText(text, 160, 66);
+      cx.shadowBlur = 0;
+      cx.lineWidth = 12; cx.lineJoin = "round"; cx.strokeStyle = "#4a2c10";
+      cx.strokeText(text, 160, 66);
+      const grad = cx.createLinearGradient(0, 28, 0, 104);
+      grad.addColorStop(0, "#fff8e2"); grad.addColorStop(0.4, "#ffd156"); grad.addColorStop(1, "#e8912e");
+      cx.fillStyle = grad; cx.fillText(text, 160, 66);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false, fog: false }));
+      sp.scale.set(0.01, 0.01, 1); // pops in via the tick's overshoot curve
       sp.position.set(x, y0, z);
       worldGroup.add(sp);
-      floaties.push({ sp, ttl: 1.3 });
+      floaties.push({ sp, ttl: 1.45, age: 0, bw: 1.9, bh: 0.76 });
     }
 
     function addPetals(spots, colorsArr, count, hMax) {
@@ -3843,8 +3979,13 @@ export default function DragonGardenQuest() {
          { x1: -26, z1: 1.2, x2: 26, z2: 4.8, f: 3 }, { x1: -1.6, z1: -6, x2: 1.6, z2: 7, f: 3 }]
       );
       terrainY = (x, z) => {
-        if (Math.abs(z - 3) < 1.15 && x > -16.4 && x < -10.0)
-          return 0.34 * Math.sin(((x + 16.4) / 6.4) * Math.PI); // bridge deck
+        if (Math.abs(z - 3) < 1.15 && x > -16.4 && x < -10.0) {
+          // broken bridge: the collapsed middle has NO ground under it — the
+          // river runs through the gap (colliders already seal both edges).
+          // Members get the full walkable arch.
+          const inGap = !G.youthGroup && x > -14.45 && x < -12.25;
+          if (!inGap) return 0.34 * Math.sin(((x + 16.4) / 6.4) * Math.PI); // bridge deck
+        }
         let h = homeBase(x, z);
         const rd = Math.abs(x - RIVER_X(z));
         if (rd < 3.2) { const t = 1 - rd / 3.2; h -= 0.62 * t * t; } // river banks
@@ -4751,6 +4892,20 @@ export default function DragonGardenQuest() {
       worldGroup.add(dragonShadow);
       dragon = makeDragon();
       dragon.position.set(0, 0, -11.4);
+      // floating hunger meter — always above Ember, same 7-gem language as
+      // the plaque. Lives in worldGroup (not the dragon group) so his squash
+      // and-stretch animation can't warp it; updateDragon tracks his position.
+      {
+        const cv = document.createElement("canvas");
+        cv.width = 448; cv.height = 112;
+        const tex = new THREE.CanvasTexture(cv);
+        // fog:false — the cave sits deep in the fogged distance and the scene
+        // fog was washing the meter to pastel; UI must stay full-strength
+        emberBar = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false }));
+        emberBar.scale.set(3.0, 0.75, 1);
+        emberBar.userData = { cv, tex, last: "" };
+        worldGroup.add(emberBar);
+      }
       dragon.scale.setScalar(0.7); // lab rig is taller than the old model
       dragonHome.copy(dragon.position);
       worldGroup.add(dragon);
@@ -4762,7 +4917,6 @@ export default function DragonGardenQuest() {
 
       // signs face south — the follow-camera always views from the south,
       // so the board reads face-on to the player
-      worldGroup.add(makeSign(20, 1.4, 0));
       worldGroup.add(makeSign(-20, 1.4, 0));
       [[-9.5, -8, 1.3], [12, -10, 1.1], [-9, 15.5, 1.4], [14, 12, 1.2], [-19, 6.5, 1.0], [18, -3, 1.3], [9, 16, 1.1], [-20.5, -14, 1.4], [20, 15, 1.2], [-19, 18, 1.1], [16, 18, 1.3], [24, 6, 1.0], [-21, -4, 1.2]]
         .forEach(([x, z, s]) => { if (!inGarden(x, z, 1.3)) worldGroup.add(makeTree(x, z, s)); });
@@ -4815,6 +4969,13 @@ export default function DragonGardenQuest() {
       addClouds(6);
       addButterflies(6, 30);
 
+      // east + west world edges: nobody walks around the map entrances
+      addBoxCol(25.0, 0, 0.2, 34);            // east back wall
+      addBoxCol(23.6, 5.0, 1.8, 0.15);        // east funnel, north lip
+      addBoxCol(23.6, 1.0, 1.8, 0.15);        // east funnel, south lip
+      addBoxCol(-25.0, 0, 0.2, 34);           // west back wall
+      addBoxCol(-23.6, 5.0, 1.8, 0.15);       // west funnel, north lip
+      addBoxCol(-23.6, 1.0, 1.8, 0.15);       // west funnel, south lip
       exits = [
         { x: 24, z: 3, r: 2.2, to: "TOWN", spawn: [-16, 0], label: "Meadow Town →" },
         { x: -24, z: 3, r: 2.2, to: "CHURCH", spawn: [26, 0], label: "← " + (G.activeGarden?.name || ((window.YGTEEV?.profile?.memberships || []).length > 1 ? "Community Gardens" : "Community Garden")) },
@@ -5023,12 +5184,8 @@ export default function DragonGardenQuest() {
         addBoxCol(x, z, w / 2 + 0.1, d / 2 + 0.1, rotY);
         return b;
       }
-      // dressing houses arc along the BOTTOM of town, well past the pavement —
-      // the follow-camera trails ~7 units south of the player, so anything
-      // closer would put the camera inside a roof on the south plaza strip
-      worldGroup.add(makeBuilding(11, 19, 4.5, 4, 2.6, PLASTER_CREAM, PAL.roof, -0.2));
-      worldGroup.add(makeBuilding(-13.5, 18.5, 4, 4, 2.4, PLASTER_SAGE, roofTone(0x40639c), 0.2));
-      worldGroup.add(makeBuilding(-4.5, 20.5, 4, 3.6, 2.3, PLASTER_LAV, roofTone(0x7d4270), -0.1));
+      // (the three dressing houses that used to arc along the bottom of
+      // town were cut — non-functional set dressing in the grass)
 
       // ---- three branded shops you can actually walk into ----
       function shopFront(x, z, brand) {
@@ -5076,6 +5233,41 @@ export default function DragonGardenQuest() {
       shopFront(-8.2, -8, "market");
       shopFront(0, -8, "seeds");
       shopFront(8.2, -8, "tools");
+
+      // AAA floating verbs over each storefront: glow bed + deep outline +
+      // vertical gradient face on a high-res canvas sprite, with an additive
+      // halo behind. They bob and pulse in the frame loop and never expire.
+      function makeFloatWord(text, x, z, tone) {
+        const cv = document.createElement("canvas");
+        cv.width = 512; cv.height = 192;
+        const c = cv.getContext("2d");
+        c.textAlign = "center"; c.textBaseline = "middle";
+        c.font = "900 112px 'Baloo 2', 'Trebuchet MS', sans-serif";
+        c.shadowColor = tone.glow; c.shadowBlur = 44;
+        c.fillStyle = tone.glow;
+        c.fillText(text, 256, 100); c.fillText(text, 256, 100);
+        c.shadowBlur = 0;
+        c.lineWidth = 16; c.lineJoin = "round"; c.strokeStyle = tone.outline;
+        c.strokeText(text, 256, 100);
+        const grad = c.createLinearGradient(0, 44, 0, 156);
+        grad.addColorStop(0, "#fff8e2"); grad.addColorStop(0.38, tone.core); grad.addColorStop(1, tone.deep);
+        c.fillStyle = grad;
+        c.fillText(text, 256, 100);
+        const tex = new THREE.CanvasTexture(cv);
+        const word = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+        word.scale.set(3.4, 1.28, 1);
+        const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: new THREE.Color(tone.glow), transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending }));
+        halo.scale.set(5.4, 2.7, 1);
+        const g = new THREE.Group();
+        g.add(halo, word);
+        g.position.set(x, 5.05, z);
+        g.userData = { baseY: 5.05, ph: Math.random() * 6.28, halo };
+        worldGroup.add(g);
+        shopWords.push(g);
+      }
+      makeFloatWord("SELL",  -8.2, -8, { core: "#ffd156", deep: "#d8842f", glow: "#ffd76a", outline: "#4a2c10" });
+      makeFloatWord("BUY",    0,   -8, { core: "#8ce06a", deep: "#3f8f3f", glow: "#8dfc90", outline: "#17421d" });
+      makeFloatWord("BUILD",  8.2, -8, { core: "#b8a8f8", deep: "#6a5a9a", glow: "#b0a0ff", outline: "#2a2348" });
 
       // ---- street life on the plaza ----
       makeVillager(2.6, -2.6, -2.3, { shirt: 0x5a86c9 });
@@ -5163,6 +5355,11 @@ export default function DragonGardenQuest() {
       addClouds(5);
       addButterflies(4, 24);
 
+      // west world edge: the HOME exit is the only way out — wall + funnel
+      // lips mirror the home-meadow treatment so nobody walks around it
+      addBoxCol(-21.2, 0, 0.2, 30);           // back wall behind the exit
+      addBoxCol(-19.6, 2.0, 1.8, 0.15);       // funnel, north lip
+      addBoxCol(-19.6, -2.0, 1.8, 0.15);      // funnel, south lip
       exits = [
         { x: -20, z: 0, r: 2.2, to: "HOME", spawn: [21, 3] },
         // spawn well inside the shop (not at the doorway) so turning around
@@ -5591,6 +5788,10 @@ export default function DragonGardenQuest() {
       addClouds(5);
       addButterflies(8, 34);
 
+      // east world edge: wall + funnel lips behind the HOME exit
+      addBoxCol(31.2, 0, 0.2, 34);            // back wall behind the exit
+      addBoxCol(29.6, 2.0, 1.8, 0.15);        // funnel, north lip
+      addBoxCol(29.6, -2.0, 1.8, 0.15);       // funnel, south lip
       exits = [{ x: 30, z: 0, r: 2.2, to: "HOME", spawn: [-21, 3], label: "Home Meadow →" }];
       hotspots = [];
     }
@@ -5767,6 +5968,8 @@ export default function DragonGardenQuest() {
       if (name === "EAST_ROAD") name = "EASTROAD"; // module id alias
       // Phase 1 parked: old saves pointing at the East Road land in town
       if (!GLOW_ENABLED && name === "EASTROAD") name = "TOWN";
+      if (G.clearMarketCue) { marketArrow = null; G.marketCueT = 0; }
+      G.__fenceIn = null; // fence auto-select re-evaluates on the new map
       G.map = name;
       SFX.whoosh();
       if (name === "HOME") buildHome(); // buildHome calls buildGlowHome itself
@@ -5788,8 +5991,8 @@ export default function DragonGardenQuest() {
       // the community garden's sacred plots only take glowberries — preselect
       // them on entry (even at ×0), and drop back to a seed you own on exit
       if (name === "CHURCH") {
-        // preselect the best glow seed the player owns (even at ×0 fallback)
-        G.selectedSeed = ["gloryberry", "dawnberry", "starberry", "glowberry"].find((k) => G.inv.seeds[k] > 0) || "glowberry";
+        // auto-select the LOWEST rare seed the player owns (×0 fallback)
+        G.selectSeed(["glowberry", "starberry", "dawnberry", "gloryberry"].find((k) => G.inv.seeds[k] > 0) || "glowberry");
       } else if (SEEDS[G.selectedSeed]?.glow) {
         G.selectedSeed = ["strawberry", "blueberry", "sunfruit"].find((k) => G.inv.seeds[k] > 0) || "strawberry";
       }
@@ -5843,12 +6046,33 @@ export default function DragonGardenQuest() {
     // action as the big button. doAction() already no-ops when nothing is
     // in range.
     const tap = { t: 0, x: 0, y: 0, moved: true };
+    // press-and-hold on a regrowing plant: buy the wait down with XP.
+    // Armed on pointer-down, fills over ~0.9s, cancelled by lift or drag.
+    let rushHold = null; // { idx, t0 }
     const onTapDown = (e) => {
       tap.t = performance.now(); tap.x = e.clientX; tap.y = e.clientY;
       tap.moved = false;
+      rushHold = null;
+      if (e.target && e.target.tagName === "CANVAS" && !shopOpenRef.current && !G.quizActive) {
+        const sx = e.clientX, sy = e.clientY;
+        const R = Math.max(34, Math.min(64, Math.min(W(), H()) * 0.085));
+        for (const n of plotNodes) {
+          if (n.special) continue;
+          const p2 = n.data();
+          if (!p2 || !p2.seed || p2.regrowAt == null || G.time >= p2.regrowAt) continue;
+          const s2 = toScreen(n.x, 0.9, n.z);
+          if (s2.behind) continue;
+          if (Math.hypot(sx - s2.x, sy - s2.y) < R * 1.3
+              && Math.hypot(playerPos.x - n.x, playerPos.z - n.z) <= TAP_REACH) {
+            rushHold = { idx: n.idx, t0: performance.now() };
+            break;
+          }
+        }
+      }
     };
     const onTapMove = (e) => {
       if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 18) tap.moved = true;
+      if (rushHold && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 26) rushHold = null;
     };
     // How far a tapped plot may be from the player. Generous enough to work
     // anywhere in your own garden / the quadrant you're standing in, but not
@@ -5867,6 +6091,7 @@ export default function DragonGardenQuest() {
     };
 
     const onTapUp = (e) => {
+      rushHold = null; // lifted before the hold completed — just a tap
       if (tap.moved || performance.now() - tap.t > 500) return;
       if (!(e.target && e.target.tagName === "CANVAS")) return; // UI buttons handle themselves
       if (G.quizActive) return;
@@ -5915,7 +6140,7 @@ export default function DragonGardenQuest() {
       // --- the one-time glowing pouch on the town road ---
       if (goldBag && !G.goldBagFound) {
         const gs = toScreen(goldBag.position.x, goldBag.position.y + 0.35, goldBag.position.z);
-        if (!gs.behind && Math.hypot(sx - gs.x, sy - gs.y) < R * 1.2
+        if (!gs.behind && Math.hypot(sx - gs.x, sy - gs.y) < R * 1.7
             && Math.hypot(playerPos.x - goldBag.position.x, playerPos.z - goldBag.position.z) <= TAP_REACH) {
           currentPrompt = { type: "goldbag" };
           doAction();
@@ -5998,7 +6223,14 @@ export default function DragonGardenQuest() {
       if (type === "plant") {
         if (G.activeKind === "fruit") { toast("That's food for Ember — pick a seed to plant.", "warn"); return; }
         const key = G.selectedSeed;
-        if (!G.inv.seeds[key] || G.inv.seeds[key] <= 0) { toast("You're out of seeds — buy more in town!", "warn"); return; }
+        if (!G.inv.seeds[key] || G.inv.seeds[key] <= 0) {
+          const anyOther = Object.keys(G.inv.seeds).some((k2) => k2 !== key && G.inv.seeds[k2] > 0 && !SEEDS[k2].glow === !SEEDS[key].glow);
+          toast(anyOther
+            ? `No ${SEEDS[key].name} seeds left — switch to another seed pouch!`
+            : "You're out of seeds — buy more in town!", "warn");
+          SFX.wrong();
+          return;
+        }
         if (SEEDS[key].glow && !node.special) { toast("✨ Glowberries only take root in the church's glowing plots!", "warn"); return; }
         if (node.special && !SEEDS[key].glow) { toast("These sacred plots are reserved for Glowberries ✨", "warn"); return; }
         if (node.special) { G.startQuiz(node.idx); return; }
@@ -6038,12 +6270,18 @@ export default function DragonGardenQuest() {
         }
         refreshPlotVisual(node);
       } else if (type === "dragon") {
+        // full belly (meter reads full) — no force-feeding, no wasted fruit
+        if (Math.round((Math.max(0, Math.min(100, G.hunger)) / 100) * 7) >= 7) {
+          SFX.wrong();
+          toast("Ember is full and happy — save your fruit for later!", "warn");
+          return;
+        }
         const order = ["strawberry", "blueberry", "sunfruit", "glowberry", "starberry", "dawnberry", "gloryberry"];
         // the fruit picked in the Home Inventory, else the first one in the basket
         const k = (G.activeKind === "fruit" && G.inv.fruit[G.selectedFruit] > 0)
           ? G.selectedFruit
           : order.find((f) => G.inv.fruit[f] > 0);
-        if (!k) { toast("Ember sniffs your empty pockets… bring fruit!", "warn"); return; }
+        if (!k) { SFX.wrong(); toast("All out of fruit. Grow your plants to harvest more.", "warn"); return; }
         G.inv.fruit[k]--;
         // lob it at his snout — the meal lands when the fruit does
         if (dragon) {
@@ -6062,9 +6300,9 @@ export default function DragonGardenQuest() {
         // no feeding toast at all — the throw, the munch and the gem meter
         // on his plaque already show what happened
         G.playerHopT = 0.32;
-        if (G.dragonState === "prowl") {
-          // fed mid-prowl — satisfied, he heads back to his cave (no toast:
-          // you can watch him turn around)
+        if (G.dragonState === "prowl" || G.dragonState === "rampage_out") {
+          // fed mid-prowl OR mid-charge — satisfied, he breaks off and heads
+          // back to his cave instead of eating the plant
           G.dragonState = "rampage_back";
         }
         if (G.onIntroEvent) G.onIntroEvent("feed");
@@ -6297,7 +6535,9 @@ export default function DragonGardenQuest() {
         if (G.map === "HOME" && dragon) { G.shakeT = 0.6; SFX.roar(); }
         return;
       }
-      G.hunger = 55; // he's about to eat — the meal is what refills him
+      // hunger stays EMPTY for the whole charge — the refill lands at the
+      // moment he actually eats the plant (the Math.max(…, 55) at arrival),
+      // so the meter tells the truth: starving on the way out, fed after.
       const victim = planted[Math.floor(Math.random() * planted.length)];
       if (G.map === "HOME" && dragon) {
         G.dragonState = "rampage_out";
@@ -6317,6 +6557,45 @@ export default function DragonGardenQuest() {
       if (!dragon) return;
       const u = dragon.userData;
       const t = G.time;
+
+      // ---- floating hunger meter ----
+      if (emberBar) {
+        emberBar.position.set(dragon.position.x, dragon.position.y + 3.1 + Math.sin(t * 1.5) * 0.05, dragon.position.z);
+        const pct = Math.max(0, Math.min(100, G.hunger));
+        const gems = Math.round((pct / 100) * 7);
+        const full = gems >= 7;
+        const key = gems + (full ? "F" : "");
+        const bd = emberBar.userData;
+        if (key !== bd.last) {
+          bd.last = key;
+          const c = bd.cv.getContext("2d");
+          c.clearRect(0, 0, 448, 112);
+          const rr = (x, y, w, h, r) => { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); };
+          rr(6, 24, 436, 64, 18);
+          c.fillStyle = "#2e1c0d"; c.fill();
+          c.lineWidth = 7; c.strokeStyle = "#150d05"; c.stroke();
+          for (let i = 0; i < 7; i++) {
+            const cx = 52 + i * 57.3, cy = 56;
+            const lit = i < gems;
+            c.save();
+            if (lit) { c.shadowColor = full ? "#4aff80" : "#ff5040"; c.shadowBlur = 10; }
+            c.beginPath();
+            c.moveTo(cx, cy - 23); c.lineTo(cx + 17, cy); c.lineTo(cx, cy + 23); c.lineTo(cx - 17, cy);
+            c.closePath();
+            c.fillStyle = lit ? (full ? "#35d55c" : "#e8402e") : "#180d04";
+            c.fill();
+            c.lineWidth = 5;
+            c.strokeStyle = lit ? (full ? "#0f6b28" : "#6e150c") : "#0d0702";
+            c.stroke();
+            c.restore();
+            if (lit) {
+              c.beginPath(); c.moveTo(cx - 5, cy - 13); c.lineTo(cx + 2, cy - 7); c.lineTo(cx - 6, cy - 3);
+              c.closePath(); c.fillStyle = "rgba(255,255,255,.34)"; c.fill();
+            }
+          }
+          bd.tex.needsUpdate = true;
+        }
+      }
 
       // mood with hysteresis: naps when full, wakes when hungry
       const prevMood = G.dragonMood;
@@ -6663,11 +6942,42 @@ export default function DragonGardenQuest() {
       }
 
       if (G.introTask && G.introTaskDone === G.introTask) {
+        // Don't jump straight to Eli's next line — hold a celebratory beat
+        // so the player sees their win land (and, for feed, watches the
+        // whole fruit lob + munch play out before the camera leaves).
         const INTRO_TASK_IDX = { plant: 2, harvest: 3, feed: 4 };
-        const nextPage = INTRO_TASK_IDX[G.introTask] + 1;
+        const done = G.introTask;
+        G.introCelebrate = done;
+        G.introCelebrateT = done === "feed" ? 3.6 : 2.6;
+        G.introCelebrateNext = INTRO_TASK_IDX[done] + 1;
         G.introTask = null; G.introTaskDone = null;
-        applyIntroPage(nextPage);
+        SFX.pass();
+        try {
+          if (done === "feed" && dragon) spawnBurst(dragon.position.x, dragon.position.z, 0xffd76a, 8, { glow: true, vy: 2.6, y0: 1.6, spread: 0.9 });
+          else { const n = plotNodes.find((nn) => nn.data().seed) || plotNodes[0]; if (n) spawnBurst(n.x, n.z, 0xff8a9a, 7, { glow: true, vy: 2.4, y0: 1.0, spread: 0.7 }); }
+        } catch (e) {}
         syncHud();
+      }
+      for (const w of shopWords) {
+        w.position.y = w.userData.baseY + Math.sin(G.time * 1.4 + w.userData.ph) * 0.12;
+        w.userData.halo.material.opacity = 0.26 + (Math.sin(G.time * 2.2 + w.userData.ph) + 1) * 0.07;
+      }
+      if (G.marketCueT > 0) {
+        G.marketCueT -= dt;
+        if (marketArrow) {
+          marketArrow.position.y = 2.1 + Math.sin(G.time * 2.4) * 0.18;
+          const pulse = 0.75 + Math.sin(G.time * 5) * 0.25;
+          marketArrow.children.forEach((m) => { if (m.material && m.material.emissiveIntensity != null) m.material.emissiveIntensity = pulse; });
+        }
+        if (G.marketCueT <= 0) G.clearMarketCue();
+      }
+      if (G.introCelebrateT > 0 && G.introActive) {
+        G.introCelebrateT -= dt;
+        if (G.introCelebrateT <= 0) {
+          G.introCelebrate = null;
+          applyIntroPage(G.introCelebrateNext);
+          syncHud();
+        }
       }
       // guide the eye: bobbing marker over the task target
       {
@@ -6750,9 +7060,49 @@ export default function DragonGardenQuest() {
         }
       }
 
+      // Auto-equip by location at home: inside the fence you're a planter
+      // (lowest seed you own), outside you're headed for Ember (lowest fruit).
+      if (G.map === "HOME" && !G.introActive) {
+        const FT2 = FENCE_TIERS[G.build.fenceTier];
+        const inside = playerPos.x > FT2.x1 - 0.4 && playerPos.x < FT2.x2 + 0.4
+                    && playerPos.z > FT2.z1 - 0.4 && playerPos.z < FT2.z2 + 0.4;
+        if (inside !== G.__fenceIn) {
+          G.__fenceIn = inside;
+          if (inside) {
+            G.selectSeed(["strawberry", "blueberry", "sunfruit"].find((k) => G.inv.seeds[k] > 0) || "strawberry");
+          } else {
+            G.selectFruit(["strawberry", "blueberry", "sunfruit", "glowberry", "starberry", "dawnberry", "gloryberry"].find((k) => G.inv.fruit[k] > 0) || "strawberry");
+          }
+          syncHud();
+        }
+      }
+
+      // hold-to-rush: complete the purchase when the hold fills
+      if (rushHold) {
+        const rn = plotNodes.find((n) => !n.special && n.idx === rushHold.idx && n.arr === G.homePlots);
+        const rp = rn && rn.data();
+        if (!rn || !rp || !rp.seed || rp.regrowAt == null || G.time >= rp.regrowAt) rushHold = null;
+        else if ((performance.now() - rushHold.t0) / 1000 >= 0.9) {
+          const left = Math.max(0, rp.regrowAt - G.time);
+          const cost = Math.max(1, Math.ceil(left / 10));
+          if (G.xp >= cost) {
+            G.xp -= cost;
+            rp.regrowAt = G.time; // ripens on this very tick
+            SFX.sparkle();
+            spawnBurst(rn.x, rn.z, 0xffd45e, 9, { glow: true, vy: 2.4, y0: 0.7 });
+            spawnFloatie(rn.x, rn.z, `-${cost} ✦`, 1.4);
+          } else {
+            SFX.wrong();
+            toast("Not enough XP to hurry the harvest.", "warn");
+          }
+          tap.moved = true; // eat the release so onTapUp doesn't double-act
+          rushHold = null;
+          syncHud();
+        }
+      }
       for (const node of plotNodes) {
         const p = node.data();
-        if (!p.seed) { if (node.regrowSprite) updateRegrowBadge(node, p, -1); continue; }
+        if (!p.seed) { if (node.regrowSprite) updateRegrowBadge(node, p, -1); if (node.growRing) updateGrowRing(node, p, -1); continue; }
         if (node.special) {
           const age = G.time - p.plantedAt;
           const st = age >= 300 ? 3 : age >= 150 ? 2 : age >= 60 ? 1 : 0;
@@ -6771,16 +7121,23 @@ export default function DragonGardenQuest() {
           if (stage !== node.stage) refreshPlotVisual(node);
           if (node.plant && stage === 2) node.plant.rotation.y = Math.sin(G.time * 1.5 + node.idx) * 0.08;
           updateRegrowBadge(node, p, stage);
+          updateGrowRing(node, p, stage);
         }
       }
 
       // The title splash is a "paused" world: Ember neither gets hungrier nor
-      // raids the garden while the player is still in the menu.
-      if (!G.splashActive) {
+      // raids the garden while the player is still in the menu. Eli's
+      // onboarding (home intro or church welcome) pauses the clock too —
+      // a new player shouldn't be punished for listening.
+      if (!G.splashActive && !G.introActive && G.churchIntroPage == null) {
         G.hunger = Math.max(0, G.hunger - G.hungerRate * dt);
         if (G.hungerAlertT > 0) G.hungerAlertT -= dt;
         if (G.emberHappyT > 0) G.emberHappyT = Math.max(0, G.emberHappyT - dt);
-        if (G.hunger <= 0 && G.dragonState === "idle") triggerRampage();
+        if (G.hunger <= 0 && G.dragonState === "idle") {
+          // let the EMPTY meter register before he charges — no surprise rampages
+          G.zeroHoldT = (G.zeroHoldT || 0) + dt;
+          if (G.zeroHoldT > 0.6) { G.zeroHoldT = 0; triggerRampage(); }
+        } else if (G.hunger > 0) G.zeroHoldT = 0;
       }
       updateDragon(dt);
       // snoring fades in as you approach a sleeping Ember (like the fountain)
@@ -7086,21 +7443,28 @@ export default function DragonGardenQuest() {
         camTarget = new THREE.Vector3(fx + 2.0, 2.8, fz + 4.2);
         lookX = gardener.position.x; lookZ = gardener.position.z; lookY = 1.05;
       } else if (G.introFocus === "cave") {
-        camTarget = new THREE.Vector3(playerPos.x * 0.3 + 2, 5.6, -2.2);
-        lookX = 0; lookZ = -11.5; lookY = 1.6;
+        // pulled back + aimed at the ground in front of the cave, so Ember
+        // lands in the upper band, clear of the (taller) dialogue box
+        camTarget = new THREE.Vector3(playerPos.x * 0.3 + 2, 6.6, 0.8);
+        lookX = 0; lookZ = -9.0; lookY = 0.1;
       } else if (G.introFocus === "bridge") {
-        camTarget = new THREE.Vector3(-6.2, 5.2, 8.8);
-        lookX = -13.2; lookZ = 3; lookY = 0.7;
+        camTarget = new THREE.Vector3(-6.2, 5.4, 9.2);
+        lookX = -13.2; lookZ = 3; lookY = 0.2;
       } else if (G.introFocus === "eli" && gardener) {
         const imx = (playerPos.x + gardener.position.x) / 2;
         const imz = (playerPos.z + gardener.position.z) / 2;
-        camTarget = new THREE.Vector3(imx + 1.4, 3.1, imz + 4.2);
-        lookX = gardener.position.x; lookZ = gardener.position.z; lookY = 1.0;
+        camTarget = new THREE.Vector3(imx + 1.4, 3.3, imz + 4.6);
+        lookX = gardener.position.x; lookZ = gardener.position.z; lookY = 0.45;
       } else if (G.counterActive && counterKeeper) {
         const cmx = (playerPos.x + counterKeeper.x) / 2;
         const cmz = (playerPos.z + counterKeeper.z) / 2;
         camTarget = new THREE.Vector3(cmx + 1.5, 3.3, cmz + 4.4);
         lookX = counterKeeper.x; lookZ = counterKeeper.z; lookY = 1.05;
+      } else if (G.marketCueT > 0 && G.map === "HOME") {
+        // Berry Market cue: the floating arrow dead-centre, road running
+        // off toward the town exit on the right
+        camTarget = new THREE.Vector3(10.5, 4.8, 10.2);
+        lookX = 13.5; lookZ = 3.4; lookY = 1.1;
       } else if (G.styleActive) {
         // Wardrobe framing: the sheet is a bottom panel covering the lower
         // ~45%, so pull back far enough to fit the WHOLE body (boots included)
@@ -7242,7 +7606,11 @@ export default function DragonGardenQuest() {
       for (let fi = floaties.length - 1; fi >= 0; fi--) {
         const fl = floaties[fi];
         fl.ttl -= dt;
-        fl.sp.position.y += dt * 0.75;
+        fl.age = (fl.age || 0) + dt;
+        // overshoot pop: 0 -> 1.18 -> 1.0 over the first ~0.28s
+        const k = fl.age < 0.16 ? (fl.age / 0.16) * 1.18 : fl.age < 0.3 ? 1.18 - ((fl.age - 0.16) / 0.14) * 0.18 : 1;
+        if (fl.bw) fl.sp.scale.set(fl.bw * k, fl.bh * k, 1);
+        fl.sp.position.y += dt * (fl.age < 0.3 ? 0.25 : 0.8);
         fl.sp.material.opacity = Math.min(1, fl.ttl / 0.5);
         if (fl.ttl <= 0) {
           worldGroup.remove(fl.sp);
@@ -7333,6 +7701,12 @@ export default function DragonGardenQuest() {
   const shopOpenRef = useRef(false);
   useEffect(() => { shopOpenRef.current = !started || !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!redBag || !!seedGift || churchIntro != null || board; }, [started, shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, redBag, seedGift, churchIntro, board]);
   useEffect(() => { const g = gameRef.current; if (g) g.styleActive = shop === "style"; }, [shop]);
+  // pre-warm the big painted shop boards so their first open doesn't flash
+  useEffect(() => {
+    if (!started) return;
+    ["rosie-rare-v3.png", "toolworks-v2.png", "market-v2.png", "market-sell-bar.png"]
+      .forEach((f) => { const im = new Image(); im.src = "/ui/kit/" + f; });
+  }, [started]);
   // Eli talking (home intro, community-garden welcome, or his quiz) quiets the
   // music for as long as the conversation is on screen.
   const eliTalking = introDlg || churchIntro != null || !!quiz || !!counterTalk;
@@ -7423,7 +7797,7 @@ export default function DragonGardenQuest() {
   const inCommunity = hud.map === "CHURCH";
   const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", bridge: "🌉", goldbag: "💰", redbag: "🎒", glow: "✨" };
   // the painted market grid has six cells (gloryberry has no cell yet)
-  const MARKET_KEYS = ["strawberry", "blueberry", "sunfruit", "glowberry", "starberry", "dawnberry"];
+  const MARKET_KEYS = ["strawberry", "blueberry", "sunfruit"]; // the painted board sells home fruit only
   const marketTotal = seedKeys.reduce((t, k) => t + hud.inv.fruit[k] * SEEDS[k].sell, 0);
   // Berry Market sell selection: fruit key -> qty to sell. Defaults to the
   // full basket when the market opens (one tap still sells everything);
@@ -7578,15 +7952,11 @@ export default function DragonGardenQuest() {
         minHeight: 120 * HUD_S, display: "flex", alignItems: "center",
         padding: `0 ${14 * HUD_S}px`, boxSizing: "border-box", pointerEvents: "none",
       }}>
-        <SquareButton
-          size={76 * HUD_S}
-          onClick={closeGame}
-          style={{ position: "absolute", left: 14 * HUD_S, top: "50%", transform: "translateY(-50%)", pointerEvents: "auto" }}
-        />
-        {/* gold + XP, centred on the SCREEN (absolute, so the differing widths
-            of the X and the medallion can't bias the midpoint). The players-
-            today plate was retired here; the League board is still reachable
-            from the Gardener's Ledger via the medallion. */}
+        {/* gold + XP, centred on the SCREEN (absolute, so the medallion's
+            width can't bias the midpoint). The close X was retired from
+            both this header and the splash; the players-today plate was
+            retired earlier. The League board is still reachable from the
+            Gardener's Ledger via the medallion. */}
         <div style={{
           position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)",
           display: "flex", alignItems: "center", gap: 10 * HUD_S, whiteSpace: "nowrap",
@@ -7646,7 +8016,7 @@ export default function DragonGardenQuest() {
         top: `calc(${(hud.showHunger ? 272 : 126) * HUD_S}px + env(safe-area-inset-top, 0px))`,
         left: "50%", transform: "translateX(-50%)",
         display: "flex", flexDirection: "column", gap: 7, alignItems: "center",
-        pointerEvents: "none", width: "92%", maxWidth: 430, zIndex: 17,
+        pointerEvents: "none", width: "92%", maxWidth: 430, zIndex: shop ? 31 : 17,
         transition: "top .28s ease",
       }}>
         {started && toasts.map((t) => (
@@ -7732,43 +8102,60 @@ export default function DragonGardenQuest() {
           alignItems: "center", justifyContent: "center", padding: 12,
           animation: "slideIn 0.2s", pointerEvents: "none",
         }}>
-          {inCommunity ? (
-            <CommunityInventory
-              width={Math.min(330, (typeof window !== "undefined" ? window.innerWidth : 360) * 0.86)}
-              style={{ pointerEvents: "auto" }}
-              onClose={() => setTray(false)}
-              items={RARE_CROPS.map((k) => ({
-                crop: k,
-                count: hud.inv.seeds[k],
-                selected: hud.activeKind === "seed" && hud.selectedSeed === k,
-                onClick: () => { G?.selectSeed(k); setTray(false); },
-              }))}
-            />
-          ) : (
-          <InventorySheet
-            width={Math.min(400, (typeof window !== "undefined" ? window.innerWidth : 400) * 0.92)}
+          <InventoryBoard
+            width={Math.min(360, (typeof window !== "undefined" ? window.innerWidth : 360) * 0.88)}
             style={{ pointerEvents: "auto" }}
-            /* tile art exists for these three crops; each tile is its own
-               tap target and carries its own painted name */
-            seeds={["strawberry", "blueberry", "sunfruit"].map((k) => ({
-              crop: k,
-              count: hud.inv.seeds[k],
+            mode={inCommunity ? "community" : "home"}
+            seeds={HOME_CROPS.map((k) => ({
+              key: k, art: "seed", count: hud.inv.seeds[k],
               selected: hud.activeKind === "seed" && hud.selectedSeed === k,
               onClick: () => { G?.selectSeed(k); setTray(false); },
             }))}
-            basket={["strawberry", "blueberry", "sunfruit"].map((k) => ({
-              crop: k,
-              count: hud.inv.fruit[k],
+            basket={HOME_CROPS.map((k) => ({
+              key: k, art: "basket", count: hud.inv.fruit[k],
               selected: hud.activeKind === "fruit" && hud.selectedFruit === k,
               onClick: () => { G?.selectFruit(k); setTray(false); },
             }))}
+            rare={RARE_CROPS.map((k) => ({
+              key: k, art: "seed", count: hud.inv.seeds[k],
+              selected: hud.activeKind === "seed" && hud.selectedSeed === k,
+              onClick: () => { G?.selectSeed(k); setTray(false); },
+            }))}
+            onLocked={() => {
+              gameRef.current?.SFX?.wrong?.();
+              setToolNote(inCommunity
+                ? { title: "COMMUNITY GARDEN", body: "Only rare seeds take root here — your regular seeds and basket are for the home garden." }
+                : { title: "🔒 RARE SEEDS", body: "Rare seeds are reserved for the community garden." });
+            }}
           />
-          )}
         </div>
       )}
 
       {/* Bottom-right: the ACTIVE ITEM. Shows the equipped seed's inventory
           tile; tapping opens the Home Inventory to pick a different one. */}
+      {/* mute toggle — bottom-left, wood chip in the kit language */}
+      {started && !quiz && shop !== "style" && !buildMode && !introDlg && (
+        <div
+          role="button"
+          onClick={() => { const m = gameRef.current?.toggleMute?.(); setMuted(!!m); }}
+          style={{
+            position: "absolute", left: 12, bottom: "calc(12px + env(safe-area-inset-bottom, 0px))",
+            width: 54, height: 54, zIndex: 14, cursor: "pointer",
+            WebkitTapHighlightColor: "transparent", userSelect: "none",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 12,
+            background: "linear-gradient(180deg, #8a6440, #6b4626 62%, #533618)",
+            border: "2px solid #4a2f16",
+            boxShadow: "inset 0 2px 0 rgba(255,226,180,.22), 0 3px 6px rgba(30,20,10,.45)",
+            opacity: muted ? 0.82 : 1,
+          }}
+        >
+          <span style={{ fontSize: 26, lineHeight: 1, filter: "drop-shadow(0 1px 2px rgba(20,12,4,.55))" }}>
+            {muted ? "\u{1F507}" : "\u{1F50A}"}
+          </span>
+        </div>
+      )}
+
       {started && !quiz && shop !== "style" && !buildMode && !introDlg && (
         <div
           role="button"
@@ -7816,35 +8203,45 @@ export default function DragonGardenQuest() {
 
       {/* shops */}
       {shop && shop !== "style" && (
-        <div onClick={() => setShop(null)} style={{ position: "absolute", inset: 0, background: "rgba(16,58,102,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20 }}>
-          <div onClick={(e) => e.stopPropagation()} style={(shop === "profile" || shop === "seeds" || shop === "market")
+        <div onClick={() => setShop(null)} style={{ position: "absolute", inset: 0, background: "rgba(16,58,102,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 29 }}>
+          <div onClick={(e) => e.stopPropagation()} style={(shop === "profile" || shop === "seeds" || shop === "market" || shop === "tools")
             ? { width: "auto", maxWidth: "93vw", maxHeight: "92vh" }
             : { ...S.panel, background: WOOD_TEX, padding: 22, width: 348, maxWidth: "93vw", position: "relative", maxHeight: "84vh", overflowY: "auto" }}>
-            {shop !== "profile" && shop !== "seeds" && shop !== "market" && <Corners />}
+            {shop !== "profile" && shop !== "seeds" && shop !== "market" && shop !== "tools" && <Corners />}
             {shop === "seeds" ? (
               <SeedShop
                 member={!!hud.youth}
-                width={Math.min(304, (typeof window !== "undefined" ? window.innerWidth : 360) * 0.79)}
+                rows={Object.keys(SEEDS).map((k) => ({
+                  kind: SEEDS[k].currency === "gold" ? "gold" : "xp",
+                  cost: SEEDS[k].cost,
+                  afford: SEEDS[k].currency === "gold" ? hud.gold >= SEEDS[k].cost : hud.xp >= SEEDS[k].cost,
+                }))}
+                width={Math.min(324, (typeof window !== "undefined" ? window.innerWidth : 360) * 0.82)}
                 onClose={() => setShop(null)}
+                onExplain={(i, why) => {
+                  const k = seedKeys[i];
+                  gameRef.current?.SFX?.wrong?.();
+                  if (why === "locked") {
+                    setToolNote({ title: "🔒 RARE SEEDS", body: "Rare seeds unlock when you join a youth group in the YGTeeV app. Your whole group grows together in the community garden." });
+                  } else {
+                    const cur = SEEDS[k].currency === "gold" ? "gold" : "XP";
+                    setToolNote({ title: "NOT ENOUGH " + cur.toUpperCase(), body: `${SEEDS[k].name} seeds cost ${SEEDS[k].cost} ${cur}. ${cur === "gold" ? "Sell fruit at the Berry Market to earn gold." : "Harvest and sell fruit to earn more XP."}` });
+                  }
+                }}
                 onBuy={(i) => {
                   const k = seedKeys[i];
                   if (!k) return false;
-                  // gold-priced seeds are youth-group only
-                  if (SEEDS[k].currency === "gold" && !hud.youth) {
-                    gameRef.current?.SFX?.wrong?.();
-                    setLockedSeed(true);
-                    return false;
-                  }
                   const had = G ? G.inv.seeds[k] : 0;
                   G?.openShopBuy(k);
                   const got = G ? G.inv.seeds[k] : 0;
                   if (got > had) {
-                    // only equip crops that HAVE a painted tile — otherwise the
-                    // selector would fall back to a blank placeholder box
                     G?.selectSeed(k);
+                    setAcquired({ icon: FRUIT_EMOJI[k] || "🌱", name: `${SEEDS[k].name} Seed` });
+                    if (acquiredTimer.current) clearTimeout(acquiredTimer.current);
+                    acquiredTimer.current = setTimeout(() => setAcquired(null), 1700);
                     return true;
                   }
-                  return false;        // couldn't afford it — no press flash
+                  return false;
                 }}
               />
             ) : shop === "market" ? (
@@ -7864,50 +8261,45 @@ export default function DragonGardenQuest() {
                 onClose={() => setShop(null)}
               />
             ) : shop === "tools" ? (
-              <>
-                <Ribbon>GRIMBLE'S TOOLWORKS</Ribbon>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px" }}>
-                  <div style={{ width: 44, height: 44, flex: "0 0 44px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #9a82d8, #4a3a7a)", border: `2px solid ${GOLD}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, boxShadow: "0 3px 8px rgba(0,0,0,0.5)" }}>🧔🏽</div>
-                  <em style={{ fontSize: 12, opacity: 0.85, lineHeight: 1.45 }}>"Land and iron, friend — paid in sweat and experience. Yer gold's no good here."</em>
-                </div>
-                {(() => {
-                  const rows = [
-                    { icon: "⛏️", name: "Garden Hoe", tier: "TOOL", c: "#c9a45a", desc: "Unlocks Build Mode at home", cost: 500, owned: hud.build.hoe, act: () => gameRef.current?.buyHoe() },
-                    { icon: "🧱", name: "Plot Kit", tier: "SUPPLIES", c: "#9ab87a", desc: `Placed in Build Mode · next costs ✨${hud.build.kitCost}`, cost: null },
-                    { icon: "📜", name: "Fence Deed I", tier: "LAND", c: "#6a9ad8", desc: "Grows the fence · +11 plot spaces", cost: 2000, owned: hud.build.fenceTier >= 1, locked: false, act: () => gameRef.current?.buyDeed() },
-                    { icon: "📜", name: "Fence Deed II", tier: "LAND", c: "#e0a03a", desc: "Grand garden · +15 more spaces", cost: 4500, owned: hud.build.fenceTier >= 2, locked: hud.build.fenceTier < 1, act: () => gameRef.current?.buyDeed() },
-                  ];
-                  return rows.map((r) => {
-                    const afford = r.cost != null && hud.xp >= r.cost;
-                    return (
-                      <div key={r.name} style={{
-                        display: "flex", alignItems: "center", gap: 9, marginBottom: 8, padding: "9px 10px",
-                        borderRadius: 12, border: `1.5px solid ${r.c}`,
-                        background: "linear-gradient(180deg, rgba(255,255,255,0.9), rgba(186,222,246,0.65)), #f8fcff",
-                        opacity: r.locked ? 0.55 : 1,
-                      }}>
-                        <div style={{ width: 38, height: 38, flex: "0 0 38px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #f2fafe, #b8dcf2)", border: `2px solid ${r.c}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19 }}>{r.icon}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 800, fontSize: 13, color: r.c }}>{r.name} <span style={{ fontSize: 8.5, letterSpacing: 1.2, opacity: 0.8 }}>{r.tier}</span></div>
-                          <div style={{ fontSize: 10.5, opacity: 0.75 }}>{r.desc}</div>
-                        </div>
-                        {r.cost == null ? null : r.owned ? (
-                          <b style={{ color: "#8ee07a", fontSize: 12 }}>OWNED ✔</b>
-                        ) : (
-                          <button onClick={r.act} disabled={r.locked} style={{
-                            padding: "7px 11px", borderRadius: 9, border: "1px solid #155a9c",
-                            fontFamily: "inherit", fontWeight: 800, fontSize: 12.5,
-                            display: "flex", alignItems: "center", gap: 4,
-                            cursor: r.locked || !afford ? "default" : "pointer",
-                            background: r.locked || !afford ? "#d7e5ef" : "linear-gradient(180deg,#cfd8ff,#7a8ad8)",
-                            color: r.locked || !afford ? "#8fa3b4" : "#173a63",
-                          }}>{(r.locked || !afford) && <span>🔒</span>}✨{r.cost}</button>
-                        )}
-                      </div>
-                    );
-                  });
-                })()}
-              </>
+              <Toolworks
+                width={Math.min(324, (typeof window !== "undefined" ? window.innerWidth : 360) * 0.82)}
+                xp={hud.xp}
+                items={[
+                  { key: "hoe", icon: "⛏️", name: "Garden Hoe", tier: "TOOL",
+                    desc: "Unlocks Build Mode at your home garden.",
+                    cost: 500, kind: hud.build.hoe ? "owned" : "buy" },
+                  { key: "kit", icon: "🧱", name: "Plot Kit", tier: "SUPPLIES",
+                    desc: "A brand-new garden bed — buy & place it in Build Mode at home.",
+                    cost: hud.build.kitCost, kind: "info" },
+                  { key: "deed1", icon: "📜", name: "Fence Deed I", tier: "LAND",
+                    desc: "Grows the fence — opens 11 more plot spaces.",
+                    cost: 2000, kind: hud.build.fenceTier >= 1 ? "owned" : "buy" },
+                  { key: "deed2", icon: "📜", name: "Fence Deed II", tier: "LAND",
+                    desc: "The grand garden — 15 more spaces.",
+                    cost: 4500, kind: hud.build.fenceTier >= 2 ? "owned" : hud.build.fenceTier < 1 ? "locked" : "buy" },
+                ]}
+                onBuy={(k) => {
+                  const G2 = gameRef.current;
+                  const meta = { hoe: ["⛏️", "Garden Hoe"], deed1: ["📜", "Fence Deed I"], deed2: ["📜", "Fence Deed II"] }[k];
+                  const ok = k === "hoe" ? G2?.buyHoe() : G2?.buyDeed();
+                  if (ok && meta) {
+                    setAcquired({ icon: meta[0], name: meta[1] });
+                    if (acquiredTimer.current) clearTimeout(acquiredTimer.current);
+                    acquiredTimer.current = setTimeout(() => setAcquired(null), 1700);
+                  }
+                }}
+                onExplain={(k) => {
+                  const notes = {
+                    "kit": { title: "🧱 PLOT KIT", body: "Plot Kits are bought where you place them. Get the Garden Hoe, tap the Build button at your home garden, and set a new bed on any glowing square. Each new bed costs a little more than the last." },
+                    "deed2": { title: "🔒 LOCKED", body: "Grimble grows a fence one deed at a time — buy Fence Deed I before Fence Deed II." },
+                    "hoe:poor": { title: "NOT ENOUGH XP", body: "The Garden Hoe costs 500 XP. Harvest fruit and sell it at the Berry Market to earn more." },
+                    "deed1:poor": { title: "NOT ENOUGH XP", body: "Fence Deed I costs 2000 XP. Harvest fruit and sell it at the Berry Market to earn more." },
+                    "deed2:poor": { title: "NOT ENOUGH XP", body: "Fence Deed II costs 4500 XP. Harvest fruit and sell it at the Berry Market to earn more." },
+                  };
+                  if (notes[k]) setToolNote(notes[k]);
+                }}
+                onClose={() => setShop(null)}
+              />
             ) : (
               <>
                 <PlayerProfile
@@ -7919,15 +8311,23 @@ export default function DragonGardenQuest() {
                   gold={hud.gold}
                   xp={hud.xp}
                   onAction={(k) => {
+                    // onboarding only — quiz/shop chatter has its own flow
+                    if (k !== "close" && (introDlg || churchIntro != null)) {
+                      setLockNote(true);
+                      if (lockNoteTimer.current) clearTimeout(lockNoteTimer.current);
+                      lockNoteTimer.current = setTimeout(() => setLockNote(false), 2600);
+                      return;
+                    }
                     if (k === "customize") setShop("style");
                     else if (k === "league") { setShop(null); setBoard(true); }
                     else if (k === "replay") { const ok = gameRef.current?.replayIntro(); if (ok) setShop(null); }
-                    else if (k === "close") setShop(null);
+                    else if (k === "close") { setLockNote(false); setShop(null); }
                   }}
+                  onInfo={() => setAlmanac(true)}
                 />
               </>
             )}
-            {shop !== "seeds" && shop !== "market" && shop !== "profile" && <button onClick={() => setShop(null)} style={shop === "profile"
+            {shop !== "seeds" && shop !== "market" && shop !== "profile" && shop !== "tools" && <button onClick={() => setShop(null)} style={shop === "profile"
               ? { width: "100%", marginTop: 10, border: "1px solid #4a3218", borderRadius: 9, padding: "9px", background: "linear-gradient(180deg,#9a7148,#74522f)", color: "#f7ead1", cursor: "pointer", fontFamily: T_UI.font, fontWeight: 700, textShadow: "0 1px 2px rgba(30,15,4,.7)" }
               : { width: "100%", marginTop: 10, border: `1px solid ${GOLD}`, borderRadius: 9, padding: "8px", background: "transparent", color: PARCH, cursor: "pointer", fontFamily: "inherit" }}>
               Close
@@ -7938,49 +8338,64 @@ export default function DragonGardenQuest() {
 
       {/* build mode entry (needs the hoe) */}
       {started && !quiz && !shop && !buildMode && hud.map === "HOME" && hud.build.hoe && (
-        <button onClick={() => setBuildMode(true)} style={{
-          ...S.panel, position: "absolute", right: 14, bottom: "calc(96px + env(safe-area-inset-bottom, 0px))", width: 54, height: 54,
-          borderRadius: 16, fontSize: 24, cursor: "pointer", padding: 0,
-        }}>🔨</button>
+        <div
+          role="button"
+          onClick={() => setBuildMode(true)}
+          style={{
+            position: "absolute", right: 14, bottom: "calc(96px + env(safe-area-inset-bottom, 0px))",
+            width: 54, height: 54, zIndex: 14, cursor: "pointer",
+            WebkitTapHighlightColor: "transparent", userSelect: "none",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 12,
+            background: "linear-gradient(180deg, #8a6440, #6b4626 62%, #533618)",
+            border: "2px solid #4a2f16",
+            boxShadow: "inset 0 2px 0 rgba(255,226,180,.22), 0 3px 6px rgba(30,20,10,.45)",
+          }}
+        >
+          <span style={{ fontSize: 26, lineHeight: 1, filter: "drop-shadow(0 1px 2px rgba(20,12,4,.55))" }}>🔨</span>
+        </div>
       )}
 
-      {/* build mode control bar */}
+      {/* build mode control bar — carved stone, wood buttons */}
       {buildMode && (
-        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: "calc(14px + env(safe-area-inset-bottom, 0px))", width: "min(520px, 95vw)", zIndex: 24 }}>
-          <div style={{ ...S.panel, background: WOOD_TEX, position: "relative", padding: "11px 13px" }}>
-            <Corners />
+        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: "calc(14px + env(safe-area-inset-bottom, 0px))", width: "min(520px, 95vw)", zIndex: 24, fontFamily: T_UI.font }}>
+          <StonePanel edge={24} corner={50}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
               <div style={{ minWidth: 130 }}>
-                <b style={{ ...S.goldText, fontSize: 13.5, letterSpacing: 1 }}>🔨 BUILD MODE</b>
-                <div style={{ fontSize: 10.5, opacity: 0.75, marginTop: 2 }}>
+                <b style={{ color: "#7a4a22", fontSize: 14.5, letterSpacing: 1.4, fontWeight: 800 }}>🔨 BUILD MODE</b>
+                <div style={{ fontSize: 12.5, color: "#4a3520", fontWeight: 600, marginTop: 2 }}>
                   {hud.build.canPlace ? "Place a plot on the glowing square" : "Walk to a glowing square…"}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
                 <button onClick={() => gameRef.current?.placePlot()} style={{
-                  padding: "9px 14px", borderRadius: 10, border: "1px solid #155a9c",
-                  fontFamily: "inherit", fontWeight: 800, fontSize: 13.5,
-                  display: "flex", alignItems: "center", gap: 5,
-                  cursor: hud.build.canPlace ? "pointer" : "default",
-                  background: hud.build.canPlace ? "linear-gradient(180deg,#8ee07a,#3fa04f)" : "#d7e5ef",
-                  color: hud.build.canPlace ? "#0e2a12" : "#8fa3b4",
-                  boxShadow: hud.build.canPlace ? "inset 0 1px 2px rgba(255,255,255,0.4), 0 3px 6px rgba(0,0,0,0.4)" : "none",
-                }}>✔ Plot ✨{hud.build.kitCost}</button>
+                  padding: "10px 15px", borderRadius: 10, fontFamily: "inherit", fontWeight: 800, fontSize: 13.5,
+                  display: "flex", alignItems: "center", gap: 5, cursor: hud.build.canPlace ? "pointer" : "default",
+                  background: hud.build.canPlace ? "linear-gradient(180deg, #8ee07a, #3fa04f 70%, #2d7a3a)" : "rgba(90,60,25,.15)",
+                  border: hud.build.canPlace ? "2px solid #1d5a2a" : "2px solid #8d8073",
+                  color: hud.build.canPlace ? "#0e2a12" : "#8a7d68",
+                  boxShadow: hud.build.canPlace ? "inset 0 2px 0 rgba(255,255,255,.35), 0 3px 6px rgba(30,20,10,.4)" : "none",
+                  textShadow: hud.build.canPlace ? "0 1px 0 rgba(190,255,170,.5)" : "none",
+                }}>✔ Plot ✦{hud.build.kitCost}</button>
                 {hud.build.deedCost && (
                   <button onClick={() => gameRef.current?.buyDeed()} style={{
-                    padding: "9px 12px", borderRadius: 10, border: `1px solid ${GOLD}`,
-                    fontFamily: "inherit", fontWeight: 700, fontSize: 12.5,
-                    background: WOOD, color: PARCH, cursor: "pointer",
-                  }}>🚧 Expand ✨{hud.build.deedCost}</button>
+                    padding: "10px 13px", borderRadius: 10, fontFamily: "inherit", fontWeight: 800, fontSize: 12.5,
+                    background: "linear-gradient(180deg, #a8794a, #7d5330 62%, #63401f)",
+                    border: "2px solid #4a2f16", color: "#ffe9b8", cursor: "pointer",
+                    textShadow: "0 1px 2px rgba(35,18,4,.75)",
+                    boxShadow: "inset 0 2px 0 rgba(255,226,180,.25), 0 3px 6px rgba(30,20,10,.4)",
+                  }}>🚧 Expand ✦{hud.build.deedCost}</button>
                 )}
                 <button onClick={() => setBuildMode(false)} style={{
-                  padding: "9px 13px", borderRadius: 10, border: `1px solid ${GOLD}`,
-                  fontFamily: "inherit", fontWeight: 700, fontSize: 13,
-                  background: "transparent", color: PARCH, cursor: "pointer",
+                  padding: "10px 14px", borderRadius: 10, fontFamily: "inherit", fontWeight: 800, fontSize: 13,
+                  background: "linear-gradient(180deg, #b6ab99, #968a78 62%, #7b7060)",
+                  border: "2px solid #6a6154", color: "#fff", cursor: "pointer",
+                  textShadow: "0 1px 2px rgba(35,22,8,.6)",
+                  boxShadow: "inset 0 2px 0 rgba(255,255,255,.25), 0 3px 6px rgba(30,20,10,.4)",
                 }}>Done</button>
               </div>
             </div>
-          </div>
+          </StonePanel>
         </div>
       )}
 
@@ -8013,43 +8428,159 @@ export default function DragonGardenQuest() {
         const R = RARITY[seedGift.key] || { c: "#9ab87a", tier: "Seed" };
         const FRUIT = { strawberry: "🍓", blueberry: "🫐", sunfruit: "🍑", glowberry: "✨", starberry: "⭐", dawnberry: "🌅", gloryberry: "👑" };
         return (
-          <div style={{ position: "absolute", inset: 0, zIndex: 36, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(10,7,18,0.5)" }}>
-            <div style={{ ...S.panel, border: `2.5px solid ${R.c}`, padding: "20px 28px 18px", textAlign: "center", boxShadow: `0 0 34px ${R.c}88, 0 14px 30px rgba(23,73,126,0.4)`, position: "relative", overflow: "hidden", width: "min(320px, 86vw)", animation: "giftPop 0.4s cubic-bezier(0.3, 1.4, 0.5, 1) forwards" }}>
-              <div style={{ position: "absolute", left: "50%", top: 78, width: 210, height: 210, marginLeft: -105, marginTop: -105, background: `conic-gradient(${R.c}33 0deg, transparent 24deg, ${R.c}33 48deg, transparent 72deg, ${R.c}33 96deg, transparent 120deg, ${R.c}33 144deg, transparent 168deg, ${R.c}33 192deg, transparent 216deg, ${R.c}33 240deg, transparent 264deg, ${R.c}33 288deg, transparent 312deg, ${R.c}33 336deg, transparent 360deg)`, animation: "rayspin 6s linear infinite", borderRadius: "50%" }} />
-              <div style={{ position: "relative" }}>
-                <div style={{ fontSize: 10, letterSpacing: 3, color: "#f2971f", fontWeight: 800, marginBottom: 10 }}>A GIFT FROM ELI</div>
-                <div style={{ width: 84, height: 84, margin: "0 auto 10px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #ffffff, #cfe9fa)", border: `3px solid ${R.c}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 46, boxShadow: `0 0 18px ${R.c}77` }}>{FRUIT[seedGift.key] || "🌱"}</div>
-                <div style={{ fontSize: 17.5, fontWeight: 800, color: R.t || R.c }}>{SEEDS[seedGift.key].name} Seed{seedGift.n > 1 ? "s" : ""} ×{seedGift.n}</div>
-                <div style={{ fontSize: 9.5, letterSpacing: 1.6, opacity: 0.8, color: R.t || R.c, marginBottom: 14 }}>{R.tier.toUpperCase()}</div>
-                <button onClick={() => { gameRef.current?.claimIntroGift(seedGift.page); setSeedGift(null); gameRef.current?.introAdvance(); }}
-                  style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 14, width: "100%", letterSpacing: 0.5, fontWeight: 800 }}>
-                  ＋ ADD TO POCKET
-                </button>
-              </div>
+          <div style={{ position: "absolute", inset: 0, zIndex: 36, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(12,16,10,0.5)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)" }}>
+            <div style={{ width: "min(320px, 86vw)", animation: "giftPop 0.4s cubic-bezier(0.3, 1.4, 0.5, 1) forwards", fontFamily: T_UI.font }}>
+              <StonePanel edge={26} corner={54}>
+                <div style={{ textAlign: "center", position: "relative", padding: "4px 2px 2px" }}>
+                  <div style={{ position: "relative" }}>
+                    {/* carved title on a small wood plank */}
+                    <div style={{ display: "inline-block", padding: "5px 16px 6px", borderRadius: 8, background: "linear-gradient(180deg, #8a6440, #6b4626 62%, #533618)", border: "2px solid #4a2f16", boxShadow: "inset 0 2px 0 rgba(255,226,180,.22), 0 2px 4px rgba(30,20,10,.4)", fontSize: 11, letterSpacing: 3, color: "#ffe9b8", fontWeight: 800, textShadow: "0 1px 2px rgba(35,18,4,.75)", marginBottom: 12 }}>A GIFT FROM ELI</div>
+                    {/* seed disc: stone rim, gold collar — rarity glows around it */}
+                    <div style={{ width: 84, height: 84, boxSizing: "border-box", margin: "0 auto 10px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #fdf6e4, #d9c6a4)", border: "4px solid #f0c261", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 44, boxShadow: `0 0 22px ${R.c}88, inset 0 3px 5px rgba(255,255,255,.5), inset 0 -4px 6px rgba(90,60,25,.3)` }}>{FRUIT[seedGift.key] || "🌱"}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: "#4a3520", textShadow: "0 1px 0 rgba(255,252,242,.7)" }}>{SEEDS[seedGift.key].name} Seed{seedGift.n > 1 ? "s" : ""} ×{seedGift.n}</div>
+                    <div style={{ fontSize: 10, letterSpacing: 1.8, fontWeight: 800, color: "#6b5232", textShadow: "0 1px 0 rgba(255,252,242,.6)", marginBottom: 14 }}>{R.tier.toUpperCase()}</div>
+                    <div
+                      role="button"
+                      onClick={() => { gameRef.current?.claimIntroGift(seedGift.page); setSeedGift(null); gameRef.current?.introAdvance(); }}
+                      style={{
+                        cursor: "pointer", WebkitTapHighlightColor: "transparent", userSelect: "none",
+                        padding: "11px 0 12px", borderRadius: 10, fontSize: 15, fontWeight: 800, letterSpacing: 0.5,
+                        background: "linear-gradient(180deg, #a8794a, #7d5330 62%, #63401f)",
+                        border: "2px solid #f0c261", color: "#ffe9b8",
+                        textShadow: "0 1px 2px rgba(35,18,4,.75)",
+                        boxShadow: "inset 0 2px 0 rgba(255,226,180,.3), 0 0 14px rgba(247,199,102,.45), 0 3px 6px rgba(30,20,10,.45)",
+                      }}
+                    >
+                      ＋ ADD TO POCKET
+                    </div>
+                  </div>
+                </div>
+              </StonePanel>
             </div>
           </div>
         );
       })()}
 
+      {/* task-complete celebration — a beat of reward before Eli speaks again */}
+      {introInfo.celebrate && (() => {
+        const C = {
+          plant:   { icon: "🌱", big: "Perfectly planted!",  sub: "Eli's impressed — keep going!" },
+          harvest: { icon: "🍓", big: "Beautiful harvest!",  sub: "That's the gardener's way!" },
+          feed:    { icon: "🔥", big: "Ember loved it!",     sub: "Keep him fed and happy!" },
+        }[introInfo.celebrate];
+        if (!C) return null;
+        return (
+          <div style={{ position: "absolute", left: "50%", top: "34%", transform: "translate(-50%,-50%)", zIndex: 34, pointerEvents: "none", fontFamily: T_UI.font, textAlign: "center" }}>
+          <div style={{ animation: "giftPop 0.45s cubic-bezier(0.3, 1.4, 0.5, 1) both" }}>
+            <div style={{ fontSize: 54, lineHeight: 1, filter: "drop-shadow(0 3px 6px rgba(20,12,4,.5))", marginBottom: 8 }}>{C.icon}</div>
+            <div style={{
+              padding: "12px 26px 13px", borderRadius: 12,
+              background: "linear-gradient(180deg, #8a6440, #6b4626 62%, #533618)",
+              border: "3px solid #4a2f16",
+              boxShadow: "inset 0 2px 0 rgba(255,226,180,.25), 0 0 30px rgba(255,199,102,.5), 0 6px 14px rgba(30,20,10,.5)",
+            }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "#ffe9b8", textShadow: "0 2px 3px rgba(35,18,4,.8)", whiteSpace: "nowrap" }}>{C.big}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T_UI.idleText, textShadow: "0 1px 2px rgba(35,18,4,.7)", marginTop: 3 }}>{C.sub}</div>
+            </div>
+          </div>
+          </div>
+        );
+      })()}
+
+      {/* post-purchase moment: the item pops centre-screen with gold rays */}
+      {acquired && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 34, pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: T_UI.font }}>
+          <div style={{ position: "relative", textAlign: "center", animation: "giftPop 0.45s cubic-bezier(0.3, 1.4, 0.5, 1) both" }}>
+            <div style={{ position: "absolute", left: "50%", top: 60, width: 240, height: 240, marginLeft: -120, marginTop: -120, background: "conic-gradient(rgba(240,194,97,.35) 0deg, transparent 24deg, rgba(240,194,97,.35) 48deg, transparent 72deg, rgba(240,194,97,.35) 96deg, transparent 120deg, rgba(240,194,97,.35) 144deg, transparent 168deg, rgba(240,194,97,.35) 192deg, transparent 216deg, rgba(240,194,97,.35) 240deg, transparent 264deg, rgba(240,194,97,.35) 288deg, transparent 312deg, rgba(240,194,97,.35) 336deg, transparent 360deg)", animation: "rayspin 5s linear infinite", borderRadius: "50%" }} />
+            <div style={{ position: "relative", width: 110, height: 110, margin: "0 auto 12px", borderRadius: "50%", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 54, background: "radial-gradient(circle at 35% 30%, #fdf6e4, #d9c6a4)", border: "5px solid #f0c261", boxShadow: "0 0 34px rgba(255,199,102,.8), inset 0 4px 6px rgba(255,255,255,.5), inset 0 -5px 7px rgba(90,60,25,.3)" }}>{acquired.icon}</div>
+            <div style={{ position: "relative", display: "inline-block", padding: "8px 22px 9px", borderRadius: 10, background: "linear-gradient(180deg, #8a6440, #6b4626 62%, #533618)", border: "3px solid #4a2f16", boxShadow: "inset 0 2px 0 rgba(255,226,180,.25), 0 0 24px rgba(255,199,102,.5)" }}>
+              <div style={{ fontSize: 12, letterSpacing: 3, fontWeight: 800, color: "#f0c261", textShadow: "0 1px 2px rgba(35,18,4,.7)" }}>ACQUIRED</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#ffe9b8", textShadow: "0 2px 3px rgba(35,18,4,.8)", whiteSpace: "nowrap" }}>{acquired.name}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* toolworks explainers: why locked / what the plot kit is / short on XP */}
+      {toolNote && (
+        <div onClick={() => setToolNote(null)} style={{ position: "absolute", inset: 0, zIndex: 33, background: "rgba(12,16,10,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px 10px", boxSizing: "border-box", fontFamily: T_UI.font }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(320px, 88vw)" }}>
+            <StonePanel edge={24} corner={50}>
+              <div style={{ textAlign: "center", padding: "2px 2px 4px" }}>
+                <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: 1.5, color: "#7a4a22", marginBottom: 8 }}>{toolNote.title}</div>
+                <div style={{ fontSize: 14.5, lineHeight: 1.45, color: "#4a3520", fontWeight: 600, marginBottom: 14 }}>{toolNote.body}</div>
+                <div role="button" onClick={() => setToolNote(null)} style={{ cursor: "pointer", WebkitTapHighlightColor: "transparent", display: "inline-block", padding: "9px 38px 10px", borderRadius: 10, fontSize: 15, fontWeight: 800, background: "linear-gradient(180deg, #a8794a, #7d5330 62%, #63401f)", border: "2px solid #f0c261", color: "#ffe9b8", textShadow: "0 1px 2px rgba(35,18,4,.75)", boxShadow: "inset 0 2px 0 rgba(255,226,180,.3), 0 3px 6px rgba(30,20,10,.45)" }}>GOT IT</div>
+              </div>
+            </StonePanel>
+          </div>
+        </div>
+      )}
+
+      {/* Gardener's Almanac — the compact game bible, over the profile menu */}
+      {almanac && (
+        <div onClick={() => setAlmanac(false)} style={{ position: "absolute", inset: 0, zIndex: 32, background: "rgba(12,16,10,.5)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px 8px", boxSizing: "border-box" }}>
+          <div onClick={(e) => e.stopPropagation()}>
+            <Almanac
+              width={Math.min(345, (typeof window !== "undefined" ? window.innerWidth : 345) * 0.88)}
+              crops={["strawberry", "blueberry", "sunfruit"].map((k) => ({
+                key: k,
+                name: SEEDS[k].name,
+                cost: SEEDS[k].cost,
+                sell: SEEDS[k].sell,
+                gems: (gameRef.current?.HARVEST_GEMS || { strawberry: 1, blueberry: 2, sunfruit: 3 })[k] || 1,
+              }))}
+              onClose={() => setAlmanac(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Eli lock notice — pinned above the profile menu */}
+      {lockNote && (
+        <div style={{ position: "absolute", left: "50%", top: "calc(14px + env(safe-area-inset-top, 0px))", transform: "translateX(-50%)", zIndex: 40, pointerEvents: "none", fontFamily: T_UI.font, width: "min(400px, 92vw)" }}>
+        <div style={{ animation: "slideIn 0.25s" }}>
+          <div style={{
+            padding: "11px 18px 12px", textAlign: "center", borderRadius: 11,
+            background: "linear-gradient(180deg, #8a6440, #6b4626 62%, #533618)",
+            border: "3px solid #4a2f16",
+            boxShadow: "inset 0 2px 0 rgba(255,226,180,.25), 0 0 22px rgba(255,199,102,.45), 0 5px 12px rgba(30,20,10,.55)",
+            fontSize: 14.5, fontWeight: 800, color: "#ffe9b8", lineHeight: 1.4,
+            textShadow: "0 1px 2px rgba(35,18,4,.8)",
+          }}>
+            Eli deserves your attention. Finish your conversation before exploring further.
+          </div>
+        </div>
+        </div>
+      )}
+
       {taskSplash && (
-        <div style={{ position: "absolute", left: "50%", top: "38%", zIndex: 34, pointerEvents: "none", animation: "taskIn 2.0s ease forwards" }}>
-          <div style={{ ...S.panel, border: "2px solid #ffb845", padding: "15px 28px", textAlign: "center", boxShadow: "0 0 26px rgba(255,184,69,0.6), 0 12px 26px rgba(23,73,126,0.35)" }}>
-            <div style={{ fontSize: 10.5, letterSpacing: 3, color: "#f2971f", fontWeight: 800, marginBottom: 4 }}>ELI'S TASK</div>
-            <div style={{ fontSize: 18.5, fontWeight: 800 }}>{INTRO_TASK_LABEL[taskSplash]}</div>
+        <div style={{ position: "absolute", left: "50%", top: "38%", zIndex: 34, pointerEvents: "none", animation: "taskIn 2.0s ease forwards", fontFamily: T_UI.font, width: "max-content", maxWidth: "86vw" }}>
+          <div style={{
+            padding: "14px 28px 15px", textAlign: "center", borderRadius: 12,
+            background: "linear-gradient(180deg, #8a6440, #6b4626 62%, #533618)",
+            border: "3px solid #4a2f16",
+            boxShadow: "inset 0 2px 0 rgba(255,226,180,.25), 0 0 26px rgba(255,199,102,.5), 0 6px 14px rgba(30,20,10,.5)",
+          }}>
+            <div style={{ fontSize: 10.5, letterSpacing: 3, color: "#f0c261", fontWeight: 800, marginBottom: 4, textShadow: "0 1px 2px rgba(35,18,4,.7)" }}>ELI'S TASK</div>
+            <div style={{ fontSize: 18.5, fontWeight: 800, color: "#ffe9b8", textShadow: "0 2px 3px rgba(35,18,4,.8)", lineHeight: 1.3 }}>{INTRO_TASK_LABEL[taskSplash]}</div>
           </div>
         </div>
       )}
       {introInfo.task && !taskSplash && (
-        <div style={{ position: "absolute", top: "calc(12px + env(safe-area-inset-top, 0px))", left: "50%", transform: "translateX(-50%)", zIndex: 15 }}>
-          <div style={{ ...S.panel, padding: "9px 12px 9px 16px", display: "flex", alignItems: "center", gap: 10, border: "2px solid #ffb845", animation: "btnPulse 1.7s infinite" }}>
-            <div style={{ width: 34, height: 34, flex: "0 0 34px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #ffffff, #7a8a5a)", border: `2px solid ${GOLD}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: "#fff", textShadow: "0 1px 3px rgba(0,0,0,0.4)", fontFamily: "Georgia, serif" }}>E</span>
-            </div>
+        <div style={{ position: "absolute", top: "calc(12px + env(safe-area-inset-top, 0px))", left: "50%", transform: "translateX(-50%)", zIndex: 15, width: "max-content", maxWidth: "92vw" }}>
+          <div style={{
+            padding: "9px 16px 10px", display: "flex", alignItems: "center", gap: 12,
+            borderRadius: 11, fontFamily: T_UI.font,
+            background: "linear-gradient(180deg, #8a6440, #6b4626 62%, #533618)",
+            border: "2px solid #4a2f16",
+            boxShadow: "inset 0 2px 0 rgba(255,226,180,.22), 0 3px 7px rgba(30,20,10,.5)",
+            animation: "btnPulse 1.7s infinite",
+          }}>
             <div>
-              <div style={{ fontSize: 9.5, letterSpacing: 2, color: "#f2971f", fontWeight: 800 }}>ELI'S TASK</div>
-              <div style={{ fontSize: 14, fontWeight: 800 }}>{INTRO_TASK_LABEL[introInfo.task]}</div>
+              <div style={{ fontSize: 9.5, letterSpacing: 2, color: "#f0c261", fontWeight: 800, textShadow: "0 1px 2px rgba(35,18,4,.7)" }}>ELI'S TASK</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#ffe9b8", textShadow: "0 1px 2px rgba(35,18,4,.75)" }}>{INTRO_TASK_LABEL[introInfo.task]}</div>
             </div>
-            <button onClick={introSkip} style={{ background: "none", border: "none", color: PARCH, opacity: 0.5, fontSize: 11, cursor: "pointer", fontFamily: "inherit", padding: "4px 2px", flex: "0 0 auto", alignSelf: "flex-start" }}>skip ›</button>
+            <button onClick={introSkip} style={{ background: "none", border: "none", color: "#e8d8b8", opacity: 0.55, fontSize: 11, cursor: "pointer", fontFamily: "inherit", padding: "4px 2px", flex: "0 0 auto", alignSelf: "flex-start" }}>skip ›</button>
           </div>
         </div>
       )}
@@ -8059,13 +8590,12 @@ export default function DragonGardenQuest() {
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: 12, width: "min(600px, 95vw)", zIndex: 28 }}>
           <StonePanel edge={26} corner={54}>
             <div style={{ display: "flex", gap: 12, alignItems: "flex-start", textAlign: "left", fontFamily: T_UI.font }}>
-            <div style={{ width: 54, height: 54, flex: "0 0 54px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #ffffff, #7a8a5a)", border: "2px solid #8a6a45", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}><span style={{ fontSize: 24, fontWeight: 800, color: "#ffffff", textShadow: "0 2px 4px rgba(0,0,0,0.45)", fontFamily: "Georgia, serif" }}>E</span></div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ color: "#7a4a22", fontWeight: 800, letterSpacing: 1.4, fontSize: 13 }}>OLD GARDENER ELI</div>
+                <div style={{ color: "#7a4a22", fontWeight: 800, letterSpacing: 1.4, fontSize: 14 }}>OLD GARDENER ELI</div>
                 <button onClick={introSkip} style={{ background: "none", border: "none", color: "#7d6444", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>skip ›</button>
               </div>
-              <div style={{ fontSize: 13.5, lineHeight: 1.55, margin: "5px 0 10px", color: "#4a3520" }}>"{pg.t}"</div>
+              <div style={{ fontSize: 15.5, lineHeight: 1.38, margin: "6px 2px 11px", color: "#4a3520" }}>"{pg.t}"</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ display: "flex", gap: 4 }}>
                   {INTRO_PAGES.map((_, i) => (
@@ -8087,13 +8617,12 @@ export default function DragonGardenQuest() {
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: "calc(12px + env(safe-area-inset-bottom, 0px))", width: "min(600px, 95vw)", zIndex: 28 }}>
           <StonePanel edge={26} corner={54}>
             <div style={{ display: "flex", gap: 12, alignItems: "flex-start", textAlign: "left", fontFamily: T_UI.font }}>
-            <div style={{ width: 54, height: 54, flex: "0 0 54px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #ffffff, #7a8a5a)", border: "2px solid #8a6a45", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}><span style={{ fontSize: 24, fontWeight: 800, color: "#ffffff", textShadow: "0 2px 4px rgba(0,0,0,0.45)", fontFamily: "Georgia, serif" }}>E</span></div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ color: "#7a4a22", fontWeight: 800, letterSpacing: 1.4, fontSize: 13 }}>OLD GARDENER ELI</div>
+                <div style={{ color: "#7a4a22", fontWeight: 800, letterSpacing: 1.4, fontSize: 14 }}>OLD GARDENER ELI</div>
                 <button onClick={() => gameRef.current?.skipChurchIntro()} style={{ background: "none", border: "none", color: "#7d6444", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>skip ›</button>
               </div>
-              <div style={{ fontSize: 13.5, lineHeight: 1.55, margin: "5px 0 10px", color: "#4a3520" }}>"{pg.t}"</div>
+              <div style={{ fontSize: 15.5, lineHeight: 1.38, margin: "6px 2px 11px", color: "#4a3520" }}>"{pg.t}"</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ display: "flex", gap: 4 }}>
                   {CHURCH_INTRO_PAGES.map((_, i) => (
@@ -8113,21 +8642,17 @@ export default function DragonGardenQuest() {
       {/* broken bridge: a note from Eli */}
       {bridgeTalk && (
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: 12, width: "min(580px, 95vw)", zIndex: 28 }}>
-          <div style={{ ...S.panel, background: WOOD_TEX, position: "relative", padding: "13px 15px", display: "flex", gap: 12, alignItems: "flex-start", textAlign: "left" }}>
-            <Corners />
-            <div style={{ width: 52, height: 52, flex: "0 0 52px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #ffffff, #b0895a)", border: `2px solid ${GOLD}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontSize: 22, fontWeight: 800, color: "#fff", textShadow: "0 2px 4px rgba(0,0,0,0.45)", fontFamily: "Georgia, serif" }}>!</span>
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ ...S.goldText, fontWeight: 800, letterSpacing: 1.4, fontSize: 13 }}>A NOTE FROM ELI</div>
-              <div style={{ fontSize: 13.5, lineHeight: 1.55, margin: "5px 0 10px" }}>
-                "The spring floods took the bridge. Our youth group rebuilds it for every new member — join one in the YGTeeV app, and we'll have you across to the blessed soil in no time."
+          <StonePanel edge={26} corner={54}>
+            <div style={{ textAlign: "left", fontFamily: T_UI.font }}>
+              <div style={{ color: "#7a4a22", fontWeight: 800, letterSpacing: 1.4, fontSize: 14 }}>A NOTE FROM ELI</div>
+              <div style={{ fontSize: 15.5, lineHeight: 1.38, margin: "6px 2px 11px", color: "#4a3520" }}>
+                "See that wreck? Ember went thundering across it once when his belly got the better of his temper — the old planks never stood a chance. Join a youth group in the YGTeeV app, and they'll send someone out to fix it for you."
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => setBridgeTalk(false)} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, flex: 1 }}>OK</button>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={() => setBridgeTalk(false)} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, padding: "8px 22px" }}>OK</button>
               </div>
             </div>
-          </div>
+          </StonePanel>
         </div>
       )}
 
@@ -8161,7 +8686,7 @@ export default function DragonGardenQuest() {
               harvest, gardener!
             </div>
             <div style={{ fontSize: 12, fontStyle: "italic", opacity: 0.8, marginBottom: 14 }}>— Marta, Berry Market counter</div>
-            <button onClick={() => setGoldBagStep(null)} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 14, width: "70%", fontFamily: "inherit" }}>OK</button>
+            <button onClick={() => { setGoldBagStep(null); gameRef.current?.startMarketCue?.(); }} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 14, width: "70%", fontFamily: "inherit" }}>OK</button>
           </div>
         </div>
       )}
@@ -8251,11 +8776,10 @@ export default function DragonGardenQuest() {
       {counterTalk && (() => { const C = COUNTER_CFG[counterTalk.kind]; return (
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: 12, width: "min(560px, 95vw)", zIndex: 28 }}>
           <StonePanel edge={26} corner={54}>
-            <div style={{ display: "flex", gap: 12, alignItems: "flex-start", textAlign: "left", fontFamily: T_UI.font }}>
-            <div style={{ width: 52, height: 52, flex: "0 0 52px", borderRadius: "50%", background: `radial-gradient(circle at 35% 30%, #ffffff, ${C.ring})`, border: "2px solid #8a6a45", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}><span style={{ fontSize: 24, fontWeight: 800, color: "#ffffff", textShadow: "0 2px 4px rgba(0,0,0,0.45)", fontFamily: "Georgia, serif" }}>{C.name[0]}</span></div>
+            <div style={{ textAlign: "left", fontFamily: T_UI.font }}>
             <div style={{ flex: 1 }}>
-              <div style={{ color: "#7a4a22", fontWeight: 800, letterSpacing: 1.2, fontSize: 13 }}>{C.name.toUpperCase()}</div>
-              <div style={{ fontSize: 13.5, lineHeight: 1.5, margin: "4px 0 10px", color: "#4a3520" }}>
+              <div style={{ color: "#7a4a22", fontWeight: 800, letterSpacing: 1.2, fontSize: 14 }}>{C.name.toUpperCase()}</div>
+              <div style={{ fontSize: 15.5, lineHeight: 1.38, margin: "6px 2px 11px", color: "#4a3520" }}>
                 {counterTalk.phase === "ask" ? `"${C.ask}"` : `"${C.bye}"`}
               </div>
               {counterTalk.phase === "ask" && (
@@ -8274,8 +8798,7 @@ export default function DragonGardenQuest() {
       {quiz && (
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: 16, width: "min(560px, 94vw)", zIndex: 30 }}>
           <StonePanel edge={26} corner={54}>
-            <div style={{ display: "flex", gap: 12, alignItems: "flex-start", textAlign: "left", fontFamily: T_UI.font }}>
-            <div style={{ width: 54, height: 54, flex: "0 0 54px", borderRadius: "50%", background: "radial-gradient(circle at 35% 30%, #6a7a4a, #3a4a2a)", border: "2px solid #8a6a45", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, boxShadow: "0 3px 8px rgba(0,0,0,0.45)" }}><span style={{ fontSize: 24, fontWeight: 800, color: "#ffffff", textShadow: "0 2px 4px rgba(0,0,0,0.45)", fontFamily: "Georgia, serif" }}>E</span></div>
+            <div style={{ textAlign: "left", fontFamily: T_UI.font }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <b style={{ color: "#7a4a22", fontSize: 12.5, letterSpacing: 1.5 }}>OLD GARDENER ELI</b>
