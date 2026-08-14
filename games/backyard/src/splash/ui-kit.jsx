@@ -135,28 +135,48 @@ export function StoneSlab({ style, onClick }) {
 // ------------------------------------------------------------- TabToggle
 // Approved stone tab slabs with baked labels (public/ui/kit/tab-<key>-v2.png,
 // 560x188 each). The selected tab gets a soft green glow behind it.
-export function TabToggle({ tabs, active, onChange, style }) {
+// The labels used to be baked into tab-{key}-v2.png, which fixed both the
+// wording and the width. "Garden League" is twice the length of "Groups", so
+// the slab is now a 3-slice blank (tab-blank-v2.png, cut from the approved
+// Groups art) with the label as live text — any wording, any width, same
+// painted stone. `weight` flexes a tab wider for a longer label.
+export function TabToggle({ tabs, active, onChange, height = 56, fontSize = 20, style }) {
   return (
-    <div style={{ display: "flex", gap: 14, ...style }}>
+    <div style={{ display: "flex", gap: 14, alignItems: "stretch", ...style }}>
       {tabs.map((t) => {
         const on = t.key === active;
         return (
-          <img
+          <div
             key={t.key}
-            src={`${KIT}tab-${t.key}-v2.png`}
-            alt={t.label}
             role="button"
-            draggable={false}
             onClick={() => onChange && onChange(t.key)}
             style={{
-              flex: 1, minWidth: 0, width: "50%", height: "auto", display: "block",
+              flex: `${t.weight || 1} 1 0`, minWidth: 0,
               cursor: "pointer", WebkitTapHighlightColor: "transparent", userSelect: "none",
               filter: on
                 ? "drop-shadow(0 0 6px #7ef0a0) drop-shadow(0 0 14px #57d97fcc) brightness(1.06)"
                 : "drop-shadow(0 3px 4px rgba(30,25,15,.35)) brightness(.94) saturate(.92)",
               transition: "filter .22s ease",
             }}
-          />
+          >
+            <NineH
+              src="tab-blank-v2.png" assetW={292} assetH={188}
+              sliceL={140} sliceR={140} height={height} style={{ width: "100%" }}
+            >
+              <div
+                style={{
+                  position: "absolute", inset: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  padding: `0 ${height * 0.12}px ${height * 0.08}px`,
+                  fontFamily: T.font, fontWeight: 700, fontSize,
+                  color: "#ede9c5", textShadow: "0 2px 3px rgba(28,24,16,.6)",
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                }}
+              >
+                {t.label}
+              </div>
+            </NineH>
+          </div>
         );
       })}
     </div>
@@ -185,6 +205,11 @@ export function WoodRow({ rank, name, score, avatarUrl, tone, me = false, height
   // "Me" rows ride the light plank (row-plank-me-v2.png, same geometry) and
   // flip to dark ink for contrast on the pale wood.
   const plank = me ? "row-plank-me-v2.png" : "row-plank-v2.png";
+  // The cut-out window fits about 3 glyphs at full size; berry totals run to
+  // five figures, so step the score down rather than let it slide under the
+  // painted edge.
+  const digits = String(score ?? "").length;
+  const scoreScale = digits <= 3 ? 0.42 : digits === 4 ? 0.35 : digits === 5 ? 0.29 : 0.25;
   const ink = me ? "#6b4a26" : T.cream;
   const inkShadow = me ? "0 1px 1px rgba(255,244,220,.55)" : "0 1px 2px rgba(40,20,5,.7)";
   return (
@@ -260,8 +285,9 @@ export function WoodRow({ rank, name, score, avatarUrl, tone, me = false, height
         style={{
           position: "absolute", right: 40 * k, width: 219 * k, top: "18.6%", bottom: "19%",
           display: "flex", alignItems: "center", justifyContent: "center",
-          zIndex: 2, fontWeight: 800, fontSize: height * 0.42, color: "#5a3315",
+          zIndex: 2, fontWeight: 800, fontSize: height * scoreScale, color: "#5a3315",
           textShadow: "0 1px 0 rgba(255,240,210,.5)",
+          overflow: "hidden", whiteSpace: "nowrap",
         }}
       >
         {score}
@@ -332,6 +358,9 @@ const PILLS = {
   gold:  { src: "pill-gold-v2.png",  aspect: 1217 / 549, fieldL: "40%", ink: "#474251", shadow: "0 1px 0 rgba(255,255,255,.45)" },
   xp:    { src: "pill-xp-v2.png",    aspect: 1212 / 550, fieldL: "40%", ink: "#f7e7b8", shadow: "0 1px 2px rgba(10,20,40,.7)" },
   today: { src: "pill-today-v2.png", aspect: 1218 / 490, fieldL: "36%", ink: "#eaf6e4", shadow: "0 1px 2px rgba(10,40,20,.7)" },
+  // community-garden berry counter — carved jade, no baked icon, so the
+  // value centres across the whole plate
+  berries: { src: "pill-berries.png", aspect: 1218 / 490, fieldL: "7%", ink: "#f2fff0", shadow: "0 1px 3px rgba(8,32,12,.85)" },
 };
 
 export function PlatePill({ kind, value, height = 37, style }) {
@@ -669,15 +698,27 @@ const TRACK_ASPECT = 191 / 1329;
 const WELL = { x0: 0.10, x1: 0.74, y0: 0.041, y1: 0.989 };
 const SLOTS = 10;
 
-export function LevelBar({ level = 1, gems = 0, fx = null, height = 300, style }) {
+// onLevelReady/badgeAt let a parent slip something in between the bar
+// filling and the LEVEL UP badge — the reading mini player does exactly
+// that. Without them the bar behaves as it always has.
+export function LevelBar({ level = 1, gems = 0, fx = null, height = 300, onLevelReady, badgeAt = null, style }) {
   const [shown, setShown] = React.useState(0);   // gems currently drawn
   const [open, setOpen] = React.useState(false);
   const [levelUp, setLevelUp] = React.useState(false);
   const seen = React.useRef(null);
+  const owed = React.useRef(false);
+  const ready = React.useRef(null);
+  ready.current = onLevelReady;
 
   React.useEffect(() => {
     if (!fx || seen.current === fx.at) return;
     seen.current = fx.at;
+    // Harvesting a second plot inside the ~1.4s animation window replaces fx
+    // and tears this effect down, cancelling its timers. A level-up owed by
+    // an earlier award has to survive that hand-off or it is swallowed
+    // silently — no badge, no reading offer. The flag carries it forward to
+    // whichever run actually gets to finish.
+    if (fx.levelled) owed.current = true;
     setShown(fx.from);
     setOpen(true);
     // let the bar arrive, then pop the earned gems in one at a time
@@ -688,10 +729,31 @@ export function LevelBar({ level = 1, gems = 0, fx = null, height = 300, style }
       }
     }, 420));
     const settle = 420 + fx.gained * 190 + 260;
-    if (fx.levelled) timers.push(setTimeout(() => setLevelUp(true), settle));
-    timers.push(setTimeout(() => { setLevelUp(false); setOpen(false); }, settle + (fx.levelled ? 1900 : 900)));
+    timers.push(setTimeout(() => {
+      if (!owed.current) {
+        timers.push(setTimeout(() => setOpen(false), 900));
+        return;
+      }
+      owed.current = false;
+      if (ready.current) {
+        // parent owns the badge from here — hand off and clear the track
+        ready.current();
+        timers.push(setTimeout(() => setOpen(false), 520));
+      } else {
+        setLevelUp(true);
+        timers.push(setTimeout(() => { setLevelUp(false); setOpen(false); }, 1900));
+      }
+    }, settle));
     return () => timers.forEach(clearTimeout);
   }, [fx]);
+
+  // parent-fired badge (after the reading offer resolves)
+  React.useEffect(() => {
+    if (!badgeAt) return;
+    setLevelUp(true);
+    const t = setTimeout(() => { setLevelUp(false); setOpen(false); }, 1900);
+    return () => clearTimeout(t);
+  }, [badgeAt]);
 
   const width = height * TRACK_ASPECT;
   const slotH = (WELL.y1 - WELL.y0) / SLOTS;
@@ -1225,23 +1287,43 @@ export function LevelBarH({ gems = 0, slots = SLOTS, width = 200, style }) {
 // four buttons are art; name, level, currencies and the gem bar are live.
 const PROF_ASPECT = 968 / 903;
 const PROF = {
-  avatar: { x: 0.125, y: 0.152, w: 0.130, h: 0.165 },   // inside the carved frame
+  // measured off the carved frame's OPENING in profile-panel.png. The old
+  // box hung ~2.7% below it, which is what sat the portrait low in the stone.
+  avatar: { x: 0.134, y: 0.146, w: 0.121, h: 0.146 },
   text:   { x: 0.300 },
-  // bar sits centred directly under the PLAYER PROFILE plank (plank art
-  // bottoms out ~9.5% down the panel); label rides just above the track
-  bar:    { x: 0.3175, w: 0.365, label: 0.107, y: 0.147 },
   // widths chosen so each button's rendered height (w * panelAspect / imgAspect)
   // leaves a clear gap to the next. CLOSE deliberately straddles the bottom
   // frame and HANGS OFF the board, as in the reference design.
+  // `label` marks a button that renders on the shared black slab
+  // (slab-black-blank.png) with live lettering, rather than as baked art.
+  // Both slabs are the same height, so the tops are spaced evenly.
   btns: [
-    { key: "customize", top: 0.345, w: 0.62 },
-    { key: "league",    top: 0.492, w: 0.62 },
+    { key: "customize", top: 0.345, w: 0.62, label: "CUSTOMIZE CHARACTER", locked: true },
+    { key: "league",    top: 0.506, w: 0.62, label: "WEEKLY LEADERBOARD" },
     { key: "replay",    top: 0.682, w: 0.62 },
     { key: "close",     top: 0.885, w: 0.50 },
   ],
 };
 
-export function PlayerProfile({ name = "Gardener", avatar, level = 1, gems = 0,
+// The slab lettering is a condensed grotesque, matching the carved signs.
+// Baloo (the kit's display face) is far too wide to fit nineteen characters
+// across a button this size.
+const SLAB_FONT = `"Arial Narrow", "Roboto Condensed", "Oswald", "Haettenschweiler", sans-serif`;
+const SLAB_ASPECT = 1000 / 226;
+
+function Padlock({ size = 12 }) {
+  return (
+    <svg width={size} height={size * 1.16} viewBox="0 0 20 23" aria-hidden="true"
+         style={{ display: "block", flex: "0 0 auto", filter: "drop-shadow(0 1px 1px rgba(0,0,0,.6))" }}>
+      <path d="M6 9V6.5a4 4 0 0 1 8 0V9" fill="none" stroke="#d9d3c4" strokeWidth="2.6" strokeLinecap="round" />
+      <rect x="2.5" y="9" width="15" height="12" rx="2.6" fill="#d9d3c4" />
+      <circle cx="10" cy="14.4" r="1.9" fill="#5a5347" />
+      <rect x="9.1" y="14.4" width="1.8" height="3.6" rx=".9" fill="#5a5347" />
+    </svg>
+  );
+}
+
+export function PlayerProfile({ name = "Gardener", avatar, level = 1,
                                 gold = 0, xp = 0, width = 340, onAction, onInfo, style }) {
   const [down, setDown] = React.useState(null);
   return (
@@ -1255,22 +1337,30 @@ export function PlayerProfile({ name = "Gardener", avatar, level = 1, gems = 0,
         <img src={avatar} alt="" draggable={false} style={{
           position: "absolute", left: `${PROF.avatar.x * 100}%`, top: `${PROF.avatar.y * 100}%`,
           width: `${PROF.avatar.w * 100}%`, height: `${PROF.avatar.h * 100}%`,
-          objectFit: "contain", objectPosition: "center bottom", pointerEvents: "none",
+          // centred in the carved frame — "bottom" sat the portrait low in
+          // the stone, leaving a gap above the hat
+          objectFit: "contain", objectPosition: "center", pointerEvents: "none",
         }} />
       )}
 
-      <div style={{ position: "absolute", left: `${PROF.text.x * 100}%`, top: "19.5%",
-                    fontWeight: 800, fontSize: width * 0.062, color: "#241a0e",
-                    textShadow: "0 1px 0 rgba(255,252,242,.85)", whiteSpace: "nowrap" }}>{name}</div>
-      <div style={{ position: "absolute", left: `${PROF.text.x * 100}%`, top: "26.5%",
-                    fontWeight: 800, fontSize: width * 0.056, color: "#2e2213",
-                    textShadow: "0 1px 0 rgba(255,252,242,.8)", letterSpacing: .5 }}>LEVEL {level}</div>
-      <div style={{ position: "absolute", left: `${PROF.bar.x * 100}%`, width: `${PROF.bar.w * 100}%`,
-                    top: `${PROF.bar.label * 100}%`, textAlign: "center", fontWeight: 800, fontSize: width * 0.033,
-                    letterSpacing: 1, color: "#3a2c19",
-                    textShadow: "0 1px 0 rgba(255,252,242,.75)" }}>LEVEL PROGRESS</div>
-      <LevelBarH gems={gems} width={width * PROF.bar.w}
-                 style={{ position: "absolute", left: `${PROF.bar.x * 100}%`, top: `${PROF.bar.y * 100}%` }} />
+      {/* Name + level, centred against the avatar frame. The gem track that
+          used to sit above them moved to the main HUD, so this block now
+          owns the whole space beside the portrait. */}
+      <div style={{
+        position: "absolute", left: `${PROF.text.x * 100}%`,
+        top: `${((PROF.avatar.y + PROF.avatar.h / 2) * 100).toFixed(2)}%`,
+        transform: "translateY(-50%)", whiteSpace: "nowrap",
+        display: "flex", flexDirection: "column", gap: width * 0.006,
+        color: "#ffffff", textShadow: "0 2px 4px rgba(28,20,10,.8), 0 0 8px rgba(28,20,10,.4)",
+      }}>
+        <div style={{
+          fontWeight: 800, fontSize: width * 0.068, lineHeight: 1.05,
+          maxWidth: width * 0.46, overflow: "hidden", textOverflow: "ellipsis",
+        }}>{name}</div>
+        <div style={{ fontWeight: 800, fontSize: width * 0.056, letterSpacing: .5, lineHeight: 1.05 }}>
+          LEVEL {level}
+        </div>
+      </div>
 
       {/* carved info stud — opens the Gardener's Almanac */}
       {onInfo && (
@@ -1278,7 +1368,9 @@ export function PlayerProfile({ name = "Gardener", avatar, level = 1, gems = 0,
           role="button"
           onClick={onInfo}
           style={{
-            position: "absolute", right: "5%", top: "12%", width: "10.5%", aspectRatio: "1",
+            // clear of the painted frame: the top-right corner stone reaches
+            // down to ~13% and the right rail's inner edge is at ~92.5%
+            position: "absolute", right: "9.5%", top: "14.5%", width: "10.5%", aspectRatio: "1",
             borderRadius: "50%", cursor: "pointer", WebkitTapHighlightColor: "transparent",
             display: "flex", alignItems: "center", justifyContent: "center",
             background: "linear-gradient(180deg, #a8794a, #7d5330 62%, #63401f)",
@@ -1290,28 +1382,61 @@ export function PlayerProfile({ name = "Gardener", avatar, level = 1, gems = 0,
           }}
         >i</div>
       )}
-      {PROF.btns.map((b) => (
-        <img
-          key={b.key}
-          src={`${KIT}btn-${b.key}.png`}
-          alt={b.key}
-          draggable={false}
-          role="button"
-          onPointerDown={() => setDown(b.key)}
-          onPointerUp={() => setDown(null)}
-          onPointerLeave={() => setDown(null)}
-          onClick={() => onAction && onAction(b.key)}
-          style={{
-            position: "absolute", left: `${((1 - b.w) / 2) * 100}%`, top: `${b.top * 100}%`,
-            width: `${b.w * 100}%`, height: "auto", cursor: "pointer",
-            WebkitTapHighlightColor: "transparent",
-            transform: down === b.key ? "scale(.972) translateY(2px)" : "scale(1)",
-            filter: down === b.key ? "brightness(.88)" : "none",
-            transition: down === b.key ? "transform .07s ease-out, filter .07s"
-                                       : "transform .22s cubic-bezier(.2,1.6,.4,1), filter .2s",
-          }}
-        />
-      ))}
+      {PROF.btns.map((b) => {
+        const press = {
+          transform: down === b.key ? "scale(.972) translateY(2px)" : "scale(1)",
+          filter: down === b.key ? "brightness(.88)" : "none",
+          transition: down === b.key ? "transform .07s ease-out, filter .07s"
+                                     : "transform .22s cubic-bezier(.2,1.6,.4,1), filter .2s",
+        };
+        const hit = {
+          onPointerDown: () => setDown(b.key),
+          onPointerUp: () => setDown(null),
+          onPointerLeave: () => setDown(null),
+          onClick: () => onAction && onAction(b.key),
+        };
+        const place = {
+          position: "absolute", left: `${((1 - b.w) / 2) * 100}%`, top: `${b.top * 100}%`,
+          width: `${b.w * 100}%`, cursor: "pointer", WebkitTapHighlightColor: "transparent",
+        };
+        if (b.label) {
+          const bw = width * b.w;
+          return (
+            <div key={b.key} role="button" {...hit}
+                 style={{ ...place, aspectRatio: String(SLAB_ASPECT), ...press }}>
+              <img src={`${KIT}slab-black-blank.png`} alt="" draggable={false}
+                   style={{ position: "absolute", inset: 0, width: "100%", height: "100%",
+                            filter: b.locked ? "grayscale(.5) brightness(.72)" : "none" }} />
+              <div style={{
+                position: "absolute", inset: 0, display: "flex",
+                alignItems: "center", justifyContent: "center", gap: bw * 0.022,
+                paddingBottom: bw * 0.012,
+                fontFamily: SLAB_FONT, fontWeight: 700, fontSize: bw * 0.077,
+                letterSpacing: bw * 0.004, whiteSpace: "nowrap",
+                color: b.locked ? "#b9b3a6" : "#f4f2ec",
+                textShadow: "0 1px 0 rgba(255,255,255,.18), 0 2px 3px rgba(0,0,0,.8)",
+              }}>
+                {b.locked && <Padlock size={bw * 0.072} />}
+                {b.label}
+              </div>
+              {b.locked && (
+                <div style={{
+                  position: "absolute", left: 0, right: 0, bottom: bw * 0.012,
+                  textAlign: "center", fontFamily: T.font, fontWeight: 800,
+                  fontSize: bw * 0.036, letterSpacing: 1.4, color: "#f0c261",
+                  textShadow: "0 1px 2px rgba(0,0,0,.85)",
+                }}>
+                  COMING SOON
+                </div>
+              )}
+            </div>
+          );
+        }
+        return (
+          <img key={b.key} src={`${KIT}btn-${b.key}.png`} alt={b.key} draggable={false}
+               role="button" {...hit} style={{ ...place, height: "auto", ...press }} />
+        );
+      })}
     </div>
   );
 }
@@ -1399,8 +1524,10 @@ export function Wardrobe({ groups = [], outfit = {}, onPick, onRandom, onClose,
   const studSize = width * 0.100; // six fit one row inside the frame
   const chipW = width * 0.155;
   // two rows of options, fixed — so the sheet never changes height between
-  // categories and the character behind it never shifts
-  const rowH = active?.type === "chip" ? chipW * 1.06 : studSize;
+  // categories and the character behind it never shifts. Sized off the
+  // TALLER row type (wood chips) for every category; stud rows center in
+  // the same box instead of shrinking it.
+  const rowH = chipW * 1.06;
   // Every category fits in two rows, so this area never needs to scroll.
   // It is deliberately NOT a scroll container: an overflow box whose top
   // edge sits flush on the studs clips their rim, selection ring and glow.
@@ -1411,24 +1538,24 @@ export function Wardrobe({ groups = [], outfit = {}, onPick, onRandom, onClose,
     <div style={{ position: "relative", width, fontFamily: T.font, userSelect: "none",
                   paddingBottom: width * 0.10, ...style }}>
       <StonePanel edge={edge} corner={edge * 2.05}>
-        <WoodBar height={width * 0.118} fontSize={width * 0.055}
-                 style={{ margin: `0 ${width * 0.08}px ${width * 0.035}px`, cursor: "default" }}>
+        <WoodBar height={width * 0.092} fontSize={width * 0.044}
+                 style={{ margin: `0 ${width * 0.14}px ${width * 0.02}px`, cursor: "default" }}>
           WARDROBE
         </WoodBar>
 
         {/* category picker — carved tabs, one row */}
-        <div style={{ display: "flex", gap: width * 0.016, justifyContent: "center",
-                      flexWrap: "wrap", marginBottom: width * 0.032 }}>
+        <div style={{ display: "flex", gap: width * 0.013, justifyContent: "center",
+                      flexWrap: "wrap", marginBottom: width * 0.022 }}>
           {groups.map((g) => (
             <CatTab key={g.key} label={g.label} sel={g.key === cat}
-                    h={width * 0.082} onPick={() => setCat(g.key)} />
+                    h={width * 0.068} onPick={() => setCat(g.key)} />
           ))}
         </div>
 
         {/* options for the active category */}
-        <div style={{ minHeight: optH, boxSizing: "border-box", padding: `${pad}px 0`,
+        <div style={{ height: optH, boxSizing: "border-box", padding: `${pad}px 0`,
                       display: "flex", flexWrap: "wrap", justifyContent: "center",
-                      alignContent: "flex-start",
+                      alignContent: "center",
                       gap: active?.type === "chip" ? chipW * 0.11 : studSize * 0.26 }}>
           {active?.type === "chip"
             ? active.list.map((o) => (
@@ -1443,8 +1570,8 @@ export function Wardrobe({ groups = [], outfit = {}, onPick, onRandom, onClose,
               ))}
         </div>
 
-        <WoodBar onClick={onRandom} height={width * 0.108} fontSize={width * 0.047}
-                 style={{ margin: `${width * 0.035}px ${width * 0.12}px ${width * 0.05}px` }}>
+        <WoodBar onClick={onRandom} height={width * 0.088} fontSize={width * 0.04}
+                 style={{ margin: `${width * 0.02}px ${width * 0.17}px ${width * 0.035}px` }}>
           🎲 Surprise me
         </WoodBar>
       </StonePanel>
@@ -1773,6 +1900,316 @@ export function InventoryBoard({ width = 340, mode = "home", seeds = [], basket 
         {row("Basket", basket, width * 0.185, homeLocked)}
         {row("Rare Seeds", rare, width * 0.155, rareLocked)}
       </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------- HarvestForecast
+// "What will this garden bring in?" — the card the picnic table by the
+// chapel hands the player. One number, one line of context, and a per-fruit
+// breakdown; deliberately no rates, no maths, no expiry table.
+export function HarvestForecast({
+  total = 0, trees = 0, ripening = 0, rows = [], width = 330, onClose, style,
+}) {
+  const n = (v) => v.toLocaleString("en-US");
+  const edge = width * 0.075;
+  return (
+    <div style={{ position: "relative", width, fontFamily: T.font, userSelect: "none", ...style }}>
+      <StonePanel edge={edge} corner={edge * 2.05}>
+        <div style={{ textAlign: "center", padding: "2px 2px 4px" }}>
+          <div style={{
+            fontWeight: 800, fontSize: width * 0.043, letterSpacing: 1.8,
+            color: "#7a4a22", textShadow: "0 1px 0 rgba(255,250,238,.6)",
+          }}>
+            NEXT 24 HOURS
+          </div>
+
+          {trees === 0 ? (
+            <div style={{
+              fontSize: width * 0.043, lineHeight: 1.45, fontWeight: 600,
+              color: "#4a3520", margin: `${width * 0.05}px ${width * 0.02}px ${width * 0.045}px`,
+            }}>
+              Nothing is growing in the blessed soil yet. Earn a planting from
+              Old Eli, then sow a rare seed to start the harvest.
+            </div>
+          ) : (
+            <>
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                gap: width * 0.022, marginTop: width * 0.028,
+              }}>
+                {["glowberry", "starberry", "dawnberry", "gloryberry"].map((k) => (
+                  <img key={k} src={`${KIT}fruit-${k}-sm.png`} alt="" draggable={false}
+                       style={{ width: width * 0.055, height: width * 0.055, objectFit: "contain",
+                                filter: "drop-shadow(0 1px 2px rgba(40,60,30,.45))" }} />
+                ))}
+              </div>
+              <div style={{
+                fontWeight: 900, fontSize: width * 0.155, lineHeight: 1.05,
+                color: "#2f6a26", marginTop: width * 0.012,
+                textShadow: "0 2px 0 rgba(255,252,240,.6), 0 3px 6px rgba(40,70,30,.28)",
+              }}>
+                {n(total)}
+              </div>
+              <div style={{
+                fontWeight: 800, fontSize: width * 0.04, letterSpacing: 2.2,
+                color: "#5f7a3f", marginTop: -width * 0.004,
+              }}>
+                BERRIES
+              </div>
+              <div style={{
+                fontSize: width * 0.04, fontWeight: 700, color: "#6d5233",
+                marginTop: width * 0.018,
+              }}>
+                from {trees} {trees === 1 ? "tree" : "trees"} in the blessed soil
+              </div>
+              {ripening > 0 && (
+                <div style={{
+                  fontSize: width * 0.036, fontWeight: 700, color: "#8a7350",
+                  marginTop: width * 0.006,
+                }}>
+                  {ripening} of them {ripening === 1 ? "is" : "are"} still ripening
+                </div>
+              )}
+
+              <div style={{
+                display: "flex", flexDirection: "column", gap: width * 0.014,
+                margin: `${width * 0.05}px 0 ${width * 0.05}px`,
+              }}>
+                {rows.map((r) => (
+                  <div key={r.key} style={{
+                    display: "flex", alignItems: "center", gap: width * 0.03,
+                    padding: `${width * 0.017}px ${width * 0.04}px`,
+                    borderRadius: width * 0.026,
+                    background: "linear-gradient(180deg, rgba(255,250,236,.5), rgba(190,166,132,.34))",
+                    border: "1.5px solid rgba(122,96,60,.42)",
+                    boxShadow: "inset 0 1px 0 rgba(255,252,242,.6)",
+                  }}>
+                    <img src={`${KIT}fruit-${r.key}-sm.png`} alt="" draggable={false}
+                         style={{ width: width * 0.07, height: width * 0.07, objectFit: "contain",
+                                  filter: "drop-shadow(0 1px 2px rgba(40,60,30,.4))" }} />
+                    <div style={{
+                      flex: "1 1 auto", textAlign: "left", fontWeight: 800,
+                      fontSize: width * 0.042, color: "#3a2c19",
+                      textShadow: "0 1px 0 rgba(255,252,242,.7)",
+                    }}>
+                      {r.name}
+                    </div>
+                    <div style={{
+                      fontWeight: 900, fontSize: width * 0.046, color: "#2f6a26",
+                      textShadow: "0 1px 0 rgba(255,252,242,.7)",
+                    }}>
+                      {n(r.n)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div
+            role="button"
+            onClick={onClose}
+            style={{
+              cursor: "pointer", WebkitTapHighlightColor: "transparent",
+              display: "inline-block", padding: `${width * 0.028}px ${width * 0.12}px ${width * 0.031}px`,
+              borderRadius: width * 0.03, fontSize: width * 0.046, fontWeight: 800,
+              background: "linear-gradient(180deg, #a8794a, #7d5330 62%, #63401f)",
+              border: "2px solid #f0c261", color: "#ffe9b8",
+              textShadow: "0 1px 2px rgba(35,18,4,.75)",
+              boxShadow: "inset 0 2px 0 rgba(255,226,180,.3), 0 3px 6px rgba(30,20,10,.45)",
+            }}
+          >
+            GOT IT
+          </div>
+        </div>
+      </StonePanel>
+    </div>
+  );
+}
+
+// -------------------------------------------------------- CharacterStudio
+// The dress-up board: live avatar on the left, five carved category slabs on
+// the right. Tapping a slab expands its items directly beneath it — an
+// accordion, so only one list is ever open and the board never scrolls two
+// things at once.
+//
+// Item tiles are baked renders of the REAL avatar meshes (public/ui/kit/opt,
+// built by tools/bake-item-icons.mjs), so a tile shows the item itself
+// rather than a stand-in glyph or a character wearing it.
+const STUDIO_ASPECT = 913 / 1018;
+const STUDIO_PAD = { l: 0.075, r: 0.065, t: 0.125, b: 0.085 };
+const CAT_ASPECT = 1273 / 254;
+
+function ItemTile({ src, label, sel, size, onPick }) {
+  const [down, setDown] = React.useState(false);
+  return (
+    <div
+      role="button"
+      onPointerDown={() => setDown(true)}
+      onPointerUp={() => setDown(false)}
+      onPointerLeave={() => setDown(false)}
+      onClick={onPick}
+      style={{
+        width: size, height: size, boxSizing: "border-box", flex: "0 0 auto",
+        cursor: "pointer", WebkitTapHighlightColor: "transparent",
+        borderRadius: size * 0.16, position: "relative", overflow: "hidden",
+        background: "linear-gradient(180deg, rgba(255,250,236,.62), rgba(188,163,127,.42))",
+        border: `${Math.max(2, size * 0.045)}px solid ${sel ? "#f0c261" : "rgba(120,94,58,.55)"}`,
+        boxShadow: sel
+          ? `0 0 ${size * 0.22}px rgba(247,199,102,.8), inset 0 1px 0 rgba(255,252,242,.7)`
+          : "inset 0 1px 0 rgba(255,252,242,.6), 0 2px 4px rgba(60,44,22,.28)",
+        transform: down ? "scale(.93)" : sel ? "scale(1.04)" : "scale(1)",
+        transition: down ? "transform .07s ease-out" : "transform .18s cubic-bezier(.2,1.6,.4,1), box-shadow .18s",
+      }}
+    >
+      {src ? (
+        <img src={src} alt={label} draggable={false}
+             style={{ position: "absolute", inset: "6%", width: "88%", height: "88%", objectFit: "contain" }} />
+      ) : (
+        <div style={{
+          position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+          fontFamily: T.font, fontWeight: 800, fontSize: size * 0.24, color: "#7a6242",
+          textShadow: "0 1px 0 rgba(255,252,242,.7)",
+        }}>None</div>
+      )}
+    </div>
+  );
+}
+
+export function CharacterStudio({
+  avatar, cats = [], outfit = {}, open, onToggle, onPick, onConfirm, onCancel,
+  width = 360, style,
+}) {
+  const [pressed, setPressed] = React.useState(null);
+  const boardH = width / STUDIO_ASPECT;
+  const inX = width * STUDIO_PAD.l;
+  const inW = width * (1 - STUDIO_PAD.l - STUDIO_PAD.r);
+  const inY = boardH * STUDIO_PAD.t;
+  const inH = boardH * (1 - STUDIO_PAD.t - STUDIO_PAD.b);
+  const colGap = inW * 0.04;
+  const avaW = inW * 0.34;
+  const listW = inW - avaW - colGap;
+  const slabH = listW / CAT_ASPECT;
+  const tile = listW * 0.29;
+
+  const btn = (src, key, w, onTap) => (
+    <img
+      src={`${KIT}${src}`} alt={key} draggable={false} role="button"
+      onPointerDown={() => setPressed(key)}
+      onPointerUp={() => setPressed(null)}
+      onPointerLeave={() => setPressed(null)}
+      onClick={onTap}
+      style={{
+        width: w, height: "auto", cursor: "pointer", WebkitTapHighlightColor: "transparent",
+        transform: pressed === key ? "translateY(2px) scale(.975)" : "none",
+        filter: pressed === key ? "brightness(.9)" : "drop-shadow(0 4px 7px rgba(30,20,8,.45))",
+        transition: "transform .08s ease, filter .12s ease",
+      }}
+    />
+  );
+
+  return (
+    <div style={{ position: "relative", width, fontFamily: T.font, userSelect: "none",
+                  paddingBottom: width * 0.085, ...style }}>
+      <img src={`${KIT}studio-board.png`} alt="Character Studio" draggable={false}
+           style={{ display: "block", width: "100%", height: "auto",
+                    filter: "drop-shadow(0 16px 32px rgba(25,20,10,.55))" }} />
+
+      {/* live character — the render is trimmed to its silhouette, so it can
+          be scaled to fill the pane rather than floating inside its margin */}
+      <div style={{
+        position: "absolute", left: inX, top: inY, width: avaW, height: inH,
+        display: "flex", flexDirection: "column", alignItems: "center",
+        justifyContent: "center", gap: avaW * 0.04,
+      }}>
+        {avatar && (
+          <img src={avatar} alt="Your gardener" draggable={false}
+               style={{ maxWidth: "100%", maxHeight: inH * 0.82, width: "auto", height: "auto",
+                        display: "block", filter: "drop-shadow(0 8px 12px rgba(60,44,20,.45))" }} />
+        )}
+        <div style={{
+          width: avaW * 0.66, height: avaW * 0.13, borderRadius: "50%", flex: "0 0 auto",
+          background: "radial-gradient(ellipse at center, rgba(78,58,30,.36), rgba(78,58,30,0) 70%)",
+        }} />
+      </div>
+
+      {/* categories */}
+      <div style={{
+        position: "absolute", left: inX + avaW + colGap, top: inY,
+        width: listW, height: inH, overflowY: "auto", overscrollBehavior: "contain",
+        display: "flex", flexDirection: "column", gap: slabH * 0.17,
+      }}>
+        {cats.map((c) => {
+          const isOpen = open === c.key;
+          return (
+            <div key={c.key} style={{ flex: "0 0 auto" }}>
+              <img
+                src={`${KIT}studio-cat-${c.key}.png`}
+                alt={c.key}
+                draggable={false}
+                role="button"
+                onClick={() => onToggle && onToggle(isOpen ? null : c.key)}
+                style={{
+                  display: "block", width: "100%", height: "auto", cursor: "pointer",
+                  WebkitTapHighlightColor: "transparent",
+                  filter: isOpen
+                    ? "drop-shadow(0 0 6px #ffd98a) drop-shadow(0 0 13px rgba(247,199,102,.7)) brightness(1.05)"
+                    : "drop-shadow(0 2px 4px rgba(40,30,14,.4))",
+                  transition: "filter .2s ease",
+                }}
+              />
+              {isOpen && (
+                <div style={{
+                  display: "flex", flexWrap: "wrap", gap: tile * 0.13,
+                  padding: `${tile * 0.16}px ${tile * 0.06}px ${tile * 0.2}px`,
+                  animation: "byStudioOpen .2s ease-out both",
+                }}>
+                  {c.items.map((it) => (
+                    <ItemTile
+                      key={it.v} src={it.icon} label={it.name} size={tile}
+                      sel={outfit[c.slot] === it.v}
+                      onPick={() => onPick && onPick(c.slot, it.v)}
+                    />
+                  ))}
+                  {(c.swatches || []).map((sw) => (
+                    <div key={sw.slot} style={{ width: "100%", display: "flex", flexWrap: "wrap",
+                                                gap: tile * 0.11, marginTop: tile * 0.08 }}>
+                      <div style={{ width: "100%", fontSize: tile * 0.2, fontWeight: 800,
+                                    letterSpacing: 1, color: "#7a6242",
+                                    textShadow: "0 1px 0 rgba(255,252,242,.7)" }}>
+                        {sw.label}
+                      </div>
+                      {sw.list.map((col) => (
+                        <Stud key={col} color={col} size={tile * 0.46}
+                              sel={outfit[sw.slot] === col}
+                              onPick={() => onPick && onPick(sw.slot, col)} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* confirm / cancel hang off the bottom rail, as in the board art */}
+      <div style={{
+        position: "absolute", left: 0, right: 0, bottom: width * 0.012,
+        display: "flex", alignItems: "flex-end", justifyContent: "center",
+        gap: width * 0.022,
+      }}>
+        {btn("studio-confirm.png", "confirm", width * 0.44, onConfirm)}
+        {btn("studio-cancel.png", "cancel", width * 0.19, onCancel)}
+      </div>
+
+      <style>{`
+        @keyframes byStudioOpen {
+          from { opacity: 0; transform: translateY(-4px) }
+          to   { opacity: 1; transform: translateY(0) }
+        }
+      `}</style>
     </div>
   );
 }

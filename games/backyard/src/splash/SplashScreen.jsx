@@ -11,7 +11,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   T, StonePanel, StoneSlab, TabToggle, ParchmentButton,
 } from "./ui-kit.jsx";
-import { useBoardData, BoardRows } from "./WeeklyBoard.jsx";
+import { useBoardData, ScrollBoard } from "./WeeklyBoard.jsx";
 
 export default function SplashScreen({ hud, onStart, onRequestClose, onGone }) {
   const [tab, setTab] = useState("players");
@@ -44,9 +44,9 @@ export default function SplashScreen({ hud, onStart, onRequestClose, onGone }) {
     return () => document.body.classList.remove("by-splash-open");
   }, []);
 
-  const { players, groupRows } = useBoardData(hud);
+  const { players, groups } = useBoardData(hud);
 
-  const rows = tab === "players" ? players : groupRows;
+  const board = tab === "players" ? players : groups;
 
   const start = () => {
     if (leaving) return;
@@ -155,7 +155,10 @@ export default function SplashScreen({ hud, onStart, onRequestClose, onGone }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 12 * S }}>
               {boardOpen && (
               <TabToggle
-                tabs={[{ key: "players", label: "Players" }, { key: "groups", label: "Groups" }]}
+                tabs={[
+                  { key: "players", label: "Players" },
+                  { key: "groups", label: "Garden League", weight: 1.5 },
+                ]}
                 active={tab}
                 onChange={setTab}
                 height={72 * S}
@@ -164,7 +167,9 @@ export default function SplashScreen({ hud, onStart, onRequestClose, onGone }) {
               />
               )}
 
-              {boardOpen && <BoardRows rows={rows} tab={tab} S={S} />}
+              {/* the same top-20 board as the in-game modal, capped against
+                  the viewport so START GAME always stays on screen */}
+              {boardOpen && <ScrollBoard board={board} tab={tab} S={S} maxVh={38} />}
 
               <ParchmentButton
                 onClick={start}

@@ -6,3 +6,6 @@ node_modules/
 # Not used by the build — kept local so they don't live in git history
 # forever. Force-add with `git add -f` if you ever want them versioned.
 design-ref/
+
+# throwaway screenshot/probe harnesses
+tools/_*.mjs

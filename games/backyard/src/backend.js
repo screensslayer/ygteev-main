@@ -109,6 +109,37 @@ export function createApi() {
       return data; // { correct, correct_idx, reward_kind, reward_amount, total_xp } | { error }
     },
 
+    // ---- Read-to-earn-XP mini player -------------------------------
+    // The next unread section of the current book, its ESV verses (text +
+    // narration) and the gem strip for the whole book. section === null once
+    // the book is finished — the offer simply stops appearing.
+    async nextReading() {
+      const { data, error } = await supabase.rpc("by_next_reading");
+      if (error) throw error;
+      for (const v of data?.section?.verses ?? []) {
+        v.url = supabase.storage.from("verse-audio").getPublicUrl(v.path).data.publicUrl;
+      }
+      return data ?? null;
+    },
+
+    // Audio played through. Credits the reading XP exactly once (repeat calls
+    // award 0) and returns the question — never its answer.
+    async finishReading(sectionId) {
+      const { data, error } = await supabase.rpc("by_finish_reading", { _section_id: sectionId });
+      if (error) throw error;
+      return data; // { awarded, xp, already, question: { prompt, choices, answer_xp } }
+    },
+
+    // One shot per section; correct answers credit once.
+    async answerReading(sectionId, choiceIdx) {
+      const { data, error } = await supabase.rpc("by_answer_reading", {
+        _section_id: sectionId,
+        _choice_idx: choiceIdx,
+      });
+      if (error) throw error;
+      return data; // { correct, correct_choice_index, awarded, xp, already }
+    },
+
     // Live players. Two transports behind one facade:
     //
     //  1. RELAY (default): dedicated WebSocket relay on Fly. Supabase
