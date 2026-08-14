@@ -3664,6 +3664,7 @@ export default function DragonGardenQuest() {
       eliQuipCd: 0, eliQuipNear: false, eliQuipBag: [], // idle banter at his post
       awayEaten: [], // plants Ember raided while the player was off the home map
       youthGroup: false, bridgeNoteShown: false, goldBagFound: false,
+      readingLock: false, readingNagT: -99, readingGraceUntil: 0, // exits shut while a passage plays
       plotRows: [], forecastShown: false, // picnic-table 24h harvest forecast
       redBags: null, // today's server-issued bags: [{ bag_idx, status, spot }]
       // Title splash: cinematic camera holds + intro/movement stay gated
@@ -8635,6 +8636,26 @@ export default function DragonGardenQuest() {
       } else {
         for (const ex of exits) {
           if (!G.transitioning && !G.turtleSeq && Math.hypot(playerPos.x - ex.x, playerPos.z - ex.z) < ex.r) {
+            // Mid-reading: the passage is playing or the question is up. The
+            // player can still walk and tend the garden, but leaving the map
+            // would tear the audio and the question out from under them, so
+            // the exits are shut until they finish or stop.
+            if (G.readingLock || G.time < (G.readingGraceUntil || 0)) {
+              // Deliberately NOT latched: the exit latch only clears once the
+              // player steps clear of every exit, which would strand someone
+              // who finished their reading while standing on the road. The
+              // nag throttle is what stops the spam instead.
+              //
+              // The grace window covers the moment the reading ends: without
+              // it, tapping Done while stood on the road teleports you on the
+              // same frame, which reads as the button doing it.
+              if (G.readingLock && G.time - (G.readingNagT || -99) > 4) {
+                G.readingNagT = G.time;
+                SFX.wrong();
+                toast("Finish your reading before leaving home.", "warn");
+              }
+              break;
+            }
             // Crossing the bridge with multiple youth groups → ask which
             // community garden to visit before loading the map.
             if (ex.to === "CHURCH") {
@@ -9710,6 +9731,15 @@ export default function DragonGardenQuest() {
             level: () => gameRef.current?.SFX?.pass?.(),
           }}
           onXp={(total) => gameRef.current?.applyXp?.(total)}
+          onPhase={(ph) => {
+            const g = gameRef.current;
+            if (!g) return;
+            // only while the passage is running or the question is open —
+            // the offer is skippable and the result is just an acknowledgement
+            const locked = ph === "play" || ph === "question";
+            if (g.readingLock && !locked) g.readingGraceUntil = (g.time || 0) + 1.2;
+            g.readingLock = locked;
+          }}
           onDone={endReading}
         />
       )}

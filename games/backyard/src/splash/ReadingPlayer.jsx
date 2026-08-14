@@ -187,6 +187,7 @@ export default function ReadingPlayer({
   sfx = {},             // { click, right, wrong, level }
   onXp,                 // (newTotalXp) => sync the wallet
   onDone,               // () => reading is over; parent fires the LEVEL UP badge
+  onPhase,              // (phase) => so the world can gate on "mid-reading"
 }) {
   const section = data?.section;
   const verses = section?.verses || [];
@@ -201,6 +202,10 @@ export default function ReadingPlayer({
   const [busy, setBusy] = React.useState(false);
 
   const total = verses.reduce((s, v) => s + (v.seconds || 0), 0) || 1;
+
+  const phaseCb = React.useRef(onPhase); phaseCb.current = onPhase;
+  React.useEffect(() => { if (phaseCb.current) phaseCb.current(phase); }, [phase]);
+  React.useEffect(() => () => { if (phaseCb.current) phaseCb.current(null); }, []);
 
   const finish = React.useCallback(async () => {
     setPct(1);
