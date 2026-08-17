@@ -761,6 +761,11 @@ export default function DragonGardenQuest() {
         src.start();
       };
       if (oneShotBufs[url]) return start(oneShotBufs[url]);
+      // Bounded cache. Decoded PCM runs ~10x the mp3, and Eli has nearly 40
+      // lines — left uncapped a long session accumulates all of them. Object
+      // key order is insertion order, so the first key is the oldest clip.
+      const cached = Object.keys(oneShotBufs);
+      if (cached.length >= 8) delete oneShotBufs[cached[0]];
       // versioned here rather than at the ~10 call sites, so a re-recorded
       // quip or quiz line can never be served from a stale browser cache
       fetch(`${url}?v=${VOICE_V}`).then((r) => r.arrayBuffer()).then((ab) => AC.decodeAudioData(ab))
@@ -1107,7 +1112,13 @@ export default function DragonGardenQuest() {
     // ---- canopy shade patches: one instanced flattened dome of cool moist grass under
     // every tree so trunks grow OUT of the meadow instead of floating on it (critic:
     // "darkened soft patch under every tree canopy"). One draw call per map.
-    const shadeGeo = new THREE.IcosahedronGeometry(1, 0);
+    // Resources built ONCE and reused by every map. disposeWorld() frees
+    // everything else hanging off worldGroup, so anything shared has to be
+    // registered here or the next map comes up with holes in it.
+    const SHARED_GPU = new Set();
+    const shareGpu = (r) => { SHARED_GPU.add(r); return r; };
+
+    const shadeGeo = new THREE.IcosahedronGeometry(1, 0); shareGpu(shadeGeo);
     const SHADE_MAX = 110;
     let shadeInst = null, shadeCount = 0, shadeCol = null;
     function addCanopyShade(x, z, r) {
@@ -1139,7 +1150,7 @@ export default function DragonGardenQuest() {
     // ---- one transformed, uniformly-tinted lump destined for a mergeGeoms canopy.
     // Whole canopies become ONE vertex-colored mesh, so richer silhouettes cost
     // FEWER draw calls than the old per-blob meshes. col must already be linear.
-    const canopyVCMat = flat(0xffffff, { vertexColors: true });
+    const canopyVCMat = flat(0xffffff, { vertexColors: true }); shareGpu(canopyVCMat);
     const lumpE = new THREE.Euler(), lumpM = new THREE.Matrix4();
     function lumpG(geo, sx, sy, sz, rx, ry, rz, px, py, pz, col) {
       geo.scale(sx, sy, sz);
@@ -1288,8 +1299,8 @@ export default function DragonGardenQuest() {
 
     // ---- Faceted rocks (warm pale granite, moss-capped) ----
     const instDummy = new THREE.Object3D();
-    const mossGeo = new THREE.IcosahedronGeometry(1, 0);
-    const mossMat = flat(PAL.leafDeep, { roughness: 1 });
+    const mossGeo = new THREE.IcosahedronGeometry(1, 0); shareGpu(mossGeo);
+    const mossMat = flat(PAL.leafDeep, { roughness: 1 }); shareGpu(mossMat);
     const MOSS_MAX = 48;
     let mossInst = null, mossCount = 0;
     function addMossCap(x, y, z, s) {
@@ -3689,7 +3700,7 @@ export default function DragonGardenQuest() {
       G.__redBags = { spawn: () => spawnRedBags(), sync: () => syncRedBags(), remove: (i) => removeRedBag(i, false) };
       G.__tp = (x, z) => { playerPos.x = x; playerPos.z = z; };
       G.__plots = (n) => plotNodes.slice(0, n || 8).map((nd) => ({ i: nd.idx, sp: nd.special, st: nd.stage, plant: !!nd.plant, seed: nd.data() && nd.data().seed, x: nd.x, z: nd.z }));
-      G.__renderInfo = () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geoms: renderer.info.memory.geometries });
+      G.__renderInfo = () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geoms: renderer.info.memory.geometries, texs: renderer.info.memory.textures, progs: renderer.info.programs ? renderer.info.programs.length : 0 });
       G.__toast = toast; // headless tests drive the notification stack
       G.__level = (n) => awardGems(n || GEMS_PER_LEVEL); // force a level-up
       G.__openShop = (k) => setShop(k); // headless tests jump straight into a shop
@@ -3949,7 +3960,7 @@ export default function DragonGardenQuest() {
     zctx.strokeText("Z", 32, 34);
     zctx.fillStyle = "#efe6ff";
     zctx.fillText("Z", 32, 34);
-    const zzzTex = new THREE.CanvasTexture(zzzCanvas);
+    const zzzTex = new THREE.CanvasTexture(zzzCanvas); shareGpu(zzzTex);
 
     // soft radial glow for the magical Glowberry tree
     const glowCv = document.createElement("canvas");
@@ -3960,13 +3971,13 @@ export default function DragonGardenQuest() {
     grd.addColorStop(0.5, "rgba(90,180,255,0.35)");
     grd.addColorStop(1, "rgba(60,140,255,0)");
     gcx.fillStyle = grd; gcx.fillRect(0, 0, 64, 64);
-    const glowTex = new THREE.CanvasTexture(glowCv);
+    const glowTex = new THREE.CanvasTexture(glowCv); shareGpu(glowTex);
 
     // floating league countdown (canvas texture, redrawn once per second)
     const timerCanvas = document.createElement("canvas");
     timerCanvas.width = 360; timerCanvas.height = 110;
     const timerCtx = timerCanvas.getContext("2d");
-    const timerTex = new THREE.CanvasTexture(timerCanvas);
+    const timerTex = new THREE.CanvasTexture(timerCanvas); shareGpu(timerTex);
     let lastTimerSec = -1;
     function drawLeagueTimer(str) {
       timerCtx.clearRect(0, 0, 360, 110);
@@ -3997,7 +4008,7 @@ export default function DragonGardenQuest() {
     const winsCanvas = document.createElement("canvas");
     winsCanvas.width = 512; winsCanvas.height = 170;
     const winsCtx = winsCanvas.getContext("2d");
-    const winsTex = new THREE.CanvasTexture(winsCanvas);
+    const winsTex = new THREE.CanvasTexture(winsCanvas); shareGpu(winsTex);
     function drawWinsLine(text, cy, size, depth) {
       const c = winsCtx, cx = winsCanvas.width / 2;
       c.textAlign = "center"; c.textBaseline = "middle";
@@ -4837,12 +4848,41 @@ export default function DragonGardenQuest() {
     scene.add(ring);
 
     function clearWorld() {
+    // Free the GPU side of a map we are done with. scene.remove() only
+    // detaches: three.js keeps the vertex buffers and textures alive until
+    // something calls dispose(), so without this every map change leaked
+    // ~375 geometries and a few textures that never came back. The JS heap
+    // looked fine throughout, because the leak is entirely GPU-side.
+    function disposeWorld(root) {
+      const seen = new Set();
+      let geo = 0, mat = 0, tex = 0;
+      const dropTex = (t) => {
+        if (!t || SHARED_GPU.has(t) || seen.has(t)) return;
+        seen.add(t); t.dispose(); tex++;
+      };
+      root.traverse((o) => {
+        if (o.geometry && !SHARED_GPU.has(o.geometry) && !seen.has(o.geometry)) {
+          seen.add(o.geometry); o.geometry.dispose(); geo++;
+        }
+        const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+        for (const m of mats) {
+          if (!m || SHARED_GPU.has(m) || seen.has(m)) continue;
+          seen.add(m);
+          // a material's own textures go too, unless they're shared canvases
+          ["map", "alphaMap", "emissiveMap", "normalMap", "roughnessMap", "bumpMap"]
+            .forEach((k) => dropTex(m[k]));
+          m.dispose(); mat++;
+        }
+      });
+      return { geo, mat, tex };
+    }
+
       // Glowlands handles first: their dispose() unhooks listeners (e.g. the
       // Lantern Post's onLanternChange subscription) before the group drops.
       if (glowHomeHandle) { try { glowHomeHandle.dispose(); } catch (e) {} glowHomeHandle = null; }
       if (glowMeadowHandle) { try { glowMeadowHandle.dispose(); } catch (e) {} glowMeadowHandle = null; }
       if (glowRoadHandle) { try { glowRoadHandle.dispose(); } catch (e) {} glowRoadHandle = null; }
-      if (worldGroup) scene.remove(worldGroup);
+      if (worldGroup) { scene.remove(worldGroup); disposeWorld(worldGroup); }
       worldGroup = new THREE.Group();
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
