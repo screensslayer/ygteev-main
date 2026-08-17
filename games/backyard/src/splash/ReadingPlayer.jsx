@@ -19,7 +19,7 @@ const GREEN = { lo: "#2f9c1c", mid: "#4ddb2f", hi: "#c2ff7a" };
 // One Audio element, re-sourced per verse. iOS only trusts an element that
 // was unlocked by a real tap — building a fresh Audio per verse gets the
 // second one silently blocked.
-function useVersePlayer(verses, { onVerse, onEnd, duck }) {
+function useVersePlayer(verses, { onVerse, onVerseDone, onEnd, duck }) {
   const el = React.useRef(null);
   const warm = React.useRef(null);
   const idx = React.useRef(0);
@@ -28,7 +28,7 @@ function useVersePlayer(verses, { onVerse, onEnd, duck }) {
   // through a ref so nothing here changes identity — a `stop` that churned
   // would tear the audio down mid-verse on an unrelated re-render.
   const cb = React.useRef(null);
-  cb.current = { onVerse, onEnd, duck };
+  cb.current = { onVerse, onVerseDone, onEnd, duck };
 
   const stop = React.useCallback(() => {
     const a = el.current;
@@ -41,6 +41,9 @@ function useVersePlayer(verses, { onVerse, onEnd, duck }) {
   const playFrom = React.useCallback((i) => {
     if (dead.current) return;
     if (i >= verses.length) { stop(); cb.current.onEnd && cb.current.onEnd(); return; }
+    // a verse only counts once its audio has actually played out, so the
+    // bank happens on the way IN to the next one
+    if (i > 0 && cb.current.onVerseDone) cb.current.onVerseDone(i);
     idx.current = i;
     cb.current.onVerse && cb.current.onVerse(i);
     const a = el.current || (el.current = new Audio());
@@ -58,10 +61,10 @@ function useVersePlayer(verses, { onVerse, onEnd, duck }) {
     }
   }, [verses, stop]);
 
-  const start = React.useCallback(() => {
+  const start = React.useCallback((from = 0) => {
     try { cb.current.duck && cb.current.duck(true); } catch (e) {}
-    playFrom(0);
-  }, [playFrom]);
+    playFrom(Math.max(0, Math.min(verses.length - 1, from)));
+  }, [playFrom, verses.length]);
 
   // seconds consumed so far, across the whole section
   const elapsed = React.useCallback(() => {
@@ -71,7 +74,7 @@ function useVersePlayer(verses, { onVerse, onEnd, duck }) {
     return t + Math.min(cur, verses[idx.current]?.seconds || cur);
   }, [verses]);
 
-  return { start, stop, elapsed };
+  return { start, stop, elapsed, at: () => idx.current };
 }
 
 // ------------------------------------------------------------------ pieces
@@ -99,7 +102,13 @@ function GemStrip({ gems, active, size = 13 }) {
   );
 }
 
-function XpBar({ pct, xp, height = 15 }) {
+// The bar fills with the audio; the pips sit at the verse boundaries, in
+// their true time positions, so they are unevenly spaced exactly as the
+// verses are. A pip lights when its verse is banked. The number is what has
+// ACTUALLY been credited, not a projection — it steps at each pip rather
+// than sliding, so the bar never promises XP you would lose by stopping a
+// second later.
+function XpBar({ pct, xp, marks = [], done = 0, height = 15 }) {
   return (
     <div
       style={{
@@ -128,6 +137,24 @@ function XpBar({ pct, xp, height = 15 }) {
           }}
         />
       </div>
+      {/* verse checkpoints */}
+      {marks.map((m, i) => {
+        const banked = i < done;
+        return (
+          <div
+            key={i}
+            style={{
+              position: "absolute", top: 0, bottom: 0, left: `${m * 100}%`,
+              width: Math.max(2, height * 0.14), marginLeft: -Math.max(1, height * 0.07),
+              // unbanked pips sit on the dark track, so they need to be light
+              // to read at all — the whole scale should be visible up front
+              background: banked ? "rgba(255,250,210,.95)" : "rgba(255,238,196,.26)",
+              boxShadow: banked ? "0 0 5px rgba(255,244,180,.95)" : "none",
+              transition: "background .18s ease, box-shadow .18s ease",
+            }}
+          />
+        );
+      })}
       <div
         style={{
           position: "absolute", inset: 0, display: "flex",
@@ -203,6 +230,27 @@ export default function ReadingPlayer({
 
   const total = verses.reduce((s, v) => s + (v.seconds || 0), 0) || 1;
 
+  // Where the last sitting got to, and what it was already paid.
+  const resumeFrom = Math.min(section?.verses_done ?? 0, Math.max(0, verses.length - 1));
+  const paidAlready = section?.read_xp_paid ?? 0;
+  const [banked, setBanked] = React.useState(resumeFrom);      // verses credited
+  const [earned, setEarned] = React.useState(paidAlready);     // XP actually credited
+  // Checkpoint positions: cumulative audio time, so a pip sits exactly where
+  // its verse ends rather than at an even fraction of the bar.
+  const marks = React.useMemo(() => {
+    let t = 0;
+    return verses.map((v) => { t += v.seconds || 0; return t / total; });
+  }, [verses, total]);
+  // XP owed at a given verse count. Mirrors the server's target formula, so
+  // the number on the bar matches what actually lands in the wallet.
+  const xpAt = (n) => Math.round((readXp * n) / Math.max(1, verses.length));
+  // a resumed section opens with its bar already part-filled
+  React.useEffect(() => {
+    if (!resumeFrom) return;
+    const behind = verses.slice(0, resumeFrom).reduce((a, v) => a + (v.seconds || 0), 0);
+    setPct(behind / total);
+  }, [resumeFrom, verses, total]);
+
   const phaseCb = React.useRef(onPhase); phaseCb.current = onPhase;
   React.useEffect(() => { if (phaseCb.current) phaseCb.current(phase); }, [phase]);
   React.useEffect(() => () => { if (phaseCb.current) phaseCb.current(null); }, []);
@@ -210,7 +258,11 @@ export default function ReadingPlayer({
   const finish = React.useCallback(async () => {
     setPct(1);
     setBusy(true);
+    setBanked(verses.length);
+    setEarned(readXp);
     try {
+      // finishReading tops up to the full award, so the last verse — which
+      // never gets an "on the way in" bank — is covered here
       const r = await api.finishReading(section.id);
       if (typeof r?.xp === "number") onXp && onXp(r.xp);
       setQ(r?.question || null);
@@ -224,15 +276,31 @@ export default function ReadingPlayer({
     } finally {
       setBusy(false);
     }
-  }, [api, section, onXp, sfx]);
+  }, [api, section, onXp, sfx, verses.length, readXp]);
 
-  const player = useVersePlayer(verses, { onVerse: setVi, onEnd: finish, duck });
+  // Fire-and-forget: by_credit_verses takes an absolute position, so a lost
+  // call is covered by the next one and by the finish top-up. Awaiting here
+  // would stall the audio behind the network.
+  const bankVerse = React.useCallback((n) => {
+    setBanked((b) => Math.max(b, n));
+    setEarned(xpAt(n));
+    Promise.resolve()
+      .then(() => api.creditVerses(section.id, n))
+      .then((r) => { if (typeof r?.xp === "number") onXp && onXp(r.xp); })
+      .catch(() => { /* the finish top-up will settle it */ });
+  }, [api, section, onXp, readXp, verses.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const player = useVersePlayer(verses, {
+    onVerse: setVi, onVerseDone: bankVerse, onEnd: finish, duck,
+  });
 
   // drive the green bar off real playback time, one sample per frame
   React.useEffect(() => {
     if (phase !== "play") return;
     const tick = player.elapsed;
     let raf = 0;
+    // elapsed() already sums every verse behind the cursor, including the
+    // ones carried over from a previous sitting, so no resume offset here
     const step = () => { setPct(Math.min(1, tick() / total)); raf = requestAnimationFrame(step); };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
@@ -240,7 +308,11 @@ export default function ReadingPlayer({
 
   if (!section) return null;
 
-  const play = () => { sfx.click && sfx.click(); setPhase("play"); player.start(); };
+  const play = () => {
+    sfx.click && sfx.click();
+    setPhase("play");
+    player.start(resumeFrom);
+  };
   const leave = (played) => { player.stop(); onDone && onDone(played); };
 
   const answer = async (i) => {
@@ -405,7 +477,9 @@ export default function ReadingPlayer({
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <WoodAction tone="green" onClick={play} style={{ flex: "1 1 auto", justifyContent: "center" }}>
                   <span style={{ fontSize: 12 }}>▶</span>
-                  Play to earn {readXp} XP
+                  {resumeFrom > 0
+                    ? `Resume — ${resumeFrom} of ${verses.length} verses · ${readXp - paidAlready} XP left`
+                    : `Play to earn ${readXp} XP`}
                   <SparkIcon size={14} />
                 </WoodAction>
                 <WoodAction onClick={() => { sfx.click && sfx.click(); leave(false); }}>Skip</WoodAction>
@@ -415,7 +489,7 @@ export default function ReadingPlayer({
             {phase === "play" && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ flex: "1 1 auto" }}>
-                  <XpBar pct={pct} xp={Math.round(pct * readXp)} />
+                  <XpBar pct={pct} xp={earned} marks={marks} done={banked} />
                 </div>
                 <WoodAction onClick={() => { sfx.click && sfx.click(); leave(false); }}>Stop</WoodAction>
               </div>
@@ -424,7 +498,7 @@ export default function ReadingPlayer({
             {phase === "question" && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ flex: "1 1 auto" }}>
-                  <XpBar pct={1} xp={readXp} />
+                  <XpBar pct={1} xp={earned} marks={marks} done={verses.length} />
                 </div>
                 <div style={{
                   fontSize: 11.5, fontWeight: 800, color: "#6d5233",

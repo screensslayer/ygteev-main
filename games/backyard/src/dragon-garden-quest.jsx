@@ -438,10 +438,13 @@ export default function DragonGardenQuest() {
     if (next && !gameRef.current?.introActive) setReading(next);
     else setLevelBadgeAt(Date.now());
   }, []);
-  const endReading = React.useCallback((played) => {
+  const endReading = React.useCallback(() => {
     setReading(null);
     setLevelBadgeAt(Date.now());
-    if (played) loadNextReading();
+    // Always refetch, not just on completion. Stopping part-way through
+    // banks verses server-side, so the cached offer is stale the moment the
+    // player closes — without this a resumed section still says verse 0.
+    loadNextReading();
   }, [loadNextReading]);
   const [acquired, setAcquired] = useState(null); // { icon, name } — post-purchase moment
   const [toolNote, setToolNote] = useState(null); // { title, body } — lock/info explainers

@@ -122,8 +122,22 @@ export function createApi() {
       return data ?? null;
     },
 
-    // Audio played through. Credits the reading XP exactly once (repeat calls
-    // award 0) and returns the question — never its answer.
+    // Bank the verses listened to so far. Sends an ABSOLUTE position rather
+    // than an increment, so it is safe to call on every verse, to call twice,
+    // and to lose — the next call covers anything dropped. That is why the
+    // player fires these without awaiting.
+    async creditVerses(sectionId, versesDone) {
+      const { data, error } = await supabase.rpc("by_credit_verses", {
+        _section_id: sectionId,
+        _verses_done: versesDone,
+      });
+      if (error) throw error;
+      return data; // { verses_done, total_verses, awarded, read_xp, xp }
+    },
+
+    // Audio played through. Tops the reading XP up to the full award (0 if
+    // the per-verse credits already covered it) and returns the question —
+    // never its answer.
     async finishReading(sectionId) {
       const { data, error } = await supabase.rpc("by_finish_reading", { _section_id: sectionId });
       if (error) throw error;
