@@ -16,22 +16,55 @@ import { useBoardData, ScrollBoard } from "./WeeklyBoard.jsx";
 export default function SplashScreen({ hud, onStart, onRequestClose, onGone }) {
   const [tab, setTab] = useState("players");
   // the board starts minimised — tapping the WEEKLY LEADERBOARD sign opens it
-  const [boardOpen, setBoardOpen] = useState(false);
+  // Anything with room shows the board straight away — every desktop and
+  // landscape window, plus tablets held in portrait (iPad mini is 744pt
+  // wide, hence 700 rather than 768). Phones keep it tucked behind the sign.
+  // The height floor is what keeps a phone held sideways out of it: 844x390
+  // is wide enough to look like a tablet and far too short to be one.
+  // Initial state only — reopening a board the player closed would be rude.
+  const [boardOpen, setBoardOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const w = window.innerWidth, h = window.innerHeight;
+    return (w >= 900 && w / h >= 1.25) || (w >= 700 && h >= 900);
+  });
   const [leaving, setLeaving] = useState(false);
   const rootRef = useRef(null);
   const [rootW, setRootW] = useState(Math.min(typeof window !== "undefined" ? window.innerWidth : 430, 560));
+  const [vp, setVp] = useState(() => ({
+    w: typeof window !== "undefined" ? window.innerWidth : 430,
+    h: typeof window !== "undefined" ? window.innerHeight : 844,
+  }));
 
   useLayoutEffect(() => {
     const measure = () => {
       if (rootRef.current) setRootW(rootRef.current.clientWidth);
+      setVp({ w: window.innerWidth, h: window.innerHeight });
     };
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, []);
 
-  // one design unit = 1px in the 768-wide mockup
-  const S = rootW / 768;
+  // TWO COMPOSITIONS. Portrait keeps the phone layout: a single centred
+  // column, board bottom-anchored above START GAME. Landscape splits it in
+  // two — title on the left, board on the right — because the portrait
+  // column on a 1920 screen is a 478px strip using a quarter of the width,
+  // and it reads as a phone app someone forgot to lay out for desktop.
+  const wide = vp.w >= 900 && vp.w / vp.h >= 1.25;
+  // One design unit = 1px in the 768-wide mockup. On landscape the scale
+  // comes from the COLUMN, not the root — the root is now up to 1240 wide
+  // and scaling off it would render the board at half the screen.
+  const shellW = wide ? Math.min(1240, vp.w - 80) : rootW;
+  const colW = wide ? Math.min(620, (shellW - 40) / 2) : rootW;
+  const S = colW / 768;
+  // How much height the scroller may take. A fixed share of the viewport
+  // overflows on short landscape windows (1280x620 clipped both the sign and
+  // START GAME), so subtract the panel's own furniture first — the sign,
+  // tabs, column head, START button and frame padding all scale with S.
+  const boardChrome = 380 * S;
+  const boardVh = wide
+    ? Math.max(24, Math.min(54, ((vp.h - 56 - boardChrome) / vp.h) * 100))
+    : 38;
 
   const profile = window.YGTEEV?.profile || {};
   const pulse = hud?.league?.pulse || {};
@@ -86,18 +119,30 @@ export default function SplashScreen({ hud, onStart, onRequestClose, onGone }) {
         ref={rootRef}
         style={{
           position: "absolute", inset: 0,
-          maxWidth: 560, margin: "0 auto",
-          display: "flex", flexDirection: "column", alignItems: "center",
-          padding: `calc(${20 * S}px + env(safe-area-inset-top, 0px)) 0 calc(${44 * S}px + env(safe-area-inset-bottom, 0px))`,
+          maxWidth: wide ? Math.min(1240, vp.w - 80) : 560, margin: "0 auto",
+          display: "flex",
+          flexDirection: wide ? "row" : "column",
+          alignItems: "center",
+          justifyContent: wide ? "space-between" : "flex-start",
+          gap: wide ? 40 : 0,
+          padding: wide
+            ? "24px 0"
+            : `calc(${20 * S}px + env(safe-area-inset-top, 0px)) 0 calc(${44 * S}px + env(safe-area-inset-bottom, 0px))`,
           boxSizing: "border-box",
           transform: leaving ? "translateY(-7vh) scale(.98)" : "none",
           transition: "transform .55s cubic-bezier(.5,0,.6,1)",
         }}
       >
+        {/* ------- title column. On landscape this is its own half of the
+            screen; on portrait the two children just stack as before. ------- */}
+        <div style={wide
+          ? { display: "flex", flexDirection: "column", alignItems: "center",
+              justifyContent: "center", flex: "1 1 0", minWidth: 0, gap: 8 }
+          : { display: "contents" }}>
         {/* ------- top bar: close button + the live-player readout -------
             Gold/XP plates and the profile medallion belong to the in-game HUD;
             the title screen only carries the "who's playing right now" signal. */}
-        <div style={{ position: "relative", width: "100%", minHeight: 120 * S, display: "flex", alignItems: "center", padding: `0 ${14 * S}px`, boxSizing: "border-box" }}>
+        <div style={{ position: "relative", width: "100%", minHeight: wide ? 34 : 120 * S, display: "flex", alignItems: "center", padding: `0 ${14 * S}px`, boxSizing: "border-box" }}>
           <div
             style={{
               position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)",
@@ -128,18 +173,26 @@ export default function SplashScreen({ hud, onStart, onRequestClose, onGone }) {
           alt="Backyard"
           draggable={false}
           style={{
-            width: 600 * S,
+            width: wide ? Math.min(colW * 1.12, 660) : 600 * S,
             // rule of thirds: logo's visual center sits high in the upper
             // third; clamped so short screens don't starve the world band
-            marginTop: "clamp(-14px, 1.6vh, 34px)",
+            marginTop: wide ? 0 : "clamp(-14px, 1.6vh, 34px)",
             filter: "drop-shadow(0 6px 14px rgba(30,20,5,.45)) drop-shadow(0 0 26px rgba(255,224,150,.35))",
             userSelect: "none",
             animation: "bySplashLogo .8s cubic-bezier(.2,1.4,.4,1) both",
           }}
         />
 
+        </div>
+
         {/* ------- leaderboard panel (mockup: frame 46..700, slab overlaps top) ------- */}
-        <div style={{ position: "relative", width: 656 * S, marginTop: "auto", paddingTop: 60 * S }}>
+        <div style={{
+          position: "relative", width: 656 * S, paddingTop: 60 * S,
+          // portrait pins the board to the bottom of the column; landscape
+          // centres it in its own half
+          marginTop: wide ? 0 : "auto",
+          flex: wide ? "0 0 auto" : undefined,
+        }}>
           {/* the sign doubles as the open/close control for the board */}
           <StoneSlab
             onClick={() => setBoardOpen((o) => !o)}
@@ -169,7 +222,7 @@ export default function SplashScreen({ hud, onStart, onRequestClose, onGone }) {
 
               {/* the same top-20 board as the in-game modal, capped against
                   the viewport so START GAME always stays on screen */}
-              {boardOpen && <ScrollBoard board={board} tab={tab} S={S} maxVh={38} />}
+              {boardOpen && <ScrollBoard board={board} tab={tab} S={S} maxVh={boardVh} />}
 
               <ParchmentButton
                 onClick={start}
