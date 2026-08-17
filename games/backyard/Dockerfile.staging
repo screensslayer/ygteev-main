@@ -2,3 +2,6 @@
 # Serves whatever is currently in dist/ — run `npm run build` first.
 FROM nginx:alpine
 COPY dist /usr/share/nginx/html
+# Stock nginx sends no Cache-Control, which let iOS Safari heuristically
+# cache index.html and serve a stale build back after a deploy.
+COPY nginx.staging.conf /etc/nginx/conf.d/default.conf

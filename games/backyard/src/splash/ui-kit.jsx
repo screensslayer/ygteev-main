@@ -377,7 +377,7 @@ export function PlatePill({ kind, value, height = 37, style }) {
         src={`${KIT}${P.src}`}
         alt=""
         draggable={false}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", userSelect: "none" }}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", userSelect: "none" }}
       />
       <div
         style={{
@@ -534,7 +534,7 @@ export function EmberPlaque({ pct = 100, slots = 7, width = 340, happy = false, 
         src={`${KIT}ember-${happy ? "happy" : hangry ? "hangry" : "hungry"}.png`}
         alt={happy ? "Ember is happy" : hangry ? "Ember is hangry" : "Ember is hungry"}
         draggable={false}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", userSelect: "none" }}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", userSelect: "none" }}
       />
       {Array.from({ length: slots }, (_, i) => {
         const on = i < lit;
@@ -592,7 +592,7 @@ export function SeedPlaque({ name, count, hint, nameColor, width = 190, onClick,
         src={`${KIT}seed-plaque.png`}
         alt=""
         draggable={false}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
       />
       <div
         style={{
@@ -682,7 +682,7 @@ export function InventorySheet({ seeds = [], basket = [], width = 400, style }) 
         src={`${KIT}inv-board.png`}
         alt="Home inventory"
         draggable={false}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
       />
       {seeds.slice(0, 3).map((c, i) => tile(c, i, "seeds", "seed"))}
       {basket.slice(0, 3).map((c, i) => tile(c, i, "basket", "basket"))}
@@ -772,7 +772,7 @@ export function LevelBar({ level = 1, gems = 0, fx = null, height = 300, onLevel
         }}
       >
         <img src={`${KIT}level-track.png`} alt="" draggable={false}
-             style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+             style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
         {/* gems fill from the bottom up */}
         {Array.from({ length: SLOTS }, (_, i) => {
           const on = i < shown;
@@ -881,7 +881,7 @@ export function SeedShop({ member = false, width = 340, rows = [], onBuy, onExpl
       }}
     >
       <img src={ART} alt="Rosie's Rare Seeds" draggable={false}
-           style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
       {SHOP_ROW_C.map((c, i2) => {
         const r = rows[i2] || {};
         if (r.cost == null) return null;
@@ -950,7 +950,7 @@ export function SeedShop({ member = false, width = 340, rows = [], onBuy, onExpl
           filter: "brightness(.85)",
         }}>
           <img src={ART} alt="" draggable={false}
-               style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+               style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
         </div>
       )}
     </div>
@@ -1099,7 +1099,7 @@ export function BerryMarket({ items = [], total = 0, everything = true, width = 
                   userSelect: "none", filter: "drop-shadow(0 16px 32px rgba(25,20,10,.55))",
                   opacity: ready ? 1 : 0, transition: "opacity .18s ease", ...style }}>
       <img src={`${KIT}market-v2.png`} alt="Berry Market" draggable={false}
-           style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
 
       {items.slice(0, 3).map((it, i2) => {
         const dim = it.have <= 0;
@@ -1156,7 +1156,7 @@ export function BerryMarket({ items = [], total = 0, everything = true, width = 
         }}
       >
         <img src={`${KIT}market-sell-bar.png`} alt="" draggable={false}
-             style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+             style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
         {sellHold > 0 && (
           <div style={{
             position: "absolute", inset: 0,
@@ -1259,7 +1259,7 @@ export function LevelBarH({ gems = 0, slots = SLOTS, width = 200, style }) {
   return (
     <div style={{ position: "relative", width, aspectRatio: String(1329 / 191), ...style }}>
       <img src={`${KIT}level-track-h.png`} alt="" draggable={false}
-           style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
       {Array.from({ length: slots }, (_, i) => (
         <img
           key={i}
@@ -1331,7 +1331,7 @@ export function PlayerProfile({ name = "Gardener", avatar, level = 1,
                   fontFamily: T.font, userSelect: "none",
                   filter: "drop-shadow(0 16px 32px rgba(25,20,10,.55))", ...style }}>
       <img src={`${KIT}profile-panel.png`} alt="Player profile" draggable={false}
-           style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
 
       {avatar && (
         <img src={avatar} alt="" draggable={false} style={{
@@ -1405,7 +1405,7 @@ export function PlayerProfile({ name = "Gardener", avatar, level = 1,
             <div key={b.key} role="button" {...hit}
                  style={{ ...place, aspectRatio: String(SLAB_ASPECT), ...press }}>
               <img src={`${KIT}slab-black-blank.png`} alt="" draggable={false}
-                   style={{ position: "absolute", inset: 0, width: "100%", height: "100%",
+                   style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none",
                             filter: b.locked ? "grayscale(.5) brightness(.72)" : "none" }} />
               <div style={{
                 position: "absolute", inset: 0, display: "flex",
@@ -1742,7 +1742,7 @@ export function Toolworks({ items = [], xp = 0, width = 340, onBuy, onExplain, o
       }}
     >
       <img src={ART} alt="Grimble's Toolworks" draggable={false}
-           style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
       {items.map((it, i2) => {
         const c = TOOLS_ROW_C[i2];
         if (c == null) return null;
@@ -1825,7 +1825,7 @@ export function Toolworks({ items = [], xp = 0, width = 340, onBuy, onExplain, o
           filter: "brightness(.85)",
         }}>
           <img src={ART} alt="" draggable={false}
-               style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+               style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
         </div>
       )}
     </div>
@@ -1887,7 +1887,7 @@ export function InventoryBoard({ width = 340, mode = "home", seeds = [], basket 
                   filter: "drop-shadow(0 16px 32px rgba(25,20,10,.55))",
                   opacity: ready ? 1 : 0, transition: "opacity .18s ease", ...style }}>
       <img src={`${KIT}inv-board-v2.png`} alt="Inventory" draggable={false}
-           style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
       {/* the plank hangs off the top, centred */}
       <img src={`${KIT}inv-title-plank.png`} alt="" draggable={false}
            style={{ position: "absolute", left: "50%", transform: "translateX(-50%)",

@@ -1,3 +1,4 @@
-# Fly build context: only dist/ is copied into the image.
+# Fly build context: dist/ plus the nginx config that fronts it.
 *
 !dist
+!nginx.staging.conf

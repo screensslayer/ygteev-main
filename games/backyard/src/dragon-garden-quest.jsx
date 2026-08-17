@@ -7743,6 +7743,19 @@ export default function DragonGardenQuest() {
       else if (type === "redbag") {
         const api = window.YGTEEV_API;
         const bi = currentPrompt.bagIdx;
+        // Mid-reading, same reasoning as the shut exits: a pouch opens its own
+        // question dialog, which would land on top of the passage or the
+        // reading question and put the player in two quizzes at once. The bag
+        // is one-shot and server-issued, so losing the tap costs nothing —
+        // it stays hidden in the grass until they're done.
+        if (G.readingLock) {
+          if (G.time - (G.readingNagT || -99) > 4) {
+            G.readingNagT = G.time;
+            SFX.wrong();
+            toast("Finish your reading — the pouch will wait.", "warn");
+          }
+          return;
+        }
         if (!api || !api.openRedBag) { toast("The pouch is knotted tight…", "warn"); return; }
         SFX.click();
         api.openRedBag(bi)
@@ -9065,6 +9078,8 @@ export default function DragonGardenQuest() {
       }
       for (const h of hotspots) {
         let hx = h.x, hz = h.z;
+        // don't let the action button advertise a pouch it won't open
+        if (h.type === "redbag" && G.readingLock) continue;
         if (h.type === "dragon" && G.dragonState !== "idle") {
           // he's out of the cave — the feed prompt follows him while he
           // prowls; while he's charging or running home he can't be fed

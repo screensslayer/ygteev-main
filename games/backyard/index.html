@@ -15,10 +15,104 @@
     <style>
       html, body { margin: 0; padding: 0; background: #0A0712; height: 100%; overflow: hidden; }
       #root { position: fixed; inset: 0; }
+
+      /* iOS treats a long press on an <img> as "I want this picture" and
+         raises Share / Save to Photos / Copy, plus a drag lift. This game
+         uses hold-to-confirm for every purchase and sale, so a long press
+         is a first-class gesture and that menu must never appear.
+
+         -webkit-touch-callout is the only CSS property that suppresses it —
+         draggable="false" and user-select do not. It is set globally rather
+         than per component because a single unguarded image anywhere inside
+         a hold target is enough to break the gesture, and the components
+         that already set user-select had all missed this one.
+
+         This CSS cannot be tested in Chromium (it drops the declaration at
+         parse time, so it is invisible to getComputedStyle AND to cssRules),
+         so it is backed by the contextmenu handler below, which can be.
+
+         The same machinery raises the selection loupe — the magnifier bubble —
+         on a double tap. Both are applied to * rather than to the root: they
+         are inherited properties, but only the unprefixed spelling is, and
+         iOS below 17 reads only the -webkit- one. Inheriting the version the
+         phone ignores is how this leaked through in the first place. */
+      * {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+
+        /* Kills double-tap-to-zoom, which iOS runs even though the viewport
+           says user-scalable=no — it has ignored that since iOS 10. The
+           game's own touch listeners are all { passive: true } and so cannot
+           preventDefault their way out of it; this is the only lever left.
+
+           On * and not just the root: touch-action is NOT an inherited
+           property, so rooting it left the <canvas> — which is most of the
+           screen, and most of where a stray double tap lands — on `auto`.
+
+           "manipulation" and not "none": it drops double-tap zoom while
+           still permitting pan and pinch, so the world still drags and the
+           two scrolling boards still scroll. Anything needing full control
+           sets touch-action inline, and an inline style outranks this. */
+        touch-action: manipulation;
+      }
+      img { -webkit-user-drag: none; }
+      /* NOT pointer-events:none on img — plenty of buttons in the kit are an
+         <img role="button">, and that would kill every one of them. */
+
+      /* The sign-in fields are the one place selection is wanted: without
+         this the * rule above makes the email and password fields impossible
+         to correct or paste into. */
+      input, textarea {
+        -webkit-user-select: text;
+        user-select: text;
+        -webkit-touch-callout: default;
+      }
+
     </style>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Second line of defence for the long-press problem described in the
+      // stylesheet above. iOS Safari fires a real `contextmenu` event before
+      // it raises Share / Save to Photos, so cancelling that event stops the
+      // menu even where the CSS is missed — and unlike the CSS, this one is
+      // observable in a desktop browser, so it can actually be regression
+      // tested. Capture phase, so nothing downstream can swallow it first.
+      //
+      // Text fields are exempt: the user needs the paste menu there.
+      document.addEventListener(
+        "contextmenu",
+        (e) => {
+          if (e.target.closest && e.target.closest("input, textarea, [contenteditable=true]")) return;
+          e.preventDefault();
+        },
+        true
+      );
+      // The same long press also starts a native image drag on desktop, which
+      // leaves a ghost stuck to the cursor mid hold-to-buy.
+      document.addEventListener("dragstart", (e) => {
+        if (e.target.tagName === "IMG") e.preventDefault();
+      }, true);
+
+      // A double tap asks iOS to select the word under the finger, and the
+      // magnifier bubble rides along with that selection. `selectstart` is
+      // the event that begins it, so refusing it stops the loupe before it
+      // is drawn — and this one, unlike -webkit-user-select, is observable
+      // in a desktop browser and can be regression tested.
+      const editable = (t) => t && t.closest && t.closest("input, textarea, [contenteditable=true]");
+      document.addEventListener("selectstart", (e) => {
+        if (!editable(e.target)) e.preventDefault();
+      }, true);
+      // Belt and braces for the zoom half of the same gesture. touch-action
+      // above is what actually stops it; this catches the synthesized click
+      // pair on anything that overrides touch-action locally.
+      document.addEventListener("dblclick", (e) => {
+        if (!editable(e.target)) e.preventDefault();
+      }, true);
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
