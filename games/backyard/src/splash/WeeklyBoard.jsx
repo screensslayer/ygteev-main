@@ -1,5 +1,7 @@
-// The weekly leaderboard, shared by the title splash and the in-game
-// "Open League Board" button so both show exactly the same board.
+// The leaderboard, shared by the title splash and the in-game "Open League
+// Board" button so both show exactly the same board. The DISPLAY is all-time
+// for now (players by level, groups by lifetime rare berries); the weekly
+// tables keep collecting underneath for funds/payouts and a later weekly view.
 //
 // This file owns the DATA (useBoardData) and the shared presentation
 // (ScrollBoard), plus the in-game modal wrapper. Both surfaces show the same
@@ -74,24 +76,40 @@ export function useBoardData(hud) {
     return () => { dead = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const groups = useMemo(() => {
-    const L = hud?.league || {};
-    const live = Array.isArray(L.rows) && L.rows.length > 0;
-    if (sample && !live) {
-      return {
-        all: SAMPLE.map((s, i) => ({ ...s, name: ["Oak Ridge Youth", "River Church", "The Grove", "Northside", "Kings Kids"][i], user_id: String(i) })),
-        me: null,
-      };
-    }
-    if (!live) return { all: [], me: null };
-    // the RPC already ranks (berries, then verified, then roster size), so
-    // trust its order and just number it
-    const ordered = L.rows.map((r, i) => ({
-      user_id: r.id || r.name, rank: i + 1, name: r.name,
-      score: r.berries, me: !!r.mine,
-    }));
-    return { all: ordered.slice(0, TOP_N), me: ordered.find((r) => r.me) || null };
-  }, [hud?.league, sample]);
+  // Garden League — ALL-TIME standings from their own RPC. The weekly rows
+  // in hud.league keep powering the in-garden bulletin; here they are only
+  // a fallback for spotting which group is the viewer's own.
+  const [groups, setGroups] = useState({ all: null, me: null });
+  useEffect(() => {
+    let dead = false;
+    const sampleGroups = () => ({
+      all: SAMPLE.map((s, i) => ({ ...s, name: ["Oak Ridge Youth", "River Church", "The Grove", "Northside", "Kings Kids"][i], user_id: String(i) })),
+      me: null,
+    });
+    (async () => {
+      if (sample) { setGroups(sampleGroups()); return; }
+      try {
+        const api = window.YGTEEV_API;
+        if (!api?.getLeagueAllTime) {
+          setGroups(IS_STAGING ? sampleGroups() : { all: [], me: null });
+          return;
+        }
+        const rows = await api.getLeagueAllTime();
+        if (dead) return;
+        const myGid = window.YGTEEV?.profile?.groupId
+          || (hud?.league?.rows || []).find((r) => r.mine)?.id || null;
+        const ordered = (rows || []).map((r) => ({
+          user_id: r.group_id, rank: r.rank, name: r.group_name,
+          score: r.berries, me: !!myGid && r.group_id === myGid,
+        }));
+        if (!ordered.length && IS_STAGING) { setGroups(sampleGroups()); return; }
+        setGroups({ all: ordered.slice(0, TOP_N), me: ordered.find((r) => r.me) || null });
+      } catch {
+        if (!dead) setGroups(IS_STAGING ? sampleGroups() : { all: [], me: null });
+      }
+    })();
+    return () => { dead = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { players, groups };
 }
@@ -100,12 +118,12 @@ export function useBoardData(hud) {
 export function BoardRows({ rows, tab, S }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 * S, padding: `${4 * S}px ${8 * S}px` }}>
-      {rows === null && <EmptyNote S={S}>Gathering this week's gardeners…</EmptyNote>}
+      {rows === null && <EmptyNote S={S}>Gathering the top gardeners…</EmptyNote>}
       {Array.isArray(rows) && rows.length === 0 && (
         <EmptyNote S={S}>
           {tab === "players"
             ? "No gardeners have levelled up yet — harvest to earn gems!"
-            : "No gardens on the board yet this week."}
+            : "No gardens on the board yet — plant rare berries!"}
         </EmptyNote>
       )}
       {Array.isArray(rows) && rows.map((r) => (
@@ -203,13 +221,13 @@ export function ScrollBoard({ board, tab, S, visibleRows = 6.45, maxVh = null })
     if (el) setAtEnd(el.scrollHeight <= el.clientHeight + 4);
   }, [rows, tab]);
 
-  if (rows === null) return <EmptyNote S={S}>Gathering this week's gardeners…</EmptyNote>;
+  if (rows === null) return <EmptyNote S={S}>Gathering the top gardeners…</EmptyNote>;
   if (Array.isArray(rows) && rows.length === 0) {
     return (
       <EmptyNote S={S}>
         {tab === "players"
           ? "No gardeners have levelled up yet — harvest to earn gems!"
-          : "No gardens on the board yet this week."}
+          : "No gardens on the board yet — plant rare berries!"}
       </EmptyNote>
     );
   }

@@ -19,7 +19,7 @@ import { startEncounter as glowStartEncounter } from "./glowlands/combat.js";
 import { STARTER_SERUMS, FIRST_STUDY_SESSION_MINTS } from "./glowlands/data/combat-data.js";
 import buildHomeAdditions from "./glowlands/maps/home-additions.js";
 import SplashScreen from "./splash/SplashScreen.jsx";
-import { PlatePill, Medallion, SquareButton, EmberPlaque, InventorySheet, StonePanel, LevelBar, SeedShop, CountBadge, LockedSeedNotice, BerryMarket, CommunityInventory, PlayerProfile, Wardrobe, Almanac, Toolworks, InventoryBoard, HarvestForecast, LevelBarH, CharacterStudio, T as T_UI } from "./splash/ui-kit.jsx";
+import { PlatePill, Medallion, SquareButton, GemStrip, InventorySheet, StonePanel, LevelBar, SeedShop, CountBadge, LockedSeedNotice, BerryMarket, CommunityInventory, PlayerProfile, Wardrobe, Almanac, Toolworks, InventoryBoard, HarvestForecast, LevelBarH, CharacterStudio, T as T_UI } from "./splash/ui-kit.jsx";
 import WeeklyBoardModal from "./splash/WeeklyBoard.jsx";
 import ReadingPlayer from "./splash/ReadingPlayer.jsx";
 import buildMeadowAdditions, { MEADOW_TRIGGERS, MEADOW_TUNING } from "./glowlands/maps/meadow-additions.js";
@@ -118,7 +118,7 @@ const SEEDS = {
 // browser happily serves the old take forever. One constant rather than a
 // literal per loader, and tools/gen-intro-lines.mjs bumps it automatically
 // after a render — the version must never depend on someone remembering.
-const VOICE_V = 8;
+const VOICE_V = 9;
 
 const MAP_LABELS = {
   HOME: "🏡 Home Meadow", TOWN: "🏘️ Meadow Town", CHURCH: "⛪ Grace Community Garden",
@@ -260,19 +260,19 @@ const Ribbon = ({ children }) => (
 );
 const INTRO_PAGES = [
   { t: "Well, well… so you're the new keeper of this old backyard. I'm Eli — I've tended gardens since before your grandmother could whistle.", focus: "eli" },
-  { t: "Mind the cave yonder. Ember sleeps there — a good-hearted dragon with a bottomless belly. Keep him fed, and he'll keep watch over you. Let him go hungry… and he'll help himself to your harvest.", focus: "cave" },
+  { t: "Mind the cave yonder. Momma Ember sleeps there with her two little ones. Keep her fed so she can feed those babies… but let the food run out, child, and something terrible will happen to the wee things.", focus: "cave" },
   { t: "Every gardener begins the same way: a seed, a little dirt, and a whole lot of hope. Those three strawberry seeds in your pouch? My gift. Show me what you can do.", focus: "eli", task: "plant", gift: { key: "strawberry", n: 3 } },
   { t: "Ha! Good hands, child. Now comes the gardener's hardest lesson — waiting. When the berries ripen, gather them up.", focus: "eli", task: "harvest" },
-  { t: "Hear that rumble from the cave? That's Ember dreaming of breakfast. Throw him a Strawberry by clicking on him — a fed dragon is a happy dragon. Mind, that belly won't stay full for long.", focus: "cave", task: "feed" },
+  { t: "Hear that rumble from the cave? That's Momma Ember dreaming of breakfast for her babies. Throw her a Strawberry by clicking on her — a fed momma means safe, happy babies. Mind, that belly won't stay full for long.", focus: "cave", task: "feed" },
   { t: "Look at that smile! You've the heart of a true gardener. Here — a Blueberry seed. You've earned it.", focus: "eli", gift: { key: "blueberry", n: 1 } },
   { t: "Now hear me well: some seeds are too holy for ordinary dirt. Glowberries take root only in blessed soil — across the river, in the youth group garden.", focus: "bridge" },
   { t: "And if you haven't joined a youth group in the YGTeeV app, don't wait, child. No champion ever grew alone — that fellowship is the richest soil you'll ever plant yourself in.", focus: "eli" },
-  { t: "Off you go now. The soil is waiting… and so is Ember's appetite. Find me at the church garden when you're ready.", focus: "eli", end: true },
+  { t: "Off you go now. The soil is waiting… and so are Ember's hungry little ones. Find me at the church garden when you're ready.", focus: "eli", end: true },
 ];
 const INTRO_TASK_LABEL = {
   plant: "Plant a Strawberry in your garden",
   harvest: "Harvest your ripe Strawberries",
-  feed: "Throw Ember a Strawberry by clicking on him!",
+  feed: "Throw Ember a Strawberry by clicking on her!",
 };
 
 // Eli's challenge greeting. The long speech in the quiz card is what a
@@ -501,7 +501,7 @@ export default function DragonGardenQuest() {
     gameRef.current?.SFX?.wrong?.();
     setToolNote({
       title: "🐉 WHILE YOU WERE GONE",
-      body: `Ember got hungry and helped himself to ${list}. Keep his belly full and he'll leave your garden be.`,
+      body: `Momma Ember ran out of food for the babies and helped herself to ${list}. Keep her fed and she'll leave your garden be.`,
     });
   };
   const prevIntroTaskRef = useRef(null);
@@ -650,7 +650,7 @@ export default function DragonGardenQuest() {
     mount.appendChild(renderer.domElement);
 
     // ================= AUDIO: generative ambient score + synthesized SFX =================
-    let AC = null, audioOut = null, musicBus = null, sfxBus = null, fountainGain = null, snoreGain = null, eatBuf = null, winBuf = null, levelBuf = null;
+    let AC = null, audioOut = null, musicBus = null, sfxBus = null, fountainGain = null, snoreGain = null, eatBuf = null, winBuf = null, levelBuf = null, boomBuf = null;
     let voiceBufs = [], voiceSrc = null, voiceGain = null, voiceDuckOrig = null;
     const AUDIO = { muted: false };
     // Recorded music loops (public/music/) — the ONLY music source; maps
@@ -731,6 +731,11 @@ export default function DragonGardenQuest() {
         .then((r) => r.arrayBuffer())
         .then((ab) => AC.decodeAudioData(ab))
         .then((buf) => { levelBuf = buf; })
+        .catch(() => {});
+      fetch("/sfx/baby-boom.m4a?v=1")
+        .then((r) => r.arrayBuffer())
+        .then((ab) => AC.decodeAudioData(ab))
+        .then((buf) => { boomBuf = buf; })
         .catch(() => {});
       playTrack(trackWanted || (typeof G !== "undefined" && G && G.map) || "HOME");
     }
@@ -964,6 +969,14 @@ export default function DragonGardenQuest() {
       sparkle: () => sq((t) => { tone(1568, t, 0.28, 0.1, "sine", 2349); tone(2093, t + 0.06, 0.24, 0.07, "sine", 2637); }),
       level: () => { if (!playSting(levelBuf, 1)) sq((t) => { [523.25, 659.25, 784, 1046.5].forEach((f, i) => tone(f, t + i * 0.09, 0.26, 0.15, "triangle")); }); },
       whoosh: () => sq((t) => { noiseBurst(t, 0.4, 0.16, 300, 0.8, "bandpass", 2400); }),
+      // the babies' explosion — recorded blast, synth thump as the fallback
+      boom: () => {
+        if (AC && !AUDIO.muted && boomBuf) {
+          const src = AC.createBufferSource(); src.buffer = boomBuf;
+          const g = AC.createGain(); g.gain.value = 0.95;
+          src.connect(g); g.connect(sfxBus); src.start();
+        } else sq((t) => { noiseBurst(t, 0.9, 0.5, 700, 0.6, "lowpass", 80); tone(72, t, 0.8, 0.3, "sine", 36); });
+      },
       sleep: () => sq((t) => { tone(392, t, 0.5, 0.08, "sine", 262); }),
       wake: () => sq((t) => { tone(262, t, 0.4, 0.1, "sine", 440); }),
       click: () => sq((t) => { tone(1150, t, 0.04, 0.08, "square"); }),
@@ -3409,6 +3422,146 @@ export default function DragonGardenQuest() {
       return g;
     }
 
+    // Ember's babies: the SAME rig as mom, hue-shifted and toddler-sized.
+    // makeDragon() mints fresh materials per call, so each baby recolors
+    // its own coat without touching hers.
+    function makeBabyDragon(shift) {
+      const b = makeDragon();
+      b.scale.setScalar(0.34); // knee-high next to mom's 0.7
+      const seen = new Set();
+      b.traverse((o) => {
+        if (o.material && !seen.has(o.material)) {
+          seen.add(o.material);
+          if (o.material.color) o.material.color.offsetHSL(shift, 0.02, 0.07);
+          if (o.material.emissive) o.material.emissive.offsetHSL(shift, 0, 0);
+        }
+      });
+      return b;
+    }
+    function spawnBabies(emerging) {
+      const shifts = [-0.36, 0.14]; // one seafoam, one rosy — siblings, not twins
+      babies = shifts.map((sh, i) => {
+        const side = i === 0 ? -1 : 1;
+        const bg = makeBabyDragon(sh);
+        const sx = dragonHome.x + side * (emerging ? 0.4 : 1.6);
+        const sz = emerging ? dragonHome.z - 1.0 : dragonHome.z + 1.5;
+        bg.position.set(sx, 0, sz);
+        bg.rotation.y = Math.atan2(side, 1);
+        worldGroup.add(bg);
+        // solid little bodies: a live collider that tracks the baby each
+        // frame, so the player bumps into them instead of ghosting through
+        const col = { type: "c", x: sx, z: sz, r: 0.48, babyCol: true };
+        colliders.push(col);
+        return {
+          g: bg, side, ph: Math.random() * 6.28,
+          state: emerging ? "emerge" : "out",
+          tgt: emerging ? { x: dragonHome.x + side * 1.7, z: dragonHome.z + 1.8 } : null,
+          retarget: 0, col,
+        };
+      });
+    }
+
+    // The babies mirror the gem meter, not a private clock: green/yellow
+    // gems = happy toddling by the cave; RED gems (3 left) = full panic —
+    // zigzag sprints, rapid hops, wings flapping — the on-screen alarm bell
+    // that food is about to run out.
+    function updateBabies(dt) {
+      if (G.map !== "HOME") return;
+      if (!babies.length) {
+        // one rule, every path: babies exist whenever mom is home, settled
+        // and fed. After a feed she runs back to the cave (rampage_back),
+        // goes idle — and two NEW babies walk out of it to be with her.
+        if (dragon && G.dragonState === "idle" && G.hunger > 0) {
+          spawnBabies(true);
+          toast("🐣 Two new baby dragons toddle out of the cave!", "info");
+        }
+        return;
+      }
+      const gems = Math.round((Math.max(0, Math.min(100, G.hunger)) / 100) * 7);
+      const panic = G.hunger > 0 && gems <= 3;
+      for (const bb of babies) {
+        const bg = bb.g, u = bg.userData;
+        bb.ph += dt;
+        // babies never bulldoze the player: a step that would land inside
+        // them is skipped (they hop in place until the way clears)
+        const stepOk = (nx, nz) => Math.hypot(nx - playerPos.x, nz - playerPos.z) > 0.95;
+        if (bb.state === "emerge") {
+          // single-file out of the cave mouth to their spot beside mom
+          const dx = bb.tgt.x - bg.position.x, dz = bb.tgt.z - bg.position.z;
+          const dd = Math.hypot(dx, dz);
+          if (dd < 0.15) { bb.state = "out"; bb.tgt = null; bb.retarget = 0; }
+          else {
+            const nx = bg.position.x + (dx / dd) * 0.9 * dt, nz = bg.position.z + (dz / dd) * 0.9 * dt;
+            if (stepOk(nx, nz)) { bg.position.x = nx; bg.position.z = nz; }
+            bg.rotation.y = Math.atan2(dx, dz);
+          }
+        } else if (bb.state === "feast") {
+          // sprint to mom's side, then chomp along with her. feastT runs the
+          // whole time, so a blocked path can't strand them mid-feast.
+          bb.feastT -= dt;
+          const dx = bb.tgt.x - bg.position.x, dz = bb.tgt.z - bg.position.z;
+          const dd = Math.hypot(dx, dz);
+          if (!bb.eating) {
+            if (dd < 0.24) {
+              bb.eating = true;
+              // face the fruit at mom's snout
+              if (dragon) bg.rotation.y = Math.atan2(dragon.position.x - bg.position.x, dragon.position.z + 0.6 - bg.position.z);
+            } else {
+              const nx = bg.position.x + (dx / dd) * 2.4 * dt, nz = bg.position.z + (dz / dd) * 2.4 * dt;
+              if (stepOk(nx, nz)) { bg.position.x = nx; bg.position.z = nz; }
+              bg.rotation.y = Math.atan2(dx, dz);
+            }
+          }
+          if (bb.feastT <= 0) {
+            bb.state = "out"; bb.eating = false; bb.tgt = null; bb.retarget = 0;
+            if (u && u.jaw) u.jaw.rotation.x = 0;
+          }
+        } else {
+          bb.retarget -= dt;
+          if (bb.retarget <= 0 || !bb.tgt) {
+            bb.retarget = panic ? 0.45 + Math.random() * 0.5 : 2.5 + Math.random() * 3;
+            const cx = dragonHome.x + bb.side * 1.4, cz = dragonHome.z + 1.6;
+            const r = panic ? 3.4 : 1.9;
+            bb.tgt = { x: cx + (Math.random() - 0.5) * r * 2, z: cz + Math.random() * r };
+          }
+          const dx = bb.tgt.x - bg.position.x, dz = bb.tgt.z - bg.position.z;
+          const dd = Math.hypot(dx, dz) || 1;
+          // calm babies waddle in lazy bursts; panicking ones never stop
+          const gate = panic ? 1 : Math.sin(G.time * 1.1 + bb.ph * 7) > 0.15 ? 1 : 0;
+          if (dd > 0.12 && gate) {
+            const speed = panic ? 3.1 : 0.55;
+            const nx = bg.position.x + (dx / dd) * speed * dt, nz = bg.position.z + (dz / dd) * speed * dt;
+            if (stepOk(nx, nz)) { bg.position.x = nx; bg.position.z = nz; }
+            const face = Math.atan2(dx, dz);
+            const turn = ((face - bg.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+            bg.rotation.y += turn * Math.min(1, dt * (panic ? 12 : 5));
+          }
+        }
+        // body language does the storytelling: hop height, stride rate,
+        // tail speed and wing flutter shift with the mode — calm waddle,
+        // red-gem panic, dinner-bell sprint, happy head-down chomping
+        const feasting = bb.state === "feast" && bb.eating;
+        const rushing = bb.state === "feast" && !bb.eating;
+        const stride = G.time * (feasting ? 9 : rushing ? 12 : panic ? 16 : 6.5) + bb.ph * 9;
+        bg.position.y = Math.abs(Math.sin(stride)) * (feasting ? 0.02 : rushing ? 0.12 : panic ? 0.17 : 0.06);
+        bg.rotation.z = Math.sin(stride * 0.5) * (feasting ? 0.03 : rushing ? 0.08 : panic ? 0.12 : 0.05);
+        if (u) {
+          const legAmp = feasting ? 0.12 : 0.7;
+          if (u.legL) u.legL.rotation.x = Math.sin(stride) * legAmp;
+          if (u.legR) u.legR.rotation.x = -Math.sin(stride) * legAmp;
+          if (u.tail1) u.tail1.rotation.y = Math.sin(G.time * (feasting ? 10 : panic ? 9 : 3) + bb.ph) * (feasting ? 0.5 : 0.3);
+          if (u.wingL && u.wLbase) u.wingL.rotation.z = u.wLbase.z + Math.sin(stride) * (feasting ? 0.26 : rushing ? 0.4 : panic ? 0.55 : 0.12);
+          if (u.wingR && u.wRbase) u.wingR.rotation.z = u.wRbase.z - Math.sin(stride) * (feasting ? 0.26 : rushing ? 0.4 : panic ? 0.55 : 0.12);
+          if (u.headG) u.headG.rotation.x = feasting ? 0.3 + Math.sin(stride) * 0.15
+            : panic ? Math.sin(stride * 0.9) * 0.2 : Math.sin(G.time * 0.9 + bb.ph) * 0.08;
+          // chomp: jaw swings open/shut in time with the head dips
+          if (u.jaw) u.jaw.rotation.x = feasting ? (Math.sin(stride) + 1) * 0.26 : 0;
+        }
+        // keep the solid body under the toddler
+        if (bb.col) { bb.col.x = bg.position.x; bb.col.z = bg.position.z; }
+      }
+    }
+
     // ---- Plants ----
     function buildPlantMesh(seedKey, stage, lite) {
       const s = SEEDS[seedKey];
@@ -3792,7 +3945,7 @@ export default function DragonGardenQuest() {
       // Fullness drains over 260s. With the sleep/wake thresholds below this
       // gives Ember a 2-minute nap after a full feed, then a hungry stretch
       // before he raids.
-      hunger: 100, hungerRate: 100 / 260,
+      hunger: 100, hungerRate: 100 / 156, // full -> empty in 2m36s (~22s per gem)
       inv: { seeds: { strawberry: 0, blueberry: 0, sunfruit: 0, glowberry: 0, starberry: 0, dawnberry: 0, gloryberry: 0 },
              fruit: { strawberry: 0, blueberry: 0, sunfruit: 0, glowberry: 0, starberry: 0, dawnberry: 0, gloryberry: 0 } },
       level: 1, gems: 0, // gems within the current level (0..9)
@@ -4076,8 +4229,10 @@ export default function DragonGardenQuest() {
       level: G.level, gems: G.gems, gemFx: G.pendingGemFx,
       avatarPortrait: avatarUrlCache,
       inv: JSON.parse(JSON.stringify(G.inv)),
-      showHunger: (G.map === "HOME" && (G.dragonState !== "idle" || G.hunger < 32) && G.hungerPlaqueT < 12) || G.hungerAlertT > 0 || G.emberHappyT > 0,
-      emberHappy: Math.round((Math.max(0, Math.min(100, G.hunger)) / 100) * 7) >= 7, // happy == meter full (same 7-slot math as the plaque)
+      // travel meter: on non-home maps the gem strip flashes for 5s whenever
+      // the meter ticks (at home the floating bar over Ember tells the story)
+      gemFlash: G.map !== "HOME" && (G.gemFlashT || 0) > 0,
+      gemFade: (G.gemFlashT || 0) < 0.6,
       outfit: { ...G.outfit },
       intro: { page: G.introPage, task: G.introTask, celebrate: G.introCelebrate },
       youth: G.youthGroup,
@@ -4100,6 +4255,7 @@ export default function DragonGardenQuest() {
     let worldGroup = null;
     let plotNodes = [], exits = [], hotspots = [];
     let dragon = null, dragonHome = new THREE.Vector3();
+    let babies = []; // Ember's two little ones
     let goldBag = null; // one-time glowing pouch on the town road
     let marketArrow = null; // 5s cue after the Berry Market flyer: arrow to town
     let emberBar = null; // floating 7-gem hunger meter above Ember
@@ -5157,6 +5313,7 @@ export default function DragonGardenQuest() {
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
+      babies = []; boomFx = [];
       gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; riverFoam = null; swayers = []; petals = []; fountainFx = null; townKitHandle = null; G.townLights = null; libraryRiver = null; libLight = null; townLightRing = null; libSeasonPlate = null; G.flyLight = null; G.__eastGloomK = -1; goldBag = null; redBagMeshes = {}; shopWords = []; emberBar = null; turtle = null; G.turtleSeq = null;
       throwns.forEach((t) => worldGroup.remove(t.m)); throwns = [];
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
@@ -5460,6 +5617,78 @@ export default function DragonGardenQuest() {
         worldGroup.add(bm);
         bursts.push({ m: bm, vx: (Math.random() - 0.5) * (opts.vs || 1.2), vy: (opts.vy || 2) + Math.random() * 1.2, vz: (Math.random() - 0.5) * (opts.vs || 1.2), ttl: opts.ttl || 0.9 });
       }
+    }
+
+    // ---- the babies' explosion: flash, flames, smoke, shockwave, scorch ----
+    // One self-contained FX list so triggerRampage stays a one-liner. Scorch
+    // decals linger on the grass (~75s) as the story's burn marks, then fade.
+    let boomFx = [];
+    let scorchTexCache = null;
+    function scorchTex() {
+      if (scorchTexCache) return scorchTexCache;
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 128;
+      const c = cv.getContext("2d");
+      // a few offset soot blobs so the mark reads charred, not stamped
+      const blob = (x, y, r, a) => {
+        const g = c.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(14,10,7,${a})`);
+        g.addColorStop(0.55, `rgba(22,15,9,${a * 0.6})`);
+        g.addColorStop(1, "rgba(22,15,9,0)");
+        c.fillStyle = g;
+        c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+      };
+      blob(64, 64, 60, 0.95);
+      blob(46, 52, 34, 0.8);
+      blob(84, 74, 30, 0.75);
+      blob(70, 44, 22, 0.7);
+      scorchTexCache = new THREE.CanvasTexture(cv);
+      return scorchTexCache;
+    }
+    function spawnBabyBoom(x, z) {
+      const add = (m, rec) => { worldGroup.add(m); boomFx.push({ m, t: 0, ...rec }); };
+      // white-hot core flash
+      const flash = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8),
+        new THREE.MeshBasicMaterial({ color: SRGB(0xffdd88), transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+      flash.position.set(x, 0.55, z);
+      add(flash, { kind: "flash", ttl: 0.2 });
+      // shockwave ring racing across the grass
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.78, 28).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: SRGB(0xffb066), transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
+      ring.position.set(x, 0.07, z);
+      add(ring, { kind: "ring", ttl: 0.5 });
+      // licking flames — buoyant, shrinking, yellow cooling to red
+      for (let i = 0; i < 16; i++) {
+        const s0 = 0.09 + Math.random() * 0.12;
+        const fm = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0),
+          new THREE.MeshBasicMaterial({ color: SRGB(0xffd23a), transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending }));
+        fm.scale.setScalar(s0);
+        fm.position.set(x + (Math.random() - 0.5) * 0.7, 0.25 + Math.random() * 0.6, z + (Math.random() - 0.5) * 0.7);
+        add(fm, { kind: "flame", ttl: 0.55 + Math.random() * 0.4, s0,
+                  vx: (Math.random() - 0.5) * 2.2, vy: 1.6 + Math.random() * 2.6, vz: (Math.random() - 0.5) * 2.2 });
+      }
+      // slow smoke column
+      for (let i = 0; i < 7; i++) {
+        const s0 = 0.14 + Math.random() * 0.12;
+        const sm = new THREE.Mesh(new THREE.SphereGeometry(1, 7, 6),
+          new THREE.MeshBasicMaterial({ color: SRGB(0x2a2622), transparent: true, opacity: 0.45, depthWrite: false }));
+        sm.scale.setScalar(s0);
+        sm.position.set(x + (Math.random() - 0.5) * 0.5, 0.4 + Math.random() * 0.5, z + (Math.random() - 0.5) * 0.5);
+        const delay = 0.12 + Math.random() * 0.28, life = 1.3 + Math.random() * 0.6;
+        add(sm, { kind: "smoke", ttl: delay + life, delay, life, s0, vy: 0.7 + Math.random() * 0.5 });
+      }
+      // burn mark that outlives the moment
+      const sc = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ map: scorchTex(), transparent: true, opacity: 0.85, depthWrite: false }));
+      sc.position.set(x, 0.045, z);
+      sc.rotation.y = Math.random() * Math.PI * 2;
+      sc.scale.set(0.8 + Math.random() * 0.35, 1, 0.8 + Math.random() * 0.35);
+      sc.renderOrder = 2;
+      add(sc, { kind: "scorch", ttl: 75 });
+      // glowing debris — the "million pieces", now in fire colors
+      spawnBurst(x, z, 0xffd23a, 18, { glow: true, vy: 3.4, spread: 1.1, y0: 0.5 });
+      spawnBurst(x, z, 0xff7a2a, 16, { glow: true, vy: 2.7, spread: 1.4, y0: 0.4 });
+      spawnBurst(x, z, 0x6e6258, 10, { vy: 2.2, spread: 1.2, y0: 0.4 }); // charred bits
     }
 
     // Small world-anchored "+2 🍓" text that rises off a plot and fades —
@@ -6578,13 +6807,17 @@ export default function DragonGardenQuest() {
         const tex = new THREE.CanvasTexture(cv);
         // fog:false — the cave sits deep in the fogged distance and the scene
         // fog was washing the meter to pastel; UI must stay full-strength
-        emberBar = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false }));
+        // depthTest:false + late renderOrder — it's UI, so the cave lintel
+        // (or anything else) must never clip it
+        emberBar = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, fog: false }));
+        emberBar.renderOrder = 40;
         emberBar.scale.set(3.0, 0.75, 1);
         emberBar.userData = { cv, tex, last: "" };
         worldGroup.add(emberBar);
       }
       dragon.scale.setScalar(0.7); // lab rig is taller than the old model
       dragonHome.copy(dragon.position);
+      if (G.hunger > 0) spawnBabies(false); // the babies only exist while fed
       worldGroup.add(dragon);
       for (let i = 0; i < 3; i++) {
         const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: zzzTex, transparent: true, opacity: 0, depthWrite: false }));
@@ -8247,7 +8480,7 @@ export default function DragonGardenQuest() {
           G.dragonState = "rampage_out";
           G.rampageTarget = node.idx;
           setRampage(true);
-          toast("🐉 Ember spotted your fresh plant — he's charging!", "danger");
+          toast("🐉 Ember spotted your fresh plant — she's charging!", "danger");
           G.shakeT = 0.6;
           SFX.roar();
         }
@@ -8295,6 +8528,14 @@ export default function DragonGardenQuest() {
               spawnBurst(dragon.position.x, dragon.position.z + 0.9, SEEDS[k].color, 6, { vy: 1.6, spread: 0.5, y0: 1 });
               G.dragonHappyT = 1.2;
             });
+          // dinner bell: the little ones sprint to mom while the fruit is
+          // still in the air, then chomp along beside her
+          for (const bb of babies) {
+            bb.state = "feast";
+            bb.eating = false;
+            bb.feastT = 4.6; // whole feast window — they give up gracefully if blocked
+            bb.tgt = { x: dragon.position.x + bb.side * 0.75, z: dragon.position.z + 1.3 };
+          }
         }
         const bonus = SEEDS[k].feed || 30;
         G.hunger = Math.min(100, G.hunger + bonus);
@@ -8647,6 +8888,19 @@ export default function DragonGardenQuest() {
     // Clears the house box, cave rocks, garden plots, and the big bushes.
     const PROWL_PATH = [[0, -8.6], [-5, -7], [-7, -3.5], [-5, 2.4], [0, 3.4], [5, 3.2], [9, 0], [10.5, -4.5], [10, -9.8], [4, -9.8]];
     function triggerRampage() {
+      // the babies starve first: they blow apart in flames (scorch marks and
+      // all), and THAT is what sends mom tearing around the meadow
+      let burst = false;
+      if (babies.length) {
+        burst = true;
+        for (const bb of babies) {
+          spawnBabyBoom(bb.g.position.x, bb.g.position.z);
+          worldGroup.remove(bb.g);
+        }
+        babies = [];
+        colliders = colliders.filter((c) => !c.babyCol);
+        if (G.map === "HOME") { G.shakeT = Math.max(G.shakeT || 0, 0.9); SFX.boom(); }
+      }
       const planted = G.homePlots.map((p, i) => (p.seed ? i : -1)).filter((i) => i >= 0);
       G.hungerAlertT = 6;
       if (!planted.length) {
@@ -8656,7 +8910,8 @@ export default function DragonGardenQuest() {
         G.prowlIdx = 0;
         G.prowlFrenzyT = 0;
         G.prowlNextFrenzy = 4 + Math.random() * 4;
-        toast("🐉 EMBER IS HANGRY! He's prowling the meadow for food!", "danger");
+        toast(burst ? "💥 The starving babies exploded into a million pieces! Momma Ember prowls the meadow, furious!"
+                    : "🐉 EMBER IS HANGRY! She's prowling the meadow for food!", "danger");
         if (G.map === "HOME" && dragon) { G.shakeT = 0.6; SFX.roar(); }
         return;
       }
@@ -8668,7 +8923,8 @@ export default function DragonGardenQuest() {
         G.dragonState = "rampage_out";
         G.rampageTarget = victim;
         setRampage(true);
-        toast("🐉 EMBER IS HANGRY! He's charging the garden!", "danger");
+        toast(burst ? "💥 The starving babies exploded into a million pieces! Momma Ember is charging the garden!"
+                    : "🐉 EMBER IS HANGRY! She's charging the garden!", "danger");
         G.shakeT = 0.8;
         SFX.roar();
       } else {
@@ -8710,18 +8966,25 @@ export default function DragonGardenQuest() {
           rr(6, 24, 436, 64, 18);
           c.fillStyle = "#2e1c0d"; c.fill();
           c.lineWidth = 7; c.strokeStyle = "#150d05"; c.stroke();
+          // same traffic-light story as the plaque: green while the babies
+          // are fed, yellow as food runs down, RED at three gems left
+          const BAND = gems >= 6
+            ? { fill: "#35d55c", edge: "#0f6b28", glow: "#4aff80" }
+            : gems >= 4
+              ? { fill: "#f2c437", edge: "#8a6a10", glow: "#ffd44a" }
+              : { fill: "#e8402e", edge: "#6e150c", glow: "#ff5040" };
           for (let i = 0; i < 7; i++) {
             const cx = 52 + i * 57.3, cy = 56;
             const lit = i < gems;
             c.save();
-            if (lit) { c.shadowColor = full ? "#4aff80" : "#ff5040"; c.shadowBlur = 10; }
+            if (lit) { c.shadowColor = BAND.glow; c.shadowBlur = 10; }
             c.beginPath();
             c.moveTo(cx, cy - 23); c.lineTo(cx + 17, cy); c.lineTo(cx, cy + 23); c.lineTo(cx - 17, cy);
             c.closePath();
-            c.fillStyle = lit ? (full ? "#35d55c" : "#e8402e") : "#180d04";
+            c.fillStyle = lit ? BAND.fill : "#180d04";
             c.fill();
             c.lineWidth = 5;
-            c.strokeStyle = lit ? (full ? "#0f6b28" : "#6e150c") : "#0d0702";
+            c.strokeStyle = lit ? BAND.edge : "#0d0702";
             c.stroke();
             c.restore();
             if (lit) {
@@ -8737,9 +9000,9 @@ export default function DragonGardenQuest() {
       const prevMood = G.dragonMood;
       if (G.dragonState !== "idle") G.dragonMood = "awake";
       else if (G.hunger >= 64) G.dragonMood = "sleep";
-      else if (G.hunger < 54) G.dragonMood = "awake"; // 100 -> 54 at this rate = ~2 min
+      else if (G.hunger < 54) G.dragonMood = "awake"; // 100 -> 54 at this rate = ~72s
       if (prevMood !== G.dragonMood) {
-        if (G.dragonMood === "awake") { G.wakeT = 0.9; G.hungerAlertT = 4.5; toast("🐉 Ember stirs awake — he's getting hungry!", "warn"); SFX.wake(); }
+        if (G.dragonMood === "awake") { G.wakeT = 0.9; G.hungerAlertT = 4.5; toast("🐉 Momma Ember stirs awake — the babies will be hungry soon!", "warn"); SFX.wake(); }
         else { SFX.sleep(); }
       }
       G.sleepBlend += ((G.dragonMood === "sleep" ? 1 : 0) - G.sleepBlend) * Math.min(1, dt * 2.2);
@@ -9554,6 +9817,15 @@ export default function DragonGardenQuest() {
       // a new player shouldn't be punished for listening.
       if (!G.splashActive && !G.introActive && G.churchIntroPage == null) {
         G.hunger = Math.max(0, G.hunger - G.hungerRate * dt);
+        // away-from-home hunger display: flash the gem strip for 5s each
+        // time the 7-slot meter actually changes (lost a gem, or a refill)
+        const gemsNow = Math.round((Math.max(0, Math.min(100, G.hunger)) / 100) * 7);
+        if (G.lastGemCount == null) G.lastGemCount = gemsNow;
+        else if (gemsNow !== G.lastGemCount) {
+          G.lastGemCount = gemsNow;
+          if (G.map !== "HOME") G.gemFlashT = 5;
+        }
+        if (G.gemFlashT > 0) G.gemFlashT = Math.max(0, G.gemFlashT - dt);
         if (G.hungerAlertT > 0) G.hungerAlertT -= dt;
         // The hangry plaque is a nag, not furniture: an empty meter used to
         // pin it on screen indefinitely (dragonState stays non-idle while he
@@ -9571,6 +9843,7 @@ export default function DragonGardenQuest() {
         } else if (G.hunger > 0) G.zeroHoldT = 0;
       }
       updateDragon(dt);
+      updateBabies(dt);
       // snoring fades in as you approach a sleeping Ember (like the fountain)
       if (snoreGain) {
         let st = 0;
@@ -10059,6 +10332,39 @@ export default function DragonGardenQuest() {
         bst.vy -= 4 * dt;
         bst.m.scale.setScalar(Math.max(0.01, bst.ttl));
         if (bst.ttl <= 0) { worldGroup.remove(bst.m); bursts.splice(bi, 1); }
+      }
+      for (let xi = boomFx.length - 1; xi >= 0; xi--) {
+        const fx = boomFx[xi];
+        fx.t += dt; fx.ttl -= dt;
+        const m = fx.m;
+        if (fx.kind === "flash") {
+          const u = fx.t / 0.2;
+          m.scale.setScalar(0.4 + u * 2.1);
+          m.material.opacity = Math.max(0, 0.9 * (1 - u));
+        } else if (fx.kind === "ring") {
+          const u = fx.t / 0.5;
+          m.scale.setScalar(0.3 + u * 3.4);
+          m.material.opacity = Math.max(0, 0.85 * (1 - u));
+        } else if (fx.kind === "flame") {
+          const u = Math.min(1, fx.t / (fx.t + fx.ttl));
+          m.position.x += fx.vx * dt; m.position.y += fx.vy * dt; m.position.z += fx.vz * dt;
+          fx.vx *= 1 - 1.6 * dt; fx.vz *= 1 - 1.6 * dt; fx.vy -= 1.2 * dt;
+          m.scale.setScalar(Math.max(0.01, fx.s0 * (1 - u * 0.85)));
+          m.material.color.copy(SRGB(0xffd23a)).lerp(SRGB(0xd83a18), u);
+          m.material.opacity = 1 - u * u;
+        } else if (fx.kind === "smoke") {
+          if (fx.t < fx.delay) { m.material.opacity = 0; }
+          else {
+            const u = Math.min(1, (fx.t - fx.delay) / fx.life);
+            m.position.y += fx.vy * dt;
+            m.scale.setScalar(fx.s0 * (1 + u * 2.1));
+            m.material.opacity = Math.max(0, 0.45 * (1 - u));
+          }
+        } else if (fx.kind === "scorch") {
+          // hold, then a slow 30s fade at the end of its life
+          if (fx.ttl < 30) m.material.opacity = Math.max(0, 0.85 * (fx.ttl / 30));
+        }
+        if (fx.ttl <= 0) { worldGroup.remove(m); boomFx.splice(xi, 1); }
       }
       // rising "+2 🍓" plot floaties
       for (let fi = floaties.length - 1; fi >= 0; fi--) {
@@ -10779,12 +11085,13 @@ export default function DragonGardenQuest() {
         />
       )}
 
-      {/* Ember's hunger notice — carved plaque with a gem meter */}
-      {started && hud.showHunger && (
-        <EmberPlaque
+      {/* Ember's travel meter — the gem strip flashes on non-home maps when
+          the meter ticks, then slips away. (No painted signboard any more.) */}
+      {started && hud.gemFlash && (
+        <GemStrip
           pct={hungerPct}
-          happy={!!hud.emberHappy}
-          width={Math.min(370, 520 * HUD_S)}
+          fading={hud.gemFade}
+          width={Math.min(280, 400 * HUD_S)}
           style={{
             position: "absolute",
             top: `calc(${96 * HUD_S}px + env(safe-area-inset-top, 0px))`,
@@ -10799,7 +11106,7 @@ export default function DragonGardenQuest() {
           hunger plaque when it is out, so a notice is never hidden by it. */}
       <div style={{
         position: "absolute",
-        top: `calc(${(hud.showHunger ? 272 : 126) * HUD_S}px + env(safe-area-inset-top, 0px))`,
+        top: `calc(${(hud.gemFlash ? 178 : 126) * HUD_S}px + env(safe-area-inset-top, 0px))`,
         left: "50%", transform: "translateX(-50%)",
         display: "flex", flexDirection: "column", gap: 7, alignItems: "center",
         pointerEvents: "none", width: "92%", maxWidth: 430, zIndex: shop ? 31 : 17,

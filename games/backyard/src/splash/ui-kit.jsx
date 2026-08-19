@@ -111,14 +111,15 @@ export function StonePanel({ style, children, edge = 24, corner = 46 }) {
 }
 
 // ------------------------------------------------------------- StoneSlab
-// Renders the approved WEEKLY LEADERBOARD stone sign as-is (lettering is
-// carved into the asset — public/ui/kit/header-v3.png (black stone), from
-// design-ref/header-sign-v2.png). Fixed aspect; no DOM label.
+// Renders the LEADERBOARD stone sign as-is (lettering is carved into the
+// asset — public/ui/kit/header-leaderboard.png, black stone). The display is
+// all-time for now; header-v3.png keeps the old WEEKLY lettering for when
+// the weekly view returns. Fixed aspect; no DOM label.
 export function StoneSlab({ style, onClick }) {
   return (
     <img
-      src={`${KIT}header-v3.png`}
-      alt="Weekly leaderboard"
+      src={`${KIT}header-leaderboard.png`}
+      alt="Leaderboard"
       role={onClick ? "button" : undefined}
       onClick={onClick}
       draggable={false}
@@ -514,12 +515,28 @@ export function SquareButton({ onClick, size = 48, style }) {
 const GROOVE = { x0: 0.3244, x1: 0.937, y0: 0.5375, y1: 0.6978 };
 const PLAQUE_ASPECT = 1301 / 493;
 
+// shared meter colour story: green while the babies are fed, yellow as the
+// food runs down, RED at three gems left (panic). All three tints come from
+// the one green gem sprite via hue-rotate.
+export const gemBand = (lit, happy = false) => {
+  const band = happy || lit >= 6 ? "green" : lit >= 4 ? "yellow" : "red";
+  return {
+    band,
+    tint: band === "green" ? ""
+      : band === "yellow" ? "hue-rotate(-62deg) saturate(1.35) brightness(1.06) "
+      : "hue-rotate(-138deg) saturate(1.8) brightness(1.05) ",
+    glow: band === "green" ? "rgba(70,220,120,.65)"
+      : band === "yellow" ? "rgba(255,210,80,.7)" : "rgba(255,80,60,.8)",
+  };
+};
+
 export function EmberPlaque({ pct = 100, slots = 7, width = 340, happy = false, style }) {
   const hangry = !happy && pct < 25;
   const clamped = Math.max(0, Math.min(100, pct));
-  // full belly => every gem lit (and green); an EMPTY meter is deliberate —
-  // it's the "he's about to charge" beat right before the rampage
+  // full belly => every gem lit; an EMPTY meter is deliberate — it's the
+  // "about to blow" beat right before the babies burst
   const lit = happy ? slots : Math.round((clamped / 100) * slots);
+  const { band, tint, glow: glowC } = gemBand(lit, happy);
   const gw = (GROOVE.x1 - GROOVE.x0 - 0.008 * (slots - 1)) / slots;
 
   return (
@@ -542,7 +559,7 @@ export function EmberPlaque({ pct = 100, slots = 7, width = 340, happy = false, 
         return (
           <img
             key={i}
-            src={`${KIT}ember-gem${on ? (happy ? "-green" : "") : "-empty"}.png`}
+            src={`${KIT}ember-gem${on ? "-green" : "-empty"}.png`}
             alt=""
             draggable={false}
             style={{
@@ -552,19 +569,63 @@ export function EmberPlaque({ pct = 100, slots = 7, width = 340, happy = false, 
               top: `${((GROOVE.y0 + GROOVE.y1) / 2) * 100}%`,
               transform: "translateY(-50%)",
               // the final lit gem breathes when Ember is hangry
-              animation: last && hangry ? "emberGem 1.05s ease-in-out infinite alternate" : "none",
+              animation: last && hangry ? "emberGemRed 1.05s ease-in-out infinite alternate" : "none",
               filter: on
-                ? happy ? "drop-shadow(0 0 4px rgba(70,220,120,.65))"
-                        : "drop-shadow(0 0 3px rgba(255,140,60,.55))"
+                ? `${tint}drop-shadow(0 0 4px ${glowC})`
                 : "none",
               transition: "opacity .25s ease",
             }}
           />
         );
       })}
-      <style>{`@keyframes emberGem {
-        from { filter: drop-shadow(0 0 2px rgba(255,120,50,.5)) brightness(1) }
-        to   { filter: drop-shadow(0 0 9px rgba(255,150,70,.95)) brightness(1.22) }
+      <style>{`@keyframes emberGemRed {
+        from { filter: hue-rotate(-138deg) saturate(1.8) brightness(1.02) drop-shadow(0 0 2px rgba(255,80,60,.55)) }
+        to   { filter: hue-rotate(-138deg) saturate(1.8) brightness(1.32) drop-shadow(0 0 9px rgba(255,90,60,.95)) }
+      }`}</style>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------- GemStrip
+// Ember's travel meter: the bare 7-gem row on a dark wood chip — no painted
+// signboard. The game flashes it on non-home maps whenever the meter ticks.
+export function GemStrip({ pct = 100, slots = 7, width = 260, fading = false, style }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const lit = Math.round((clamped / 100) * slots);
+  const { band, tint, glow } = gemBand(lit);
+  return (
+    <div
+      style={{
+        display: "flex", alignItems: "center", gap: 6, width, boxSizing: "border-box",
+        padding: "9px 12px", borderRadius: 14,
+        background: "linear-gradient(180deg,#3a2513,#241407)",
+        border: "2px solid #150d05",
+        boxShadow: "inset 0 1px 0 rgba(255,220,160,.14), 0 6px 14px rgba(20,10,2,.5)",
+        opacity: fading ? 0 : 1, transition: "opacity .55s ease",
+        ...style,
+      }}
+    >
+      <span style={{ fontSize: 17, lineHeight: 1, filter: "drop-shadow(0 1px 2px rgba(0,0,0,.6))" }}>🐉</span>
+      {Array.from({ length: slots }, (_, i) => {
+        const on = i < lit;
+        const last = on && i === lit - 1;
+        return (
+          <img
+            key={i}
+            src={`${KIT}ember-gem${on ? "-green" : "-empty"}.png`}
+            alt=""
+            draggable={false}
+            style={{
+              flex: "1 1 0", minWidth: 0, width: 0,
+              animation: last && band === "red" ? "emberGemRed 1.05s ease-in-out infinite alternate" : "none",
+              filter: on ? `${tint}drop-shadow(0 0 4px ${glow})` : "none",
+            }}
+          />
+        );
+      })}
+      <style>{`@keyframes emberGemRed {
+        from { filter: hue-rotate(-138deg) saturate(1.8) brightness(1.02) drop-shadow(0 0 2px rgba(255,80,60,.55)) }
+        to   { filter: hue-rotate(-138deg) saturate(1.8) brightness(1.32) drop-shadow(0 0 9px rgba(255,90,60,.95)) }
       }`}</style>
     </div>
   );
@@ -1299,7 +1360,9 @@ const PROF = {
   // Both slabs are the same height, so the tops are spaced evenly.
   btns: [
     { key: "customize", top: 0.345, w: 0.62, label: "CUSTOMIZE CHARACTER", locked: true },
-    { key: "league",    top: 0.506, w: 0.62, label: "WEEKLY LEADERBOARD" },
+    // the carved LEADERBOARD board art itself (same slab family) — not live
+    // lettering, so it always matches the splash sign
+    { key: "league",    top: 0.506, w: 0.62, art: "header-leaderboard.png" },
     { key: "replay",    top: 0.682, w: 0.62 },
     { key: "close",     top: 0.885, w: 0.50 },
   ],
@@ -1307,8 +1370,10 @@ const PROF = {
 
 // The slab lettering is a condensed grotesque, matching the carved signs.
 // Baloo (the kit's display face) is far too wide to fit nineteen characters
-// across a button this size.
-const SLAB_FONT = `"Arial Narrow", "Roboto Condensed", "Oswald", "Haettenschweiler", sans-serif`;
+// across a button this size. Avenir Next Condensed leads because it is the
+// one condensed face iOS actually ships — without it iPhones fell back to
+// full-width Helvetica and CUSTOMIZE CHARACTER spilled past the slab.
+const SLAB_FONT = `"Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", "Oswald", "Haettenschweiler", sans-serif`;
 const SLAB_ASPECT = 1000 / 226;
 
 function Padlock({ size = 12 }) {
@@ -1399,6 +1464,15 @@ export function PlayerProfile({ name = "Gardener", avatar, level = 1,
           position: "absolute", left: `${((1 - b.w) / 2) * 100}%`, top: `${b.top * 100}%`,
           width: `${b.w * 100}%`, cursor: "pointer", WebkitTapHighlightColor: "transparent",
         };
+        if (b.art) {
+          return (
+            <div key={b.key} role="button" {...hit}
+                 style={{ ...place, aspectRatio: "1301 / 293", ...press }}>
+              <img src={`${KIT}${b.art}`} alt="" draggable={false}
+                   style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
+            </div>
+          );
+        }
         if (b.label) {
           const bw = width * b.w;
           return (
@@ -1408,11 +1482,13 @@ export function PlayerProfile({ name = "Gardener", avatar, level = 1,
                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none",
                             filter: b.locked ? "grayscale(.5) brightness(.72)" : "none" }} />
               <div style={{
-                position: "absolute", inset: 0, display: "flex",
-                alignItems: "center", justifyContent: "center", gap: bw * 0.022,
+                // inset past the slab's beveled ends; sized so the longest
+                // label fits even in a full-width fallback font
+                position: "absolute", inset: "0 7%", display: "flex",
+                alignItems: "center", justifyContent: "center", gap: bw * 0.02,
                 paddingBottom: bw * 0.012,
-                fontFamily: SLAB_FONT, fontWeight: 700, fontSize: bw * 0.077,
-                letterSpacing: bw * 0.004, whiteSpace: "nowrap",
+                fontFamily: SLAB_FONT, fontWeight: 700, fontSize: bw * 0.062,
+                letterSpacing: bw * 0.0015, whiteSpace: "nowrap",
                 color: b.locked ? "#b9b3a6" : "#f4f2ec",
                 textShadow: "0 1px 0 rgba(255,255,255,.18), 0 2px 3px rgba(0,0,0,.8)",
               }}>

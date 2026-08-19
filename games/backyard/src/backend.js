@@ -67,8 +67,18 @@ export function createApi() {
       return data ?? [];
     },
 
-    // Splash-screen single-player weekly board. Interim metric = rare trees
-    // planted this UTC week; swaps to "levels" when those ship.
+    // Same shape as getLeague, but summed across every recorded week — the
+    // leaderboard DISPLAY is all-time for now, while the weekly tables keep
+    // collecting underneath (payouts, funds and the in-garden bulletin are
+    // still weekly).
+    async getLeagueAllTime() {
+      const { data, error } = await supabase.rpc("by_get_league_alltime");
+      if (error) throw error;
+      return data ?? [];
+    },
+
+    // Splash-screen player board — ALL-TIME: ranks by player level (gems as
+    // the tiebreak) straight from the garden saves.
     async getSplashPlayers() {
       const { data, error } = await supabase.rpc("by_splash_players");
       if (error) throw error;
