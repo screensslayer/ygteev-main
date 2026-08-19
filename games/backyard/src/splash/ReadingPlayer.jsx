@@ -215,6 +215,8 @@ export default function ReadingPlayer({
   onXp,                 // (newTotalXp) => sync the wallet
   onDone,               // () => reading is over; parent fires the LEVEL UP badge
   onPhase,              // (phase) => so the world can gate on "mid-reading"
+  town = false,         // Season 1 at the library: no quiz — a LIGHT instead
+  onLight,              // town only: ({ lights, total, awarded }) after finish
 }) {
   const section = data?.section;
   const verses = section?.verses || [];
@@ -261,14 +263,20 @@ export default function ReadingPlayer({
     setBanked(verses.length);
     setEarned(readXp);
     try {
-      // finishReading tops up to the full award, so the last verse — which
-      // never gets an "on the way in" bank — is covered here
-      const r = await api.finishReading(section.id);
+      // finish tops up to the full award, so the last verse — which never
+      // gets an "on the way in" bank — is covered here. Town chapters have
+      // no quiz: the server answers with the new light count instead.
+      const r = town ? await api.townFinishReading(section.id) : await api.finishReading(section.id);
       if (typeof r?.xp === "number") onXp && onXp(r.xp);
-      setQ(r?.question || null);
+      setQ(!town && r?.question ? r.question : null);
       sfx.level && sfx.level();
-      setPhase(r?.question ? "question" : "result");
-      if (!r?.question) setVerdict({ correct: null, awarded: r?.awarded ?? 0 });
+      setPhase(!town && r?.question ? "question" : "result");
+      if (town) {
+        setVerdict({ correct: null, awarded: r?.awarded ?? 0, town: true, lights: r?.lights });
+        if (onLight) onLight(r);
+      } else if (!r?.question) {
+        setVerdict({ correct: null, awarded: r?.awarded ?? 0 });
+      }
     } catch (e) {
       // the reading still happened — let them out rather than trapping them
       setPhase("result");
@@ -276,7 +284,7 @@ export default function ReadingPlayer({
     } finally {
       setBusy(false);
     }
-  }, [api, section, onXp, sfx, verses.length, readXp]);
+  }, [api, section, onXp, sfx, verses.length, readXp, town, onLight]);
 
   // Fire-and-forget: by_credit_verses takes an absolute position, so a lost
   // call is covered by the next one and by the finish top-up. Awaiting here
@@ -463,12 +471,36 @@ export default function ReadingPlayer({
               </div>
               <div style={{ flex: "0 0 auto", textAlign: "right" }}>
                 <GemStrip gems={gems} active={section.ordinal} />
-                <div style={{
-                  fontSize: 9.5, fontWeight: 800, color: "#8a6a42",
-                  letterSpacing: 0.6, marginTop: 2,
-                }}>
-                  {data.completed}/{data.total} SECTIONS
-                </div>
+                {town ? (
+                  <div style={{ marginTop: 3 }}>
+                    <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: 1.4, color: "#8a6a42", textAlign: "right" }}>
+                      SEASON 1
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginTop: 3 }}>
+                      <div style={{
+                        width: 86, height: 8, borderRadius: 99, overflow: "hidden",
+                        background: "#3a2c18", boxShadow: "inset 0 1px 2px rgba(0,0,0,.55)",
+                      }}>
+                        <div style={{
+                          width: `${Math.max(3, (100 * (data.done || 0)) / (data.total || 84))}%`, height: "100%",
+                          background: "linear-gradient(90deg,#ffd98a,#ffb84a)",
+                          boxShadow: "0 0 8px rgba(255,200,100,.85)",
+                          transition: "width .6s ease",
+                        }} />
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 900, color: "#6d5233", whiteSpace: "nowrap" }}>
+                        💡 {data.done}/{data.total}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    fontSize: 9.5, fontWeight: 800, color: "#8a6a42",
+                    letterSpacing: 0.6, marginTop: 2,
+                  }}>
+                    {data.completed}/{data.total} SECTIONS
+                  </div>
+                )}
               </div>
             </div>
 
@@ -509,7 +541,49 @@ export default function ReadingPlayer({
               </div>
             )}
 
-            {phase === "result" && (
+            {phase === "result" && town && (
+              <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "3px 0 1px" }}>
+                {/* the freed light itself — pulsing, unmistakably the prize */}
+                <div style={{
+                  flex: "0 0 auto", width: 46, height: 46, borderRadius: 999,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 23,
+                  background: "radial-gradient(circle at 35% 28%, #fff6d8, #ffce6e 58%, #c98f34)",
+                  border: "2px solid #4a3218",
+                  animation: "byLightGlow 1.5s ease-in-out infinite",
+                }}>💡</div>
+                <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 15.5, fontWeight: 900, color: "#4a3520",
+                    textShadow: "0 1px 0 rgba(255,246,225,.6)",
+                  }}>
+                    A light escaped the pages!
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 4 }}>
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", gap: 3,
+                      padding: "2px 9px", borderRadius: 99,
+                      fontSize: 12.5, fontWeight: 900, color: "#3a2510",
+                      background: "linear-gradient(180deg,#ffd98a,#e8a94e)",
+                      border: "1.5px solid #4a3218",
+                      boxShadow: "inset 0 1px 0 rgba(255,255,255,.5), 0 1px 0 rgba(0,0,0,.25)",
+                    }}>
+                      +{readXp} XP <SparkIcon size={12} />
+                    </span>
+                    <span style={{
+                      fontSize: 10.5, fontWeight: 900, letterSpacing: 0.8, color: "#8a6a42",
+                      whiteSpace: "nowrap",
+                    }}>
+                      LIGHT {verdict?.lights ?? data.done + 1} OF {data.total || 84}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ flex: "0 0 auto", animation: "byGrabPulse 1.4s ease-in-out infinite" }}>
+                  <WoodAction tone="green" onClick={() => { sfx.click && sfx.click(); leave(true); }}>Grab The Light</WoodAction>
+                </div>
+              </div>
+            )}
+            {phase === "result" && !town && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{
                   flex: "1 1 auto", display: "flex", alignItems: "center", gap: 6,
@@ -544,6 +618,14 @@ export default function ReadingPlayer({
         @keyframes byReadGemPulse {
           0%,100% { opacity: .3; transform: scale(1) }
           50%     { opacity: .8; transform: scale(1.14) }
+        }
+        @keyframes byLightGlow {
+          0%,100% { box-shadow: 0 0 10px 2px rgba(255,205,110,.55) }
+          50%     { box-shadow: 0 0 22px 7px rgba(255,205,110,.9) }
+        }
+        @keyframes byGrabPulse {
+          0%,100% { transform: scale(1) }
+          50%     { transform: scale(1.045) }
         }
       `}</style>
     </div>

@@ -23,6 +23,25 @@ import { PlatePill, Medallion, SquareButton, EmberPlaque, InventorySheet, StoneP
 import WeeklyBoardModal from "./splash/WeeklyBoard.jsx";
 import ReadingPlayer from "./splash/ReadingPlayer.jsx";
 import buildMeadowAdditions, { MEADOW_TRIGGERS, MEADOW_TUNING } from "./glowlands/maps/meadow-additions.js";
+import buildMeadowTownKit from "./glowlands/maps/meadow-town-kit.js";
+import { RIVER_LINES } from "./glowlands/data/river-lines.js";
+
+// The library cutscene, step by step. `line` indexes RIVER_LINES (1-based),
+// the button is what the PLAYER says or does next, `grant` hands over the
+// lantern as the line is spoken, `end` closes the panel.
+const RIVER_SCRIPT = [
+  { line: 1, btn: "\u201cWhy? What happened here?\u201d" },
+  { line: 2, btn: "Continue" },
+  { line: 3, btn: "Continue" },
+  { line: 4, btn: "Take the lantern", grant: true },
+  { line: 5, btn: "\u201cWhat did they take?\u201d" },
+  { line: 6, btn: "\u201cWhat\u2019s the book on the desk?\u201d" },
+  { line: 7, btn: "\u201cWhat happens if we read a chapter?\u201d" },
+  { line: 8, btn: "Walk to the Bible", end: true },
+  { line: 9, btn: "I\u2019ll try!", end: true },        // after the first light
+  { line: 10, btn: "OK", end: true },               // her standing line
+  { line: 11, btn: "One light at a time!", end: true }, // the SECOND light
+];
 import * as EastRoad from "./glowlands/maps/east-road.js";
 // Already loaded by main.jsx — reused here for fetchPassage (get-bible-passage).
 import { supabase } from "./supabaseClient.js";
@@ -99,7 +118,7 @@ const SEEDS = {
 // browser happily serves the old take forever. One constant rather than a
 // literal per loader, and tools/gen-intro-lines.mjs bumps it automatically
 // after a render — the version must never depend on someone remembering.
-const VOICE_V = 3;
+const VOICE_V = 8;
 
 const MAP_LABELS = {
   HOME: "🏡 Home Meadow", TOWN: "🏘️ Meadow Town", CHURCH: "⛪ Grace Community Garden",
@@ -395,6 +414,13 @@ export default function DragonGardenQuest() {
   const [redBag, setRedBag] = useState(null);
   const reqRedBagRef = useRef(() => {});
   reqRedBagRef.current = (payload) => setRedBag(payload);
+  // Season 1: the town Bible reader + River's dialogue panel
+  const [townRead, setTownRead] = useState(null);
+  const reqTownReadRef = useRef(() => {});
+  reqTownReadRef.current = (payload) => setTownRead(payload);
+  const [riverTalk, setRiverTalk] = useState(null);
+  const reqRiverRef = useRef(() => {});
+  reqRiverRef.current = (payload) => setRiverTalk(payload);
   // Eli's community-garden welcome — current page index (0..5) or null
   const [churchIntro, setChurchIntro] = useState(null);
   const reqChurchIntroRef = useRef(() => {});
@@ -435,7 +461,11 @@ export default function DragonGardenQuest() {
   // straight to the badge. Never during Eli's onboarding — he has the floor.
   const onLevelReady = React.useCallback(() => {
     const next = nextReadRef.current;
-    if (next && !gameRef.current?.introActive) setReading(next);
+    const g = gameRef.current;
+    // the garden offer never interrupts the library: mid-town-reading (or
+    // with River talking) the level-up goes straight to its badge
+    const townBusy = g && (g.map === "LIBRARY" || g.readingLock);
+    if (next && g && !g.introActive && !townBusy) setReading(next);
     else setLevelBadgeAt(Date.now());
   }, []);
   const endReading = React.useCallback(() => {
@@ -602,7 +632,7 @@ export default function DragonGardenQuest() {
     mount.appendChild(renderer.domElement);
 
     // ================= AUDIO: generative ambient score + synthesized SFX =================
-    let AC = null, audioOut = null, musicBus = null, sfxBus = null, fountainGain = null, snoreGain = null, eatBuf = null;
+    let AC = null, audioOut = null, musicBus = null, sfxBus = null, fountainGain = null, snoreGain = null, eatBuf = null, winBuf = null, levelBuf = null;
     let voiceBufs = [], voiceSrc = null, voiceGain = null, voiceDuckOrig = null;
     const AUDIO = { muted: false };
     // Recorded music loops (public/music/) — the ONLY music source; maps
@@ -611,8 +641,12 @@ export default function DragonGardenQuest() {
     const MUSIC_TRACKS = {
       HOME: "/music/home-loop-v2.m4a",  // "Adventure Game" — splash + home garden
       CHURCH: "/music/church-loop-v2.m4a", // "RedLionProduction" — community garden
-      TOWN: "/music/town-loop.m4a",        // city-park ambience — Meadow Town
+      TOWN: "/music/town-loop.m4a",        // city-park ambience — the SAVED town
+      // the darkness itself: plays in Meadow Town until all 84 lights burn,
+      // then never again — the town-loop takes over
+      TOWN_GLOOM: "/music/meadow-gloom.m4a",
     };
+    const TRACK_LEVEL = { TOWN_GLOOM: 0.22 }; // a low dread bed, under everything
     let trackBufs = {}, trackSrc = null, trackGain = null, trackKey = null, trackWanted = null;
     const MUSIC_FULL = 0.4, MUSIC_DUCKED = 0.11;
     let musicDucked = false;
@@ -669,6 +703,17 @@ export default function DragonGardenQuest() {
         src.connect(snoreGain); src.start();
       }).catch(() => {});
       AC.decodeAudioData(b64ToBuf(EAT_B64)).then((buf) => { eatBuf = buf; }).catch(() => {});
+      // the recorded win jingle — replaces the synth 'correct'/'pass' stings
+      fetch("/sfx/game-win.m4a?v=1")
+        .then((r) => r.arrayBuffer())
+        .then((ab) => AC.decodeAudioData(ab))
+        .then((buf) => { winBuf = buf; })
+        .catch(() => {}); // no file = the synth fallbacks keep working
+      fetch("/sfx/level-up.m4a?v=1")
+        .then((r) => r.arrayBuffer())
+        .then((ab) => AC.decodeAudioData(ab))
+        .then((buf) => { levelBuf = buf; })
+        .catch(() => {});
       playTrack(trackWanted || (typeof G !== "undefined" && G && G.map) || "HOME");
     }
     function tone(freq, t, dur, vol, type = "triangle", slideTo = null, lp = null) {
@@ -837,7 +882,7 @@ export default function DragonGardenQuest() {
         src.loopEnd = Math.max(1, buf.duration - 0.06);
         const g = AC.createGain();
         g.gain.value = 0;
-        g.gain.setTargetAtTime(musicDucked ? MUSIC_DUCKED : MUSIC_FULL, AC.currentTime + 0.05, 0.6);
+        g.gain.setTargetAtTime(musicDucked ? MUSIC_DUCKED : (TRACK_LEVEL[key] ?? MUSIC_FULL), AC.currentTime + 0.05, 0.6);
         src.connect(g); g.connect(audioOut);
         src.start();
         trackSrc = src; trackGain = g; trackKey = key;
@@ -851,6 +896,33 @@ export default function DragonGardenQuest() {
     }
 
     const sq = (fn) => { if (AC && !AUDIO.muted) fn(AC.currentTime + 0.01); };
+    // Recorded stings get a tiny scheduler instead of free overlap: finishing
+    // a chapter fires the win jingle at the same instant its gems roll the
+    // level over and fire the level sting — played together they mush into
+    // noise. Rules: a second sting queues 0.12s behind the one still
+    // sounding; the SAME sting requested while it's already playing is
+    // dropped (rapid-fire buys become one jingle, not a siren); and if the
+    // queue would push a sting more than ~2.5s out, it just overlaps —
+    // late feedback is worse than layered feedback.
+    let stingTailEnd = 0;
+    const stingEnds = new Map(); // per-buffer scheduled end, for the dedupe
+    const playSting = (buf, gain = 1) => {
+      if (!AC || AUDIO.muted || !buf) return false;
+      const now = AC.currentTime;
+      if ((stingEnds.get(buf) || 0) > now) return true; // already sounding
+      let at = Math.max(now, stingTailEnd + 0.12);
+      if (at - now > 2.5) at = now;
+      const src = AC.createBufferSource();
+      src.buffer = buf;
+      const g = AC.createGain();
+      g.gain.value = gain;
+      src.connect(g); g.connect(sfxBus);
+      src.start(at);
+      stingEnds.set(buf, at + buf.duration);
+      stingTailEnd = at + buf.duration;
+      return true;
+    };
+    const playWin = (gain = 1) => playSting(winBuf, gain);
     const SFX = {
       step: () => sq((t) => { noiseBurst(t, 0.07, 0.15, 450 + Math.random() * 300, 1.4); tone(85 + Math.random() * 30, t, 0.05, 0.05, "sine"); }),
       plant: () => sq((t) => { noiseBurst(t, 0.14, 0.2, 300, 0.8, "lowpass"); tone(480, t + 0.04, 0.14, 0.14, "triangle", 700); }),
@@ -858,12 +930,12 @@ export default function DragonGardenQuest() {
       coin: (n = 1) => sq((t) => { for (let i = 0; i < n; i++) { tone(1318.5, t + i * 0.08, 0.1, 0.12, "sine"); tone(1975.5, t + i * 0.08 + 0.03, 0.12, 0.08, "sine"); } }),
       feed: () => sq((t) => { noiseBurst(t, 0.1, 0.3, 220, 0.8, "lowpass"); noiseBurst(t + 0.12, 0.1, 0.26, 190, 0.8, "lowpass"); tone(150, t, 0.16, 0.14, "square", 85); }),
       roar: () => sq((t) => { tone(210, t, 0.75, 0.32, "sawtooth", 62); noiseBurst(t, 0.6, 0.24, 380, 0.7, "lowpass", 120); }),
-      correct: () => sq((t) => { tone(880, t, 0.12, 0.16, "sine"); tone(1108.7, t + 0.09, 0.16, 0.16, "sine"); }),
+      correct: () => { if (!playWin(0.85)) sq((t) => { tone(880, t, 0.12, 0.16, "sine"); tone(1108.7, t + 0.09, 0.16, 0.16, "sine"); }); },
       wrong: () => sq((t) => { tone(185, t, 0.28, 0.18, "square", 130); }),
-      pass: () => sq((t) => { [659.25, 784, 1046.5].forEach((f, i) => tone(f, t + i * 0.1, 0.24, 0.16, "triangle")); }),
+      pass: () => { if (!playWin(1)) sq((t) => { [659.25, 784, 1046.5].forEach((f, i) => tone(f, t + i * 0.1, 0.24, 0.16, "triangle")); }); },
       fail: () => sq((t) => { tone(300, t, 0.3, 0.16, "sawtooth", 200, 900); tone(220, t + 0.26, 0.42, 0.16, "sawtooth", 140, 800); }),
       sparkle: () => sq((t) => { tone(1568, t, 0.28, 0.1, "sine", 2349); tone(2093, t + 0.06, 0.24, 0.07, "sine", 2637); }),
-      level: () => sq((t) => { [523.25, 659.25, 784, 1046.5].forEach((f, i) => tone(f, t + i * 0.09, 0.26, 0.15, "triangle")); }),
+      level: () => { if (!playSting(levelBuf, 1)) sq((t) => { [523.25, 659.25, 784, 1046.5].forEach((f, i) => tone(f, t + i * 0.09, 0.26, 0.15, "triangle")); }); },
       whoosh: () => sq((t) => { noiseBurst(t, 0.4, 0.16, 300, 0.8, "bandpass", 2400); }),
       sleep: () => sq((t) => { tone(392, t, 0.5, 0.08, "sine", 262); }),
       wake: () => sq((t) => { tone(262, t, 0.4, 0.1, "sine", 440); }),
@@ -947,6 +1019,39 @@ export default function DragonGardenQuest() {
       hemi.groundColor.set(hemiGnd).convertSRGBToLinear();
       hemi.intensity = hemiI;
     };
+
+    // Continuous atmosphere blend — used on HOME so the Gloom visibly seeps
+    // over the east fence: the closer you walk to the Meadow Town road, the
+    // darker home gets, and the town door stops being a lighting jump-cut.
+    // Endpoints are precomputed in linear space; the blend mutates the live
+    // uniforms/lights instead of re-allocating (it runs per frame while the
+    // player moves).
+    const mkAtmo = (top, mid, bot, fogC, sunC, sunI, hSky, hGnd, fogNear = 30, fogFar = 76, hemiI = 0.66) => ({
+      top: new THREE.Color(top).convertSRGBToLinear(),
+      mid: new THREE.Color(mid).convertSRGBToLinear(),
+      bot: new THREE.Color(bot).convertSRGBToLinear(),
+      fog: new THREE.Color(fogC).convertSRGBToLinear(),
+      sun: new THREE.Color(sunC).convertSRGBToLinear(),
+      hSky: new THREE.Color(hSky).convertSRGBToLinear(),
+      hGnd: new THREE.Color(hGnd).convertSRGBToLinear(),
+      sunI, fogNear, fogFar, hemiI,
+    });
+    const ATMO_HOME_DAY = mkAtmo(PAL.skyTop, PAL.skyMid, PAL.skyHorizon, PAL.fog, PAL.sun, 1.45, PAL.ambientSky, PAL.ambientGnd);
+    const ATMO_TOWN_GLOOM = mkAtmo(0x1d1a2c, 0x312c46, 0x453e5e, 0x393352, 0x9aa0c8, 0.56, 0x6f6a96, 0x403a54, 9, 40, 0.66);
+    function blendAtmo(a, b, k) {
+      skyMat.uniforms.cTop.value.copy(a.top).lerp(b.top, k);
+      skyMat.uniforms.cMid.value.copy(a.mid).lerp(b.mid, k);
+      skyMat.uniforms.cBot.value.copy(a.bot).lerp(b.bot, k);
+      if (!scene.fog) scene.fog = new THREE.Fog(0x000000, a.fogNear, a.fogFar);
+      scene.fog.color.copy(a.fog).lerp(b.fog, k);
+      scene.fog.near = a.fogNear + (b.fogNear - a.fogNear) * k;
+      scene.fog.far = a.fogFar + (b.fogFar - a.fogFar) * k;
+      sun.color.copy(a.sun).lerp(b.sun, k);
+      sun.intensity = a.sunI + (b.sunI - a.sunI) * k;
+      hemi.color.copy(a.hSky).lerp(b.hSky, k);
+      hemi.groundColor.copy(a.hGnd).lerp(b.hGnd, k);
+      hemi.intensity = a.hemiI + (b.hemiI - a.hemiI) * k;
+    }
 
     // ================= HELPERS =================
     // Flat-shaded standard material — the low-poly signature
@@ -3517,6 +3622,11 @@ export default function DragonGardenQuest() {
         selectedFruit: G.selectedFruit,
         activeKind: G.activeKind,
         goldBag: G.goldBagFound ? 1 : 0,
+        lantern: G.lantern ? 1 : 0,
+        riverDone: G.riverIntroDone ? 1 : 0,
+        riverWow: G.riverAmazedDone ? 1 : 0,
+        riverWow2: G.riverAmazed2Done ? 1 : 0,
+        bossT2: G.bossTaunt2Done ? 1 : 0,
         awayEaten: G.awayEaten || [],
         inv: G.inv,
         homePlots: G.homePlots.map((p) => p.seed ? {
@@ -3531,7 +3641,7 @@ export default function DragonGardenQuest() {
     // ticking doesn't spam writes; the payload still carries exact timers
     function stateSig() {
       return JSON.stringify([
-        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 10), G.goldBagFound, G.level, G.gems,
+        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 10), G.goldBagFound, G.level, G.gems, G.lantern, G.riverIntroDone,
         G.homePlots.map((p) => p.seed ? p.seed + (p.regrowAt != null ? "r" : "g") : "-"),
       ]);
     }
@@ -3552,6 +3662,11 @@ export default function DragonGardenQuest() {
       if (d.activeKind === "seed" || d.activeKind === "fruit") G.activeKind = d.activeKind;
       if (G.selectedSeed === "glowberry" && G.map !== "CHURCH") G.selectedSeed = "strawberry"; // glow seeds are church-only
       G.goldBagFound = d.goldBag === 1;
+      G.lantern = d.lantern === 1 ? 1 : 0;
+      G.riverIntroDone = d.riverDone === 1 ? 1 : 0;
+      G.riverAmazedDone = d.riverWow === 1 ? 1 : 0;
+      G.riverAmazed2Done = d.riverWow2 === 1 ? 1 : 0;
+      G.bossTaunt2Done = d.bossT2 === 1 ? 1 : 0;
       if (Array.isArray(d.awayEaten)) G.awayEaten = d.awayEaten; // report survives a restart
       if (typeof d.hunger === "number") G.hunger = Math.min(100, Math.max(0, d.hunger)); // exact restore — a starving Ember stays starving
       if (Array.isArray(d.homePlots)) {
@@ -3666,6 +3781,10 @@ export default function DragonGardenQuest() {
       week: computeWeek(), quizActive: false, saveT: 0, lastCollectToast: -9,
       eliQuizN: 0, // how many times Eli has issued the challenge (rotates his greeting)
       playerHopT: 0, transitioning: false, pendingMap: null, hungerAlertT: 0,
+      // Season 1 — River, the lantern, and the town lights
+      lantern: 0, riverIntroDone: 0, riverAmazedDone: 0, riverAmazed2Done: 0, riverIntroPlaying: false,
+      bossTaunt2Done: 0,
+      pendingLightN: 0, seasonDone: 0, seasonTotal: 84,
       hungerPlaqueT: 0, // how long the hangry plaque has nagged (auto-hides at 60s)
       outfit: { skin: 0xf2c9a4, hair: 0x4a2f1c, hairStyle: "crop", style: "tee", shirt: 0x3a72c9, boots: 0x3f2f20, hat: "straw", accessory: "basket" },
       build: { hoe: false, fenceTier: 0, kitsBought: 0, extraPlots: [] },
@@ -3751,6 +3870,9 @@ export default function DragonGardenQuest() {
     G.reqForecast = (f) => reqForecastRef.current(f);
     G.reqGoldBag = () => reqGoldBagRef.current();
     G.reqRedBag = (p) => reqRedBagRef.current(p);
+    G.reqTownRead = (p) => reqTownReadRef.current(p);
+    G.awardGems = awardGems;
+    G.reqRiver = (p) => reqRiverRef.current(p);
     G.reqChurchIntro = (n) => reqChurchIntroRef.current(n);
     G.flyCoins = (n) => flyCoinsRef.current(n);
     G.doPendingMap = () => { if (G.pendingMap) { loadMap(G.pendingMap.to, G.pendingMap.spawn); G.pendingMap = null; } };
@@ -3914,7 +4036,7 @@ export default function DragonGardenQuest() {
       level: G.level, gems: G.gems, gemFx: G.pendingGemFx,
       avatarPortrait: avatarUrlCache,
       inv: JSON.parse(JSON.stringify(G.inv)),
-      showHunger: ((G.dragonState !== "idle" || G.hunger < 32) && G.hungerPlaqueT < 60) || G.hungerAlertT > 0 || G.emberHappyT > 0,
+      showHunger: (G.map === "HOME" && (G.dragonState !== "idle" || G.hunger < 32) && G.hungerPlaqueT < 12) || G.hungerAlertT > 0 || G.emberHappyT > 0,
       emberHappy: Math.round((Math.max(0, Math.min(100, G.hunger)) / 100) * 7) >= 7, // happy == meter full (same 7-slot math as the plaque)
       outfit: { ...G.outfit },
       intro: { page: G.introPage, task: G.introTask, celebrate: G.introCelebrate },
@@ -3948,7 +4070,7 @@ export default function DragonGardenQuest() {
     let shopWords = []; // floating verb signs over the town shops
     let redBagMeshes = {}; // today's hidden question-pouches on HOME, by bag_idx
     let butterflies = [], glowNodes = [], embers = [], smokes = [], caveLight = null, npcs = [], zzz = [];
-    let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, winsSprite = null, water = null, foams = [], riverFoam = null, swayers = [], petals = [], fountainFx = null;
+    let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, winsSprite = null, water = null, foams = [], riverFoam = null, swayers = [], petals = [], fountainFx = null, townKitHandle = null, libraryRiver = null, libLight = null, townLightRing = null, libSeasonPlate = null;
     let buildCells = [], ghostMesh = null, buildMarkers = null, counterKeeper = null;
     // Glowlands per-map handles live further down (glowHomeHandle /
     // glowMeadowHandle / glowRoadHandle) and are torn down in clearWorld.
@@ -4048,6 +4170,38 @@ export default function DragonGardenQuest() {
     }
 
     const player = makePlayer();
+    // River's lantern — carried in the LEFT hand once granted (the basket
+    // rides on the back, so the hand is free). Only lit in the dark maps.
+    const lanternGrp = new THREE.Group();
+    {
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.17, 0.11), flat(0x3a3a44));
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.1, 0.075),
+        new THREE.MeshStandardMaterial({ color: SRGB(0xffdf9a), emissive: SRGB(0xffb84a), emissiveIntensity: 1.5 }));
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.08, 6), flat(0x2e2e38));
+      cap.position.y = 0.13;
+      const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.013, 5, 8), flat(0x3a3a44));
+      hoop.position.y = 0.2;
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffc46a), transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+      halo.scale.set(1.5, 1.5, 1);
+      const pl = new THREE.PointLight(SRGB(0xffc46a), 0.85, 7);
+      pl.position.y = 0.06;
+      lanternGrp.add(frame, glass, cap, hoop, halo, pl);
+      lanternGrp.position.set(-0.36, 0.5, 0.15);
+      lanternGrp.visible = false;
+      player.add(lanternGrp);
+    }
+    // the freed light, carried in the RIGHT hand from library to strand
+    const carryOrb = new THREE.Group();
+    {
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8),
+        new THREE.MeshStandardMaterial({ color: SRGB(0xfff2c8), emissive: SRGB(0xffcf6a), emissiveIntensity: 1.6 }));
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffd98a), transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending }));
+      halo.scale.set(1.3, 1.3, 1);
+      carryOrb.add(core, halo);
+      carryOrb.position.set(0.36, 0.58, 0.16);
+      carryOrb.visible = false;
+      player.add(carryOrb);
+    }
     scene.add(player);
     function applyOutfitTo(mesh, o) {
       const u = mesh.userData;
@@ -4379,7 +4533,7 @@ export default function DragonGardenQuest() {
     G.duckMusic = (on) => {
       musicDucked = !!on;
       if (trackGain && AC) {
-        trackGain.gain.setTargetAtTime(musicDucked ? MUSIC_DUCKED : MUSIC_FULL, AC.currentTime, 0.28);
+        trackGain.gain.setTargetAtTime(musicDucked ? MUSIC_DUCKED : (TRACK_LEVEL[trackKey] ?? MUSIC_FULL), AC.currentTime, 0.28);
       }
     };
 
@@ -4574,6 +4728,79 @@ export default function DragonGardenQuest() {
       if (G.reqCounter) G.reqCounter(kind);
     };
     G.endCounter = () => { G.counterActive = false; G.counterKind = null; };
+
+    // ---- River's library cutscene (Season 1 opening) ----
+    // Script text lives in glowlands/data/river-lines.js — the recordings
+    // were rendered from the same strings, so voice and captions cannot
+    // drift. The React panel drives steps; these are the world-side effects.
+    G.startRiverIntro = () => {
+      if (G.riverIntroDone || G.riverIntroPlaying || G.map !== "LIBRARY") return;
+      // a UI overlay (the title splash, or the map-change curtain) still owns
+      // the screen — keep knocking until it clears; leaving the map stops us
+      if (shopOpenRef.current || G.transitioning) {
+        setTimeout(() => G.startRiverIntro(), 700);
+        return;
+      }
+      G.riverIntroPlaying = true;
+      G.introLock = true;                       // she stopped you — stand still
+      if (libraryRiver) {
+        G.riverWalk = { t: 0, from: libraryRiver.position.clone(),
+                        to: new THREE.Vector3(0.85, 0, 1.3) };
+      }
+      setTimeout(() => {
+        if (G.map !== "LIBRARY") return;
+        playVoiceFile(`voices/river-1.mp3`);
+        if (G.reqRiver) G.reqRiver({ step: 0 });
+      }, 1050);
+    };
+    // step entry: play her line; the lantern lands the moment she offers it
+    G.riverStepFx = (step) => {
+      if (!step) return;
+      if (step.grant && !G.lantern) {
+        G.lantern = 1;
+        SFX.pass();
+        spawnBurst(playerPos.x, playerPos.z, 0xffc46a, 12, { glow: true, vy: 2.2, y0: 0.6 });
+        spawnFloatie(playerPos.x, playerPos.z, "🏮 the lantern!", 2.0);
+      }
+      playVoiceFile(`voices/river-${step.line}.mp3`);
+    };
+    G.endRiverTalk = (step) => {
+      stopVoiceClip();
+      if (G.riverIntroPlaying) {
+        G.riverIntroPlaying = false;
+        G.riverIntroDone = 1;
+        G.introLock = false;
+        toast("Walk to the Bible on the lectern ✨", "info");
+      }
+      // wherever the talk ends, she drifts back to her desk
+      if (libraryRiver && G.map === "LIBRARY") {
+        G.riverWalk = { t: 0, from: libraryRiver.position.clone(),
+                        to: new THREE.Vector3(2.1, 0, -2.6) };
+      }
+    };
+    // the light that escapes the pages when a chapter is finished
+    G.spawnTownLight = () => {
+      if (G.map !== "LIBRARY" || libLight) return;
+      const grp = new THREE.Group();
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8),
+        new THREE.MeshStandardMaterial({ color: SRGB(0xfff2c8), emissive: SRGB(0xffcf6a), emissiveIntensity: 1.7 }));
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffd98a), transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
+      halo.scale.set(1.9, 1.9, 1);
+      const pl = new THREE.PointLight(SRGB(0xffcf6a), 0.9, 6.5);
+      grp.add(core, halo, pl);
+      grp.position.set(0, 1.5, -2.7);           // out of the open Bible
+      worldGroup.add(grp);
+      spawnBurst(0, -2.7, 0xffd98a, 14, { glow: true, vy: 2.6, y0: 1.3 });
+      SFX.pass();
+      libLight = { grp, picked: false, drop: 1 };
+      if (libSeasonPlate) {
+        const fresh = makeTextPlate(`SEASON 1 · LIGHTS ${G.seasonDone} / ${G.seasonTotal || 84}`, { w: 4.0, h: 0.7, bg: "#4e4536", fg: "#ffd98a" });
+        fresh.position.copy(libSeasonPlate.position);
+        worldGroup.remove(libSeasonPlate);
+        worldGroup.add(fresh);
+        libSeasonPlate = fresh;
+      }
+    };
 
     // ---- Old Eli's welcome: a one-time sage introduction ----
     function saveIntroDone() {
@@ -4890,7 +5117,7 @@ export default function DragonGardenQuest() {
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
-      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; riverFoam = null; swayers = []; petals = []; fountainFx = null; goldBag = null; redBagMeshes = {}; shopWords = []; emberBar = null; turtle = null; G.turtleSeq = null;
+      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; riverFoam = null; swayers = []; petals = []; fountainFx = null; townKitHandle = null; G.townLights = null; libraryRiver = null; libLight = null; townLightRing = null; libSeasonPlate = null; G.flyLight = null; G.__eastGloomK = -1; goldBag = null; redBagMeshes = {}; shopWords = []; emberBar = null; turtle = null; G.turtleSeq = null;
       throwns.forEach((t) => worldGroup.remove(t.m)); throwns = [];
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
       // the "already greeted" latch belongs to the keeper we just destroyed —
@@ -5351,6 +5578,7 @@ export default function DragonGardenQuest() {
       setAtmosphere(PAL.skyTop, PAL.skyMid, PAL.skyHorizon, PAL.fog, PAL.sun, 1.45, PAL.ambientSky, PAL.ambientGnd);
 
       const FT = FENCE_TIERS[G.build.fenceTier];
+      const EAST_GLOOM = new THREE.Color(0x4c5450).convertSRGBToLinear();
       const inGarden = (x, z, m = 1.1) => x > FT.x1 - m && x < FT.x2 + m && z > FT.z1 - m && z < FT.z2 + m;
       // rolling hills, flat around every gameplay zone; river carves through the west
       const homeBase = makeTerrain(
@@ -5419,6 +5647,10 @@ export default function DragonGardenQuest() {
           const tn = 0.5 + 0.5 * Math.sin(x * 1.45 + z * 2.15 + 1.3) * Math.sin(x * 0.85 - z * 1.55);
           c.lerp(GARDEN_TROD, gIn * (0.12 + tn * 0.58));
         }
+        // the Gloom's stain reaches over the east fence from Meadow Town —
+        // grass desaturates toward the road so the ground agrees with the
+        // darkening sky (the sky half is blended live off player x)
+        if (x > 8) c.lerp(EAST_GLOOM, Math.min(1, (x - 8) / 13) * 0.32);
       }, homeGroundY));
 
       // the river dividing the home meadow from the community garden
@@ -6520,129 +6752,131 @@ export default function DragonGardenQuest() {
     // -------- TOWN --------
     function buildTown() {
       clearWorld();
-      setAtmosphere(PAL.skyTop, PAL.skyMid, PAL.skyHorizon, PAL.fog, PAL.sun, 1.45, PAL.ambientSky, PAL.ambientGnd);
+      // Pre-save Meadow Town (glowlands bible Ch. 7): dusk violet, heavy haze,
+      // nothing lit but the Toolworks forge. The near/far fog band is pulled
+      // in hard — the mockup's wall of haze — and it also hides the bright
+      // aerial-perspective colors baked into the ground at distance.
+      setAtmosphere(0x1d1a2c, 0x312c46, 0x453e5e, 0x393352, 0x9aa0c8, 0.56, 0x6f6a96, 0x403a54, 9, 40, 0.66);
 
+      // one flat circle for the whole radial town; hills pushed out past it
       terrainY = makeTerrain(
-        [{ x: 14, z: -13, r: 6, h: 1.2 }, { x: -14, z: 13, r: 6, h: 1.3 }, { x: 16, z: 12, r: 6, h: 1.2 }, { x: -16, z: -12, r: 7, h: 1.4 }],
-        [{ x1: -22, z1: -1.7, x2: 18, z2: 1.7, f: 3 }, { x1: -1.5, z1: -11, x2: 1.5, z2: 1, f: 3 },
-         { c: 1, x: 11, z: 19, r: 4.2, f: 3 }, { c: 1, x: -13.5, z: 18.5, r: 4, f: 3 }, { c: 1, x: -4.5, z: 20.5, r: 4, f: 3 },
-         { x1: -8.6, z1: -10.4, x2: 8.6, z2: -3, f: 3 }, { c: 1, x: 0, z: 5, r: 3.6, f: 3 },
-         { x1: -16.1, z1: -11.5, x2: 11.9, z2: 12.9, f: 3 }]
+        [{ x: 22, z: -19, r: 6, h: 1.3 }, { x: -21, z: 18, r: 6, h: 1.4 }, { x: 21, z: 17, r: 6, h: 1.2 }, { x: -23, z: -17, r: 7, h: 1.5 }],
+        [{ c: 1, x: 0, z: 0, r: 17, f: 3 }, { x1: -23, z1: -2.2, x2: -4, z2: 2.2, f: 3 }]
       );
+
+      // buildings first: the ring's door positions define the path spokes
+      const townKit = buildMeadowTownKit({
+        THREE, worldGroup, flat, SRGB, addBoxCol, addCircleCol,
+        makeTextPlate, glowNodes, PAL,
+        gloomFree: (G.seasonTotal || 0) > 0 && G.seasonDone >= G.seasonTotal,
+        // Gloomling steal hooks: the module decides WHEN, this decides WHAT.
+        // Commons only - rare fruit glows, and Gloomlings are afraid of light.
+        gloomHooks: {
+          playerPos: () => ({ x: playerPos.x, z: playerPos.z }),
+          uiOpen: () => !!shopOpenRef.current,
+          // live collider: the module drags it around under each Gloomling
+          colliderFor: (gx, gz, gr) => {
+            const c = { type: "c", x: gx, z: gz, r: gr };
+            colliders.push(c);
+            return c;
+          },
+          hasLantern: () => !!G.lantern,
+          // the chapel boss speaks through the same one-shot voice player
+          // as every other character, and thumps hard enough to feel
+          bark: (file) => playVoiceFile(file),
+          rumble: () => { G.shakeT = Math.max(G.shakeT || 0, 0.22); },
+          steal: (gx, gz) => {
+            const commons = ["strawberry", "blueberry", "sunfruit"].filter((fk) => G.inv.fruit[fk] > 0);
+            if (commons.length) {
+              const fk = commons[(Math.random() * commons.length) | 0];
+              G.inv.fruit[fk]--;
+              spawnFloatie(playerPos.x, playerPos.z, `-1 ${FRUIT_EMOJI[fk] || "🍓"}`, 1.9);
+            } else if (G.gold > 0) {
+              const n = Math.min(2 + ((Math.random() * 3) | 0), G.gold);
+              G.gold -= n;
+              spawnFloatie(playerPos.x, playerPos.z, `-${n} 💰`, 1.9);
+            } else {
+              spawnFloatie(gx, gz, "…", 1.6); // nothing on you — it sulks
+            }
+            SFX.wrong();
+            spawnBurst(gx, gz, 0x6a4a9a, 10, { glow: true, vy: 2.0, y0: 0.5 });
+            syncHud();
+          },
+        },
+      });
+      townKitHandle = townKit;
+      G.townLights = townKit.lights;
+      // Season 1: light the strand to the server's count. If the player is
+      // carrying a fresh light home, hold one bulb back — the flight in the
+      // frame loop delivers it.
+      if (window.YGTEEV_API && window.YGTEEV_API.townProgress) {
+        window.YGTEEV_API.townProgress().then((pr) => {
+          if (G.map !== "TOWN" || !townKitHandle) return;
+          G.seasonDone = pr.done; G.seasonTotal = pr.total;
+          const carrying = G.pendingLightN > 0 && pr.done >= G.pendingLightN;
+          townKitHandle.lights.setLit(carrying ? pr.done - 1 : pr.done);
+          if (carrying) G.flyLightReq = { n: pr.done };
+          // season already won (cold start straight into town): the Gloom
+          // has no business here — clear them and swap the music now
+          if (pr.done >= pr.total && pr.total > 0) {
+            if (townKitHandle.retreatAll) townKitHandle.retreatAll();
+            playTrack("TOWN");
+          }
+        }).catch(() => {});
+      }
+      // the lantern's pool of light follows the player through the dark
+      if (G.lantern) {
+        townLightRing = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({ map: glowTex, color: SRGB(0xffc46a), transparent: true, opacity: 0.13, depthWrite: false, blending: THREE.AdditiveBlending }));
+        townLightRing.rotation.x = -Math.PI / 2;
+        townLightRing.scale.set(9, 9, 1);
+        townLightRing.renderOrder = 4;
+        worldGroup.add(townLightRing);
+      }
+
+      const spoke = (dr) => {
+        const L = Math.hypot(dr.x, dr.z) || 1;
+        return { pts: [[(dr.x / L) * 4.3, (dr.z / L) * 4.3], [dr.x, dr.z]], w: 1.5 };
+      };
       const townRoutes = [
-        { pts: [[-20, 0], [-15.9, 0]], w: 2.2 },
-        { pts: [[11.6, 0], [16, 0]], w: 2.2 },
+        { pts: [[-21, 0], [-5, 0]], w: 2.4 }, // the west road from home
+        ...Object.values(townKit.doors).map(spoke),
       ];
       setPathRoutes(townRoutes);
+      const DIRT = new THREE.Color(PAL.pathStone).offsetHSL(-0.008, -0.18, -0.16).convertSRGBToLinear();
+      const GLOOMC = new THREE.Color(0x4c5450).convertSRGBToLinear();
       worldGroup.add(makeGround(66, PAL.grassBase, (x, z, c) => {
-        if (x > -16.1 && x < 11.9 && z > -11.5 && z < 12.9) c.lerp(MORTAR, 0.85);
+        const dd = Math.hypot(x, z);
+        if (dd < 5.9) c.lerp(DIRT, 0.82 * Math.min(1, (5.9 - dd) / 1.1)); // fountain plaza
+        c.lerp(GLOOMC, 0.32); // the Gloom's desaturating cast over everything
       }));
-      addPavedPlaza(-15.6, -11, 11.4, 12.4); // wide enough that no building overhangs the edge
-      townRoutes.forEach((rt) => addFlagstonePath(rt.pts, rt.w));
-
-      // warm plaster set (all derived from PAL.plaster) + roof desaturator (~25%)
-      // so every roof keeps its hue identity but sits inside the palette
-      const PLASTER_CREAM = new THREE.Color(PAL.plaster);
-      const PLASTER_SAGE = new THREE.Color(PAL.plaster).offsetHSL(0.101, -0.21, -0.115);
-      const PLASTER_LAV = new THREE.Color(PAL.plaster).offsetHSL(0.614, -0.28, -0.07);
-      const roofTone = (hex) => {
-        const c = new THREE.Color(hex), hsl = { h: 0, s: 0, l: 0 };
-        c.getHSL(hsl);
-        return c.setHSL(hsl.h, hsl.s * 0.75, hsl.l);
-      };
-
-      function makeBuilding(x, z, w, d, h, wallC, roofC, rotY = 0) {
-        const b = new THREE.Group();
-        // solid extruded body: walls + gable ends in one piece (ridge along X)
-        const hd2 = d / 2, rise = d * 0.36;
-        const bProf = new THREE.Shape();
-        bProf.moveTo(-hd2, 0); bProf.lineTo(hd2, 0); bProf.lineTo(hd2, h);
-        bProf.lineTo(0, h + rise); bProf.lineTo(-hd2, h); bProf.lineTo(-hd2, 0);
-        const bGeo = new THREE.ExtrudeGeometry(bProf, { depth: w, bevelEnabled: false });
-        bGeo.translate(0, 0, -w / 2);
-        const walls = new THREE.Mesh(bGeo, flat(wallC));
-        walls.rotation.y = Math.PI / 2;
-        walls.castShadow = true; walls.receiveShadow = true;
-        b.add(walls);
-        // overhanging roof slabs + ridge cap
-        const slopeLen = Math.hypot(hd2 + 0.3, rise) + 0.15;
-        const ang = Math.atan2(rise, hd2 + 0.3);
-        [1, -1].forEach((sign) => {
-          const slab = new THREE.Mesh(new THREE.BoxGeometry(w + 0.7, 0.13, slopeLen), flat(roofC, { roughness: 0.8 }));
-          slab.rotation.x = sign * ang;
-          slab.position.set(0, h + rise / 2 + 0.04, sign * (hd2 + 0.3) / 2);
-          slab.castShadow = true;
-          b.add(slab);
-        });
-        const cap = new THREE.Mesh(new THREE.BoxGeometry(w + 0.8, 0.13, 0.3), flat(roofC));
-        cap.position.y = h + rise + 0.05; cap.castShadow = true;
-        b.add(cap);
-        const door = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.4, 0.1), flat(new THREE.Color(PAL.bark).offsetHSL(0, 0.02, -0.04)));
-        door.position.set(0, 0.7, d / 2 + 0.05);
-        const frame = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.85, 0.1), flat(PLASTER_CREAM));
-        frame.position.set(w / 4 + 0.3, h * 0.55, d / 2 + 0.04);
-        const win = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.68, 0.1),
-          smooth(0x9fd0e8, { emissive: 0xfff2c0, emissiveIntensity: 0.3, roughness: 0.2 }));
-        win.position.set(w / 4 + 0.3, h * 0.55, d / 2 + 0.07);
-        b.add(door, frame, win);
-        b.position.set(x, 0, z); b.rotation.y = rotY;
-        addBoxCol(x, z, w / 2 + 0.1, d / 2 + 0.1, rotY);
-        return b;
-      }
-      // (the three dressing houses that used to arc along the bottom of
-      // town were cut — non-functional set dressing in the grass)
-
-      // ---- three branded shops you can actually walk into ----
-      function shopFront(x, z, brand) {
-        const cfg = {
-          seeds: { wall: PLASTER_SAGE, roof: roofTone(0x4da34a), sign: "ROSIE'S SEEDS", fg: "#1d5a2a", bg: "#eaf6d8" },
-          market: { wall: PLASTER_CREAM, roof: roofTone(0xd8842f), sign: "BERRY MARKET", fg: "#7a3a10", bg: "#ffedc8" },
-          tools: { wall: PLASTER_LAV, roof: roofTone(0x6a5a9a), sign: "TOOLWORKS", fg: "#2f2a4a", bg: "#e8e2f6" },
-        }[brand];
-        worldGroup.add(makeBuilding(x, z, 5, 4.2, 2.7, cfg.wall, cfg.roof));
-        const plate = makeTextPlate(cfg.sign, { w: 3.1, h: 0.68, bg: cfg.bg, fg: cfg.fg });
-        plate.position.set(x, 2.4, z + 2.28);
-        worldGroup.add(plate);
-        const mat = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.8), flat(cfg.roof, { roughness: 1 }));
-        mat.position.set(x, 0.03, z + 2.5);
-        worldGroup.add(mat);
-        if (brand === "seeds") {
-          [[x - 1.8, z + 2.5], [x + 1.9, z + 2.6]].forEach(([px, pz]) => {
-            const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.18, 0.32, 7), flat(new THREE.Color(PAL.roof).offsetHSL(-0.015, 0.08, -0.06)));
-            pot.position.set(px, 0.16, pz);
-            const bushy = new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 0), flat(PAL.leafMid));
-            bushy.position.set(px, 0.48, pz);
-            worldGroup.add(pot, bushy);
-          });
-        } else if (brand === "market") {
-          [[x - 1.9, z + 2.6, 0xe8384f], [x + 1.9, z + 2.7, 0x4f6de8]].forEach(([px, pz, c]) => {
-            const crate = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.4, 0.52), flat(new THREE.Color(PAL.bark).offsetHSL(0.006, 0, 0.06)));
-            crate.position.set(px, 0.2, pz); crate.castShadow = true;
-            worldGroup.add(crate);
-            for (let i = 0; i < 4; i++) {
-              const fr = new THREE.Mesh(new THREE.SphereGeometry(0.09, 7, 6), smooth(c, { roughness: 0.3 }));
-              fr.position.set(px - 0.18 + (i % 2) * 0.36, 0.47, pz - 0.1 + Math.floor(i / 2) * 0.2);
-              worldGroup.add(fr);
-            }
-          });
-        } else {
-          const anv = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.3, 0.3), flat(0x5a5a66));
-          anv.position.set(x + 1.9, 0.44, z + 2.6);
-          const anvB = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.3, 0.35), flat(0x4a4a55));
-          anvB.position.set(x + 1.9, 0.15, z + 2.6);
-          worldGroup.add(anv, anvB);
+      addFlagstonePath([[-21, 0], [-5.2, 0]], 2.2);
+      { // stepping-stone ring around the fountain plaza
+        const ringPts = [];
+        for (let i = 0; i <= 12; i++) {
+          const a = (i / 12) * Math.PI * 2;
+          ringPts.push([Math.cos(a) * 3.7, Math.sin(a) * 3.7]);
         }
+        addFlagstonePath(ringPts, 1.25);
+        // door spokes stay worn dirt only — stones are reserved for the
+        // fountain ring and the road home, so the west line stays special
       }
-      // the three main shops line the TOP (north) of the square, fronts facing
-      // south — the player sees them the moment they walk in from the west road
-      shopFront(-8.2, -8, "market");
-      shopFront(0, -8, "seeds");
-      shopFront(8.2, -8, "tools");
+      // (the HOME fingerpost was cut — the oak avenue and the carved gap
+      // in the tree wall carry the wayfinding on their own)
+
+      if (import.meta.env.DEV) {
+        // dev-only: ?bulbs=N previews the chapter-lights rig on entry
+        const q = +(new URLSearchParams(location.search).get("bulbs") || 0);
+        if (q) townKit.lights.setLit(q);
+      }
+
+      // (the old row-of-shops block lived here — the ring buildings,
+      // signs and props all come from meadow-town-kit.js now)
 
       // AAA floating verbs over each storefront: glow bed + deep outline +
       // vertical gradient face on a high-res canvas sprite, with an additive
       // halo behind. They bob and pulse in the frame loop and never expire.
-      function makeFloatWord(text, x, z, tone) {
+      function makeFloatWord(text, x, z, tone, y = 5.05) {
         const cv = document.createElement("canvas");
         cv.width = 512; cv.height = 192;
         const c = cv.getContext("2d");
@@ -6665,35 +6899,36 @@ export default function DragonGardenQuest() {
         halo.scale.set(5.4, 2.7, 1);
         const g = new THREE.Group();
         g.add(halo, word);
-        g.position.set(x, 5.05, z);
-        g.userData = { baseY: 5.05, ph: Math.random() * 6.28, halo };
+        g.position.set(x, y, z);
+        g.userData = { baseY: y, ph: Math.random() * 6.28, halo };
         worldGroup.add(g);
         shopWords.push(g);
       }
-      makeFloatWord("SELL",  -8.2, -8, { core: "#ffd156", deep: "#d8842f", glow: "#ffd76a", outline: "#4a2c10" });
-      makeFloatWord("BUY",    0,   -8, { core: "#8ce06a", deep: "#3f8f3f", glow: "#8dfc90", outline: "#17421d" });
-      makeFloatWord("BUILD",  8.2, -8, { core: "#b8a8f8", deep: "#6a5a9a", glow: "#b0a0ff", outline: "#2a2348" });
+      // over the ring buildings now; y clears each ridge so the words float
+      // above the string lights instead of clipping through them
+      makeFloatWord("SELL",  -13.4, -4.6, { core: "#ffd156", deep: "#d8842f", glow: "#ffd76a", outline: "#4a2c10" }, 6.3);
+      makeFloatWord("BUY",   -8.6, -10.4, { core: "#8ce06a", deep: "#3f8f3f", glow: "#8dfc90", outline: "#17421d" }, 6.25);
+      makeFloatWord("BUILD",  12.4, 2.2,  { core: "#b8a8f8", deep: "#6a5a9a", glow: "#b0a0ff", outline: "#2a2348" }, 6.4);
 
-      // ---- street life on the plaza ----
-      makeVillager(2.6, -2.6, -2.3, { shirt: 0x5a86c9 });
-      makeVillager(3.5, -3.3, 0.9, { shirt: 0xd06a8a, hair: 0x8a5f2e });
-      makeVillager(-3.9, -4.4, 0.5, { shirt: 0xe0a03a, scale: 0.72 });
-      makeVillager(-11.5, 0.8, 1.7, { shirt: 0x8a5f9a, hat: "hood", hood: 0x6a4a8a });
-      makeVillager(0, -1.4, 0, { shirt: 0x6ab8a0, hair: 0x4a3a2a, scale: 0.82, solid: false,
-        walk: { a: [-7, -1.4], b: [7, -1.4], speed: 0.24 } });
+      // ---- street life, thinned and muted: the town is sleepy pre-save ----
+      makeVillager(3.8, -4.4, -2.4, { shirt: 0x54628a });
+      makeVillager(-5.4, 5.2, 1.1, { shirt: 0x7a5a6a, hair: 0x3a2a1a });
+      makeVillager(-10.9, -1.5, 1.6, { shirt: 0x5f5478, hat: "hood", hood: 0x4a3f62 });
+      makeVillager(0, -6.2, 0, { shirt: 0x5a7a72, hair: 0x3a2a1a, scale: 0.82, solid: false,
+        walk: { a: [-6.5, -6.2], b: [6.5, -6.2], speed: 0.2 } });
 
       const fBase = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2, 0.5, 9), flat(new THREE.Color(PAL.stone).offsetHSL(0, 0, 0.06)));
-      fBase.position.set(0, 0.25, 5); fBase.castShadow = true;
+      fBase.position.set(0, 0.25, 0); fBase.castShadow = true;
       const fWater = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.2, 9),
-        smooth(PAL.waterSurf, { roughness: 0.22, emissive: PAL.waterDeep, emissiveIntensity: 0.25 }));
-      fWater.position.set(0, 0.5, 5);
+        smooth(PAL.waterSurf, { roughness: 0.22, emissive: PAL.waterDeep, emissiveIntensity: 0.1 }));
+      fWater.position.set(0, 0.5, 0);
       const foam = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.07, 5, 14),
-        smooth(0xdff4ff, { emissive: 0xbfe8ff, emissiveIntensity: 0.4 }));
-      foam.rotation.x = -Math.PI / 2; foam.position.set(0, 0.62, 5);
+        smooth(0xdff4ff, { emissive: 0xbfe8ff, emissiveIntensity: 0.16 }));
+      foam.rotation.x = -Math.PI / 2; foam.position.set(0, 0.62, 0);
       const fSpire = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.1, 6), flat(new THREE.Color(PAL.stone).offsetHSL(0, 0, 0.06)));
-      fSpire.position.set(0, 1.05, 5);
+      fSpire.position.set(0, 1.05, 0);
       worldGroup.add(fBase, fWater, foam, fSpire);
-      addCircleCol(0, 5, 2.2);
+      addCircleCol(0, 0, 2.2);
       glowNodes.push(foam);
 
       // ---- living fountain: droplet spray, jet core, rippling surface, splash rings ----
@@ -6711,7 +6946,7 @@ export default function DragonGardenQuest() {
       worldGroup.add(drops);
       const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.12, 0.7, 7),
         smooth(0xd8f2ff, { transparent: true, opacity: 0.7, roughness: 0.1, emissive: 0x9fd8f0, emissiveIntensity: 0.5 }));
-      jet.position.set(0, 1.5, 5);
+      jet.position.set(0, 1.5, 0);
       worldGroup.add(jet);
       const ripGeo = new THREE.CircleGeometry(1.46, 28);
       ripGeo.rotateX(-Math.PI / 2);
@@ -6719,7 +6954,7 @@ export default function DragonGardenQuest() {
       const rpAttr = ripGeo.attributes.position;
       for (let ri = 0; ri < rpAttr.count; ri++) ripBase.push(Math.hypot(rpAttr.getX(ri), rpAttr.getZ(ri)));
       const ripple = new THREE.Mesh(ripGeo, smooth(new THREE.Color(PAL.waterSurf).offsetHSL(0, 0, 0.1), { transparent: true, opacity: 0.75, roughness: 0.15, emissive: new THREE.Color(PAL.waterDeep).offsetHSL(0, 0, 0.06), emissiveIntensity: 0.3 }));
-      ripple.position.set(0, 0.615, 5);
+      ripple.position.set(0, 0.615, 0);
       worldGroup.add(ripple);
       const splashRings = [];
       for (let ri = 0; ri < 4; ri++) {
@@ -6729,15 +6964,32 @@ export default function DragonGardenQuest() {
         rg.userData = { ph: ri / 4, lx: 0, lz: 0, br: 1, prev: 1 };
         worldGroup.add(rg); splashRings.push(rg);
       }
-      fountainFx = { drops, dropData, jet, ripple, ripBase, rings: splashRings, cx: 0, cz: 5 };
+      fountainFx = { drops, dropData, jet, ripple, ripBase, rings: splashRings, cx: 0, cz: 0 };
 
-      [[-15, -12, 1.2], [14, -13, 1.3], [-16, 10, 1.1], [15, 9, 1.2], [15.5, 16, 1.0], [-17, 13.5, 1.3]]
-        .forEach(([x, z, s]) => worldGroup.add(makeTree(x, z, s)));
-      [[12.8, -5, 0.6, false], [-16.5, -5.5, 0.7, false], [13, 3, 0.55, true]]
-        .forEach(([x, z, s, d]) => worldGroup.add(makeRock(x, z, s, d)));
+      // round oaks in the gaps between buildings (the mockup look), pines out
+      [[6.4, -13.2, 1.05], [13.8, -4.8, 0.95], [13.4, 8.6, 1.1],
+       [-12.6, 10.0, 1.05], [0.9, 15.6, 1.2], [-16.9, 7.4, 1.1]]
+        .forEach(([x, z, s2]) => worldGroup.add(makeOak(x, z, s2)));
+      // tree-lined avenue down the home road: two staggered rows of oaks
+      // frame the way out so the west exit reads from anywhere on the plaza
+      [[-18.6, 3.5, 1.1], [-15.3, 3.8, 0.95], [-11.9, 3.4, 1.15], [-8.7, 3.7, 0.9],
+       [-18.9, -3.5, 1.0], [-15.6, -3.7, 1.2], [-12.2, -3.5, 0.95], [-9.0, -3.8, 1.05]]
+        .forEach(([x, z, s2]) => worldGroup.add(makeOak(x, z, s2)));
+      [[-18.2, -13.5, 1.25], [17.2, 15.0, 1.1]]
+        .forEach(([x, z, s2]) => worldGroup.add(makeTree(x, z, s2)));
+      [[4.9, -5.8, 0.55, true], [-6.4, -5.0, 0.5, true], [16.2, -9.4, 0.7, false], [-16.2, 9.2, 0.65, true]]
+        .forEach(([x, z, s2, dk]) => worldGroup.add(makeRock(x, z, s2, dk)));
+
+      // keep planted decoration off the dirt: the plaza disc, every worn
+      // path (pathWear covers road + spokes), and each building's pad
+      const townPads = [
+        [1.6, -13.6, 4.4], [10.6, -7.6, 3.5], [12.4, 2.2, 4.2], [6.2, 12.2, 3.1],
+        [-4.6, 12.6, 3.0], [-13.4, -4.6, 3.7], [-8.6, -10.4, 3.5], [2.8, 3.7, 0.9],
+      ];
       const townAvoid = (x, z) =>
-        (x > -15 && x < 10.5 && z > -11.5 && z < 12.9) ||
-        (Math.abs(z) < 1.7 && x > -21 && x < 17);
+        Math.hypot(x, z) < 6.1 ||
+        pathWear(x, z) > 0.22 ||
+        townPads.some(([px, pz, pr]) => Math.hypot(x - px, z - pz) < pr);
       for (let ci = 0; ci < 9; ci++) {
         const cx = (Math.random() - 0.5) * 40, cz = (Math.random() - 0.5) * 34;
         if (townAvoid(cx, cz)) continue;
@@ -6748,32 +7000,45 @@ export default function DragonGardenQuest() {
           if (!townAvoid(fx, fz)) worldGroup.add(mixFlower(fx, fz));
         }
       }
-      [[10, 7.5, 0.9], [-10.5, 9.5, 0.8], [12, -4, 0.9], [-14, -6, 1]]
+      [[9.8, 9.2, 0.8], [-10.9, 10.8, 0.75], [15.0, -2.3, 0.85], [-14.9, -8.4, 0.8]]
         .forEach(([x, z, bs]) => worldGroup.add(makeBush(x, z, bs)));
-      addSprouts(300, 56, townAvoid);
+      addSprouts(260, 56, townAvoid);
 
-      addGrass(4400, 60, townAvoid);
-      addGroundPatches(50, 60, townAvoid);
-      addWildflowers(190, 58, townAvoid);
+      addGrass(3800, 60, townAvoid);
+      addGroundPatches(46, 60, townAvoid);
+      addWildflowers(120, 58, townAvoid);
+      // near tree wall: wraps the whole square, and its carved corridor
+      // (three gap points along z=0) leaves exactly one obvious way out
+      addForestRing(19.6, 24.5, 30, [[-20, 0], [-14, 0], [-8.5, 0]]);
       addForestRing(28, 34, 52, [[-20, 0]]);
       addMountains([[-28, -50, 16, 19, true], [20, -54, 20, 24, true], [48, -30, 13, 14, false], [-50, 18, 15, 16, true]]);
-      addClouds(5);
-      addButterflies(4, 24);
+      // no clouds, no butterflies: nothing bright drifts through the Gloom
 
       // west world edge: the HOME exit is the only way out — wall + funnel
       // lips mirror the home-meadow treatment so nobody walks around it
       addBoxCol(-21.2, 0, 0.2, 30);           // back wall behind the exit
       addBoxCol(-19.6, 2.0, 1.8, 0.15);       // funnel, north lip
       addBoxCol(-19.6, -2.0, 1.8, 0.15);      // funnel, south lip
+      // walking through an open door IS entering the building — the trigger
+      // sits half a step out from the frame so brushing past doesn't teleport
+      const doorExit = (dr, to, spawn) => {
+        const L = Math.hypot(dr.x, dr.z) || 1;
+        return { x: dr.x - (dr.x / L) * 0.35, z: dr.z - (dr.z / L) * 0.35, r: 1.25, to, spawn };
+      };
       exits = [
         { x: -20, z: 0, r: 2.2, to: "HOME", spawn: [21, 3] },
         // spawn well inside the shop (not at the doorway) so turning around
         // doesn't walk the player out through the door gap into the void
-        { x: -8.2, z: -5.05, r: 1.3, to: "SHOP_MARKET", spawn: [0, 2] },
-        { x: 0, z: -5.05, r: 1.3, to: "SHOP_SEEDS", spawn: [0, 2] },
-        { x: 8.2, z: -5.05, r: 1.3, to: "SHOP_TOOLS", spawn: [0, 2] },
+        doorExit(townKit.doors.market, "SHOP_MARKET", [0, 2]),
+        doorExit(townKit.doors.seeds, "SHOP_SEEDS", [0, 2]),
+        doorExit(townKit.doors.tools, "SHOP_TOOLS", [0, 2]),
+        doorExit(townKit.doors.library, "LIBRARY", [0, 2.6]),
       ];
-      hotspots = [];
+      // the chapel keeps its door: locked until its part of the story opens
+      hotspots = [{
+        x: townKit.doors.church.x, z: townKit.doors.church.z, r: 2.4,
+        type: "lockeddoor", kind: "chapel", label: "Try the chapel door",
+      }];
 
       // —— Glowlands: Meadow Town dressing (library, chapel, East Gate,
       //    gloom stain, public plots) + prologue trigger zones.
@@ -6786,9 +7051,9 @@ export default function DragonGardenQuest() {
       const kind = name === "SHOP_SEEDS" ? "seeds" : name === "SHOP_MARKET" ? "market" : "tools";
       const CFG = {
         // sage-cream plaster walls, warm plank floor, desaturated-leaf trim — no pure green
-        seeds: { floor: new THREE.Color(PAL.pathStone).offsetHSL(0.004, 0.02, -0.055), wall: new THREE.Color(PAL.plaster).offsetHSL(0.05, -0.12, -0.05), trim: new THREE.Color(PAL.leafMid).offsetHSL(0, -0.18, 0.05), keeper: { shirt: 0x4da34a, hat: "straw" }, sign: "ROSIE'S RARE SEEDS", fg: "#1d5a2a", bg: "#eaf6d8", lamp: 0xd8ffc0, back: [0, -3.3] },
-        market: { floor: 0x9a8a72, wall: 0xf2e2c2, trim: 0xd8842f, keeper: { shirt: 0xc9963c, hair: 0x2a1a0e }, sign: "THE BERRY MARKET", fg: "#7a3a10", bg: "#ffedc8", lamp: 0xffd9a0, back: [-8.2, -3.3] },
-        tools: { floor: 0x6a6472, wall: 0xcfcadd, trim: 0x6a5a9a, keeper: { shirt: 0x8a6fd0, hair: 0x2a1a0e, beard: true }, sign: "GRIMBLE'S TOOLWORKS", fg: "#2f2a4a", bg: "#e8e2f6", lamp: 0xffc890, back: [8.2, -3.3] },
+        seeds: { floor: new THREE.Color(PAL.pathStone).offsetHSL(0.004, 0.02, -0.055), wall: new THREE.Color(PAL.plaster).offsetHSL(0.05, -0.12, -0.05), trim: new THREE.Color(PAL.leafMid).offsetHSL(0, -0.18, 0.05), keeper: { shirt: 0x4da34a, hat: "straw" }, sign: "ROSIE'S RARE SEEDS", fg: "#1d5a2a", bg: "#eaf6d8", lamp: 0xd8ffc0, back: [-6.3, -7.7] },
+        market: { floor: 0x9a8a72, wall: 0xf2e2c2, trim: 0xd8842f, keeper: { shirt: 0xc9963c, hair: 0x2a1a0e }, sign: "THE BERRY MARKET", fg: "#7a3a10", bg: "#ffedc8", lamp: 0xffd9a0, back: [-10.0, -3.4] },
+        tools: { floor: 0x6a6472, wall: 0xcfcadd, trim: 0x6a5a9a, keeper: { shirt: 0x8a6fd0, hair: 0x2a1a0e, beard: true }, sign: "GRIMBLE'S TOOLWORKS", fg: "#2f2a4a", bg: "#e8e2f6", lamp: 0xffc890, back: [8.9, 1.6] },
       }[kind];
       setAtmosphere(ATMO_NIGHT.top, ATMO_NIGHT.mid, ATMO_NIGHT.bot, ATMO_NIGHT.fog, ATMO_NIGHT.sun, 0.55, ATMO_NIGHT.hemiSky, ATMO_NIGHT.hemiGnd, 8, 42, 0.52);
       terrainY = () => 0;
@@ -6915,6 +7180,257 @@ export default function DragonGardenQuest() {
       exits = [{ x: 0, z: 5.5, r: 1.6, to: "TOWN", spawn: CFG.back }];
       addBoxCol(0, 6.9, 2.4, 0.3);
       hotspots = [{ x: 0, z: -2.4, r: 2.7, type: "counter", kind, label: kind === "market" ? "Talk to Marlo" : kind === "seeds" ? "Talk to Rosie" : "Talk to Grimble" }];
+    }
+
+    // -------- THE LIBRARY: River's lamplit refuge, and the town Bible ----
+    // The one warm room in a dark town. Bookwalls, a chandelier, a reading
+    // nook, a rolling ladder — and a raised lectern where the Bible sits
+    // open. Reading a chapter here frees one of the stolen town lights
+    // (Season 1); River keeps count on the plaque by the door.
+    function buildLibraryInterior() {
+      clearWorld();
+      setAtmosphere(ATMO_NIGHT.top, ATMO_NIGHT.mid, ATMO_NIGHT.bot, ATMO_NIGHT.fog, ATMO_NIGHT.sun, 0.5, ATMO_NIGHT.hemiSky, ATMO_NIGHT.hemiGnd, 9, 44, 0.5);
+      terrainY = () => 0;
+      const WALL = new THREE.Color(PAL.plaster).offsetHSL(0.01, -0.14, -0.07);
+      const caseMat = flat(new THREE.Color(PAL.bark).offsetHSL(0, 0.02, -0.02));
+      const darkWood = flat(new THREE.Color(PAL.bark).offsetHSL(0, 0.01, -0.1));
+
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(16, 0.2, 12), flat(new THREE.Color(PAL.bark).offsetHSL(0.004, -0.06, 0.02), { roughness: 0.95 }));
+      floor.position.set(0, -0.1, -0.5); floor.receiveShadow = true;
+      worldGroup.add(floor);
+      // plank seams: thin darker strips read as floorboards
+      for (let i = -3; i <= 3; i++) {
+        const seam = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.205, 12), darkWood);
+        seam.position.set(i * 2.2, -0.095, -0.5);
+        worldGroup.add(seam);
+      }
+      const wallMat = flat(WALL, { roughness: 0.95 });
+      const back = new THREE.Mesh(new THREE.BoxGeometry(16, 3.9, 0.3), wallMat);
+      back.position.set(0, 1.95, -6.4); back.receiveShadow = true;
+      const left = new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.9, 12), wallMat);
+      left.position.set(-8, 1.95, -0.5);
+      const right = left.clone(); right.position.x = 8;
+      worldGroup.add(back, left, right);
+      addBoxCol(0, -6.4, 8.1, 0.35); addBoxCol(-8, -0.5, 0.35, 6.1); addBoxCol(8, -0.5, 0.35, 6.1);
+      // wainscot rail all the way around — the AAA trim that sells a room
+      [[0, -6.22, 15.8, 0.1], [-7.82, -0.5, 0.1, 11.6], [7.82, -0.5, 0.1, 11.6]].forEach(([wx, wz, ww, wd]) => {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(ww || 0.12, 0.14, wd || 0.12), darkWood);
+        rail.position.set(wx, 1.06, wz);
+        worldGroup.add(rail);
+      });
+      const lipL = new THREE.Mesh(new THREE.BoxGeometry(6.0, 1.15, 0.3), wallMat);
+      lipL.position.set(-5, 0.57, 5.2);
+      const lipR = lipL.clone(); lipR.position.x = 5;
+      worldGroup.add(lipL, lipR);
+      addBoxCol(-5, 5.2, 3.0, 0.3); addBoxCol(5, 5.2, 3.0, 0.3);
+
+      // ---- book walls ----
+      const CASE_W = 3.6;
+      const BOOK_C = [0x7a5a5a, 0x5a6a7a, 0x8a7a55, 0x6a7a5f, 0x77606f, 0x5f6a88, 0x8a6a4f];
+      function bookcase(cx, cz, rotY, tall = false) {
+        const bc = new THREE.Group();
+        const rows = tall ? 4 : 3;
+        const backP = new THREE.Mesh(new THREE.BoxGeometry(CASE_W, tall ? 3.6 : 3.0, 0.16), caseMat);
+        backP.position.y = tall ? 1.8 : 1.5;
+        bc.add(backP);
+        [-1, 1].forEach((sgn) => {
+          const side = new THREE.Mesh(new THREE.BoxGeometry(0.12, tall ? 3.6 : 3.0, 0.55), darkWood);
+          side.position.set(sgn * (CASE_W / 2 + 0.02), tall ? 1.8 : 1.5, 0.12);
+          bc.add(side);
+        });
+        const crown = new THREE.Mesh(new THREE.BoxGeometry(CASE_W + 0.35, 0.14, 0.62), darkWood);
+        crown.position.set(0, tall ? 3.66 : 3.06, 0.12);
+        bc.add(crown);
+        for (let r = 0; r < rows; r++) {
+          const shelf = new THREE.Mesh(new THREE.BoxGeometry(CASE_W, 0.1, 0.48), caseMat);
+          shelf.position.set(0, 0.72 + r * 0.85, 0.16);
+          bc.add(shelf);
+          let bx = -CASE_W / 2 + 0.22;
+          while (bx < CASE_W / 2 - 0.2) {
+            const bw = 0.11 + Math.random() * 0.08, bh = 0.5 + Math.random() * 0.16;
+            const book = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.34),
+              flat(BOOK_C[(Math.random() * BOOK_C.length) | 0]));
+            book.position.set(bx, 0.77 + r * 0.85 + bh / 2, 0.16);
+            book.rotation.z = (Math.random() - 0.5) * 0.07;
+            bc.add(book);
+            bx += bw + 0.035;
+            if (Math.random() < 0.07) bx += 0.14; // a gap — someone reads here
+          }
+        }
+        bc.position.set(cx, 0, cz);
+        bc.rotation.y = rotY;
+        worldGroup.add(bc);
+      }
+      bookcase(-5.6, -6.05, 0, true); bookcase(5.6, -6.05, 0, true);
+      bookcase(-7.65, -1.8, Math.PI / 2); bookcase(-7.65, 2.2, Math.PI / 2);
+      bookcase(7.65, -1.8, -Math.PI / 2); bookcase(7.65, 2.2, -Math.PI / 2);
+      addBoxCol(-5.6, -5.9, 2.0, 0.55); addBoxCol(5.6, -5.9, 2.0, 0.55);
+      addBoxCol(-7.55, -1.8, 0.5, 2.0); addBoxCol(-7.55, 2.2, 0.5, 2.0);
+      addBoxCol(7.55, -1.8, 0.5, 2.0); addBoxCol(7.55, 2.2, 0.5, 2.0);
+      // rolling ladder against the left wall — libraries earn their ladders
+      {
+        const ladder = new THREE.Group();
+        [-0.28, 0.28].forEach((lx) => {
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 3.1, 0.07), darkWood);
+          rail.position.set(lx, 1.55, 0);
+          ladder.add(rail);
+        });
+        for (let r = 0; r < 6; r++) {
+          const rung = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.06), caseMat);
+          rung.position.set(0, 0.5 + r * 0.46, 0);
+          ladder.add(rung);
+        }
+        ladder.position.set(-7.15, 0, 0.2);
+        ladder.rotation.y = Math.PI / 2;
+        ladder.rotation.z = -0.12;
+        worldGroup.add(ladder);
+      }
+
+      // ---- the lectern: dais, stand, open Bible, soft god-glow ----
+      const dais1 = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.18, 2.4), flat(new THREE.Color(PAL.stone).offsetHSL(0, -0.05, -0.02)));
+      dais1.position.set(0, 0.09, -3.0);
+      const dais2 = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.18, 1.8), flat(new THREE.Color(PAL.stone).offsetHSL(0, -0.05, 0.04)));
+      dais2.position.set(0, 0.27, -3.05);
+      worldGroup.add(dais1, dais2);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.16, 1.0, 7), darkWood);
+      post.position.set(0, 0.86, -3.1);
+      const desk = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.09, 0.7), caseMat);
+      desk.position.set(0, 1.38, -3.02); desk.rotation.x = 0.42;
+      worldGroup.add(post, desk);
+      [-1, 1].forEach((sgn) => {
+        const page = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.035, 0.55), flat(0xe8dfc2));
+        page.position.set(sgn * 0.2, 1.46, -2.98);
+        page.rotation.x = 0.42; page.rotation.y = sgn * 0.06;
+        worldGroup.add(page);
+      });
+      const spine = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.56), flat(0x6a2f22));
+      spine.position.set(0, 1.44, -2.98); spine.rotation.x = 0.42;
+      worldGroup.add(spine);
+      const bibleGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffd98a), transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending }));
+      bibleGlow.scale.set(2.6, 2.6, 1);
+      bibleGlow.position.set(0, 1.75, -3.0);
+      worldGroup.add(bibleGlow);
+      glowNodes.push(bibleGlow);
+      addBoxCol(0, -3.05, 1.35, 0.95);
+
+      // ---- chandelier: warm ring of candles over the room ----
+      {
+        const ch = new THREE.Group();
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.05, 6, 14), flat(0x3a3a44));
+        ring.rotation.x = Math.PI / 2;
+        ch.add(ring);
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.2, 6), flat(0xe8dfc2));
+          candle.position.set(Math.cos(a) * 0.85, 0.13, Math.sin(a) * 0.85);
+          const flame = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5),
+            new THREE.MeshStandardMaterial({ color: SRGB(0xfff0b0), emissive: SRGB(0xffc45a), emissiveIntensity: 1.5 }));
+          flame.position.set(Math.cos(a) * 0.85, 0.28, Math.sin(a) * 0.85);
+          ch.add(candle, flame);
+          glowNodes.push(flame);
+        }
+        const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.1, 5), flat(0x3a3a44));
+        chain.position.y = 0.75;
+        ch.add(chain);
+        const pl = new THREE.PointLight(SRGB(0xffd9a0), 0.95, 12.5);
+        pl.position.y = -0.15;
+        ch.add(pl);
+        ch.position.set(0, 3.0, -0.8);
+        worldGroup.add(ch);
+      }
+
+      // ---- reading nook: armchair, side table, candle ----
+      {
+        const chair = new THREE.Group();
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.32, 0.8), flat(0x7a4a44));
+        seat.position.y = 0.34;
+        const backC = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.75, 0.2), flat(0x7a4a44));
+        backC.position.set(0, 0.78, -0.3);
+        [-1, 1].forEach((sgn) => {
+          const arm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.3, 0.7), flat(0x6a3f3a));
+          arm.position.set(sgn * 0.42, 0.6, -0.02);
+          chair.add(arm);
+        });
+        const cushion = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.1, 0.6), flat(0x9a6a5f));
+        cushion.position.set(0, 0.55, 0.03);
+        chair.add(seat, backC, cushion);
+        chair.position.set(-5.6, 0, 3.4);
+        chair.rotation.y = 0.75;
+        worldGroup.add(chair);
+        addCircleCol(-5.6, 3.4, 0.75);
+        const table = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.3, 0.62, 8), darkWood);
+        table.position.set(-4.35, 0.31, 4.15);
+        const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.22, 6), flat(0xe8dfc2));
+        candle.position.set(-4.35, 0.73, 4.15);
+        const flame2 = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5),
+          new THREE.MeshStandardMaterial({ color: SRGB(0xfff0b0), emissive: SRGB(0xffc45a), emissiveIntensity: 1.4 }));
+        flame2.position.set(-4.35, 0.88, 4.15);
+        worldGroup.add(table, candle, flame2);
+        glowNodes.push(flame2);
+        addCircleCol(-4.35, 4.15, 0.42);
+      }
+
+      // rug centered under the chandelier
+      const rug = new THREE.Mesh(new THREE.CircleGeometry(1.7, 12), flat(0x6a5a70, { roughness: 1 }));
+      rug.rotation.x = -Math.PI / 2; rug.position.set(0, 0.02, 0.4);
+      const rugRim = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.045, 5, 20), flat(0x8a7a55));
+      rugRim.rotation.x = -Math.PI / 2; rugRim.position.set(0, 0.025, 0.4);
+      worldGroup.add(rug, rugRim);
+
+      // ---- Season 1 plaque: LIGHTS RETURNED n/84, refreshed async ----
+      libSeasonPlate = makeTextPlate(`SEASON 1 · LIGHTS ${G.seasonDone || 0} / ${G.seasonTotal || 84}`, { w: 4.0, h: 0.7, bg: "#4e4536", fg: "#ffd98a" });
+      libSeasonPlate.position.set(0, 3.15, -6.2);
+      worldGroup.add(libSeasonPlate);
+      const plate = libSeasonPlate; // async refresh below swaps this out
+      if (window.YGTEEV_API && window.YGTEEV_API.townProgress) {
+        window.YGTEEV_API.townProgress().then((pr) => {
+          if (G.map !== "LIBRARY") return;
+          G.seasonDone = pr.done; G.seasonTotal = pr.total;
+          const fresh = makeTextPlate(`SEASON 1 · LIGHTS ${pr.done} / ${pr.total}`, { w: 4.0, h: 0.7, bg: "#4e4536", fg: "#ffd98a" });
+          fresh.position.copy(plate.position);
+          worldGroup.remove(plate);
+          worldGroup.add(fresh);
+        }).catch(() => {});
+      }
+
+      // ---- River — she lives here ----
+      // Built on the PLAYER's rig, not the villager kit: full face, real
+      // hairstyles, tailored clothes — she is a lead character, and reads
+      // like one standing next to the player.
+      libraryRiver = makePlayer();
+      applyOutfitTo(libraryRiver, {
+        skin: 0xf2cdb0, hair: 0xb5502e, hairStyle: "long",
+        style: "raincoat", shirt: 0x9a86c8, boots: 0x4a3a5e,
+        hat: "none", accessory: "none",
+      });
+      libraryRiver.position.set(2.1, 0, -2.6);
+      libraryRiver.rotation.y = 2.5;
+      libraryRiver.scale.setScalar(0.965); // a shade shorter than the player
+      worldGroup.add(libraryRiver);
+      { // her book — a librarian is never empty-handed
+        const bk = new THREE.Group();
+        const cover = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.055, 0.27), flat(0x6a2f3e));
+        const pages = new THREE.Mesh(new THREE.BoxGeometry(0.176, 0.034, 0.244), flat(0xe8dfc2));
+        pages.position.y = 0.004;
+        bk.add(cover, pages);
+        bk.position.set(-0.3, 0.62, 0.13);
+        bk.rotation.set(0.2, 0.25, 0.35);
+        libraryRiver.add(bk);
+      }
+
+      exits = [{ x: 0, z: 5.9, r: 1.6, to: "TOWN", spawn: [7.6, -5.5] }];
+      addBoxCol(0, 7.3, 2.4, 0.3);
+      hotspots = [
+        { x: 2.35, z: -2.7, r: 1.5, type: "riverchat", label: "Talk to River" },
+        { x: 0, z: -2.7, r: 2.2, type: "townbible", label: "Read the town Bible" },
+      ];
+
+      // first visit: River crosses the room and stops you at the door.
+      // startRiverIntro carries its own retry-while-curtain-up loop, so the
+      // only gate here is still being in the room at all.
+      if (!G.riverIntroDone) {
+        setTimeout(() => { if (G.map === "LIBRARY") G.startRiverIntro(); }, 950);
+      }
     }
 
     // -------- GRACE COMMUNITY GARDEN (golden hour, 324 sacred plots) --------
@@ -7358,9 +7874,39 @@ export default function DragonGardenQuest() {
       })();
     }
 
+    if (import.meta.env.DEV) {
+      // dev console hooks (stripped from production builds):
+      //   __by.go("TOWN", [-16, 0])   jump to a map
+      //   __by.lights(12)             preview n lit chapter-bulbs in town
+      window.__by = {
+        go: (n, sp) => loadMap(n, sp),
+        tp: (x, z) => { playerPos.x = x; playerPos.z = z; },
+        map: () => G.map,
+        lights: (n) => townKitHandle && townKitHandle.lights && townKitHandle.lights.setLit(n),
+        info: () => renderer.info.render,
+        act: () => { if (G.doAction) G.doAction(); },
+        state: () => ({ map: G.map, transitioning: !!G.transitioning, prompt: promptText || "", px: playerPos.x, pz: playerPos.z, fruit: { ...G.inv.fruit }, gold: G.gold, lantern: G.lantern, riverDone: G.riverIntroDone, riverPlaying: G.riverIntroPlaying, pendingLight: G.pendingLightN, season: [G.seasonDone, G.seasonTotal] }),
+        glooms: () => (townKitHandle && townKitHandle.gloomlings ? townKitHandle.gloomlings.peek() : []),
+        // dev: complete the next town chapter for real (writes progress!)
+        finishTown: async () => {
+          const api = window.YGTEEV_API;
+          const d = await api.townReading();
+          if (!d.section) return d;
+          const r = await api.townFinishReading(d.section.id);
+          G.pendingLightN = r.lights; G.seasonDone = r.lights;
+          if (G.map === "LIBRARY" && G.spawnTownLight) G.spawnTownLight();
+          return r;
+        },
+      };
+    }
     function loadMap(name, spawn) {
       // per-map music: recorded loop when we have one, generative otherwise
-      try { playTrack(name); } catch (e) {}
+      try {
+        // Meadow Town plays the darkness itself until Season 1 is complete;
+        // the day the last light lands, the ordinary town loop takes over
+        const won = (G.seasonTotal || 0) > 0 && G.seasonDone >= G.seasonTotal;
+        playTrack(name === "TOWN" && !won ? "TOWN_GLOOM" : name);
+      } catch (e) {}
       if (G.introActive) {
         stopVoiceClip();
         G.introTask = null; G.introTaskDone = null;
@@ -7381,6 +7927,7 @@ export default function DragonGardenQuest() {
       else if (name === "TOWN") buildTown(); // buildTown calls buildGlowMeadow itself
       else if (name === "CHURCH") { buildChurch(); glowTriggers = []; }
       else if (name === "EASTROAD") buildEastRoad();
+      else if (name === "LIBRARY") { buildLibraryInterior(); glowTriggers = []; }
       else { buildShopInterior(name); glowTriggers = []; }
       // Glowlands map-entry hooks (prologue resume in town, road travel bed)
       if (name === "TOWN") setTimeout(() => { if (G.map === "TOWN" && !G.transitioning) glowEnterTown(); }, 1400);
@@ -7723,6 +8270,31 @@ export default function DragonGardenQuest() {
         if (G.onIntroEvent) G.onIntroEvent("feed");
       } else if (type === "toolsmith") setShop("tools");
       else if (type === "counter") G.startCounter(currentPrompt.kind);
+      else if (type === "townbible") {
+        const api = window.YGTEEV_API;
+        if (!api || !api.townReading) { toast("The pages won't open…", "warn"); return; }
+        SFX.click();
+        api.townReading().then((d) => {
+          if (G.map !== "LIBRARY") return;
+          G.seasonDone = d.done; G.seasonTotal = d.total;
+          if (d.section) { if (G.reqTownRead) G.reqTownRead(d); }
+          else if (d.audio_pending) toast(`"${d.next_title}" is still being written down… check back soon.`, "info");
+          else toast("Season 1 is complete — every light is home! 🌟", "info");
+        }).catch(() => toast("The pages won't open…", "warn"));
+      }
+      else if (type === "riverchat") {
+        SFX.click();
+        if (G.reqRiver) G.reqRiver({ step: 9 }); // her standing line
+        playVoiceFile("voices/river-10.mp3");
+      }
+      else if (type === "lockeddoor") {
+        SFX.click();
+        toast(currentPrompt.kind === "chapel"
+          ? "The chapel door is locked tight. Not yet\u2026"
+          : currentPrompt.kind === "desk"
+            ? "The reading desk opens soon \u2014 your chapters will live here."
+            : "It's locked.", "warn");
+      }
       else if (type === "bridge") { if (G.reqBridge) G.reqBridge(); }
       else if (type === "goldbag") {
         G.goldBagFound = true;
@@ -8320,6 +8892,132 @@ export default function DragonGardenQuest() {
       // Glowlands per-map animation beds (foam, creep, waymarkers, stain)
       if (glowRoadHandle && G.map === "EASTROAD" && glowRoadHandle.update) glowRoadHandle.update(dt * (G.glowTimeDilation || 1));
       if (glowMeadowHandle && G.map === "TOWN" && glowMeadowHandle.update) glowMeadowHandle.update(dt * (G.glowTimeDilation || 1));
+      if (townKitHandle && G.map === "TOWN" && townKitHandle.update) townKitHandle.update(dt, G.time);
+      // The Gloom over the east fence: HOME darkens as the player nears the
+      // Meadow Town road (x 7 -> 22), capped short of full town-dark so the
+      // door still steps down a shade. Smoothstepped, applied only on change.
+      if (G.map === "HOME" && !G.transitioning) {
+        const tE = Math.max(0, Math.min(1, (playerPos.x - 7) / 15));
+        const kE = tE * tE * (3 - 2 * tE) * 0.85;
+        if (Math.abs(kE - (G.__eastGloomK ?? -1)) > 0.003) {
+          G.__eastGloomK = kE;
+          blendAtmo(ATMO_HOME_DAY, ATMO_TOWN_GLOOM, kE);
+        }
+      }
+      // River's lantern: only lit where the Gloom is
+      lanternGrp.visible = !!G.lantern && (G.map === "TOWN" || G.map === "LIBRARY" || (G.map === "HOME" && (G.__eastGloomK || 0) > 0.25));
+      if (lanternGrp.visible) lanternGrp.rotation.z = Math.sin(G.time * 2.3) * 0.09;
+      carryOrb.visible = G.pendingLightN > 0 && !G.flyLight;
+      if (townLightRing && G.map === "TOWN") {
+        townLightRing.position.set(playerPos.x, 0.35, playerPos.z);
+        townLightRing.material.opacity = 0.11 + Math.sin(G.time * 2.1) * 0.025;
+      }
+      if (G.map === "LIBRARY") {
+        // River moves like the player moves — same rig, same walk cycle,
+        // at a calmer cadence. While walking she faces her path; standing,
+        // she relaxes her limbs, breathes, and keeps her eyes on you.
+        if (G.riverWalk && libraryRiver) {
+          const w = G.riverWalk, ru = libraryRiver.userData;
+          w.t = Math.min(1, w.t + dt / 1.35);
+          const e = w.t * w.t * (3 - 2 * w.t);
+          libraryRiver.position.lerpVectors(w.from, w.to, e);
+          const tw = G.time * 8.2, sw = Math.sin(tw);
+          ru.legL.rotation.x = sw * 0.6;
+          ru.legR.rotation.x = -sw * 0.6;
+          ru.armL.rotation.x = -sw * 0.5;
+          ru.armR.rotation.x = Math.sin(tw + 0.35) * 0.55;
+          ru.armL.rotation.z = -0.26 - Math.abs(sw) * 0.06;
+          ru.armR.rotation.z = 0.26 + Math.abs(Math.sin(tw + 0.35)) * 0.06;
+          ru.body.rotation.x += (0.08 - ru.body.rotation.x) * 0.2;
+          libraryRiver.position.y = Math.abs(sw) * 0.028;   // step bounce
+          const face = Math.atan2(w.to.x - w.from.x, w.to.z - w.from.z);
+          const turn = ((face - libraryRiver.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+          libraryRiver.rotation.y += turn * Math.min(1, dt * 7);
+          if (w.t >= 1) G.riverWalk = null;
+        } else if (libraryRiver) {
+          const ru = libraryRiver.userData;
+          const relax = 1 - Math.min(1, dt * 5);
+          ru.legL.rotation.x *= relax; ru.legR.rotation.x *= relax;
+          ru.armL.rotation.x *= relax; ru.armR.rotation.x *= relax;
+          ru.armL.rotation.z += (-0.26 - ru.armL.rotation.z) * 0.15;
+          ru.armR.rotation.z += (0.26 - ru.armR.rotation.z) * 0.15;
+          ru.body.rotation.x *= relax;
+          ru.body.scale.y = 1 + Math.sin(G.time * 1.7) * 0.012;   // breathing
+          ru.head.rotation.y = Math.sin(G.time * 0.5) * 0.06;     // soft glances
+          libraryRiver.position.y = 0;
+          const face = Math.atan2(playerPos.x - libraryRiver.position.x, playerPos.z - libraryRiver.position.z);
+          const turn = ((face - libraryRiver.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+          libraryRiver.rotation.y += turn * Math.min(1, dt * 3);
+        }
+        // the freed light: drops off the lectern, waits, is picked up
+        if (libLight && !libLight.picked) {
+          const lg = libLight.grp;
+          if (libLight.drop) {
+            lg.position.y += ((0.42 - lg.position.y)) * Math.min(1, dt * 3.2);
+            lg.position.z += ((-1.55 - lg.position.z)) * Math.min(1, dt * 2.6);
+            if (Math.abs(lg.position.y - 0.42) < 0.04) libLight.drop = 0;
+          } else {
+            lg.position.y = 0.42 + Math.sin(G.time * 2.2) * 0.07;
+          }
+          lg.rotation.y += dt * 1.4;
+          if (Math.hypot(playerPos.x - lg.position.x, playerPos.z - lg.position.z) < 0.95) {
+            libLight.picked = true;
+            worldGroup.remove(lg);
+            SFX.correct();
+            spawnFloatie(playerPos.x, playerPos.z, "+1 💡", 2.0);
+          }
+        }
+      }
+      // the flight home: carried light rises to the next unlit strand bulb
+      if (G.map === "TOWN" && G.flyLightReq && townKitHandle && !G.transitioning && !shopOpenRef.current) {
+        const n = G.flyLightReq.n;
+        G.flyLightReq = null;
+        const grp = new THREE.Group();
+        const core = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8),
+          new THREE.MeshStandardMaterial({ color: SRGB(0xfff2c8), emissive: SRGB(0xffcf6a), emissiveIntensity: 1.7 }));
+        const halo2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffd98a), transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
+        halo2.scale.set(1.6, 1.6, 1);
+        grp.add(core, halo2);
+        grp.position.set(playerPos.x + 0.3, 1.2, playerPos.z);
+        worldGroup.add(grp);
+        G.flyLight = { grp, from: grp.position.clone(), to: townKitHandle.lights.spot(n - 1), t: 0, n };
+        G.pendingLightN = 0;
+      }
+      if (G.flyLight) {
+        const f = G.flyLight;
+        f.t = Math.min(1, f.t + dt / 2.3);
+        const e2 = f.t * f.t * (3 - 2 * f.t);
+        f.grp.position.lerpVectors(f.from, f.to, e2);
+        f.grp.position.y += Math.sin(Math.PI * e2) * 2.0; // rises in an arc
+        if (f.t >= 1) {
+          if (townKitHandle) {
+            townKitHandle.lights.setLit(f.n);
+            spawnBurst(f.to.x, f.to.z, 0xffd98a, 12, { glow: true, vy: 1.6, y0: f.to.y });
+          }
+          SFX.pass();
+          worldGroup.remove(f.grp);
+          G.flyLight = null;
+          // the second light landing is the boss's cue: he cannot believe
+          // you're actually doing it, and wants you to know it changes
+          // nothing. Once ever (fires on the next delivery for saves that
+          // are already past two).
+          if (f.n >= 2 && !G.bossTaunt2Done && f.n < (G.seasonTotal || 84)) {
+            G.bossTaunt2Done = 1;
+            setTimeout(() => {
+              if (G.map === "TOWN" && townKitHandle && townKitHandle.gloomBoss) {
+                townKitHandle.gloomBoss.taunt(7);
+              }
+            }, 1100);
+          }
+          // ALL 84 home: the darkness ends — its music dies with it, and the
+          // Gloom Boss leads his whole pack out of town for good
+          if ((G.seasonTotal || 0) > 0 && f.n >= G.seasonTotal) {
+            playTrack("TOWN");
+            if (townKitHandle && townKitHandle.retreatAll) townKitHandle.retreatAll();
+            toast("The last light is home — the Gloom is leaving town!", "info");
+          }
+        }
+      }
       if (glowHomeHandle && G.map === "HOME" && glowHomeHandle.update) glowHomeHandle.update(dt * (G.glowTimeDilation || 1), G.time);
       G.time += dt;
 
@@ -8818,8 +9516,10 @@ export default function DragonGardenQuest() {
         // pin it on screen indefinitely (dragonState stays non-idle while he
         // prowls). Give it a minute, then let it go — feeding him, or any
         // fresh alert, brings it straight back.
-        if (G.dragonState !== "idle" || G.hunger < 32) G.hungerPlaqueT += dt;
-        else G.hungerPlaqueT = 0;
+        // the nag clock only runs while the plaque can actually show (at
+        // home) — otherwise a long town visit would eat the whole window
+        if (G.map === "HOME" && (G.dragonState !== "idle" || G.hunger < 32)) G.hungerPlaqueT += dt;
+        else if (G.dragonState === "idle" && G.hunger >= 32) G.hungerPlaqueT = 0;
         if (G.emberHappyT > 0) G.emberHappyT = Math.max(0, G.emberHappyT - dt);
         if (G.hunger <= 0 && G.dragonState === "idle") {
           // let the EMPTY meter register before he charges — no surprise rampages
@@ -9427,7 +10127,7 @@ export default function DragonGardenQuest() {
   }, []); // scene boots once on mount; splash dismissal must NOT rebuild the engine
 
   const shopOpenRef = useRef(false);
-  useEffect(() => { shopOpenRef.current = !started || !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!redBag || !!seedGift || churchIntro != null || board; }, [started, shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, redBag, seedGift, churchIntro, board]);
+  useEffect(() => { shopOpenRef.current = !started || !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!redBag || !!seedGift || churchIntro != null || board || !!townRead || !!riverTalk; }, [started, shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, redBag, seedGift, churchIntro, board, townRead, riverTalk]);
   useEffect(() => { const g = gameRef.current; if (g) g.styleActive = shop === "style"; }, [shop]);
   // pre-warm the big painted shop boards so their first open doesn't flash
   useEffect(() => {
@@ -9536,7 +10236,7 @@ export default function DragonGardenQuest() {
   const RARE_CROPS = ["glowberry", "starberry", "dawnberry", "gloryberry"];
   const INV_TILE_CROPS = [...HOME_CROPS, ...RARE_CROPS]; // all have tile art now
   const inCommunity = hud.map === "CHURCH";
-  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", bridge: "🌉", goldbag: "💰", redbag: "🎒", glow: "✨" };
+  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", lockeddoor: "🔒", townbible: "📖", riverchat: "💬", bridge: "🌉", goldbag: "💰", redbag: "🎒", glow: "✨" };
   // the painted market grid has six cells (gloryberry has no cell yet)
   const MARKET_KEYS = ["strawberry", "blueberry", "sunfruit"]; // the painted board sells home fruit only
   const marketTotal = seedKeys.reduce((t, k) => t + hud.inv.fruit[k] * SEEDS[k].sell, 0);
@@ -9773,6 +10473,113 @@ export default function DragonGardenQuest() {
             height={Math.min(320, 430 * HUD_S)}
           />
         </div>
+      )}
+
+      {/* River — the librarian. Voiced panel; one button moves the scene on. */}
+      {started && riverTalk && (() => {
+        const step = RIVER_SCRIPT[riverTalk.step] || RIVER_SCRIPT[0];
+        const lineText = (RIVER_LINES[step.line - 1] || {}).text || "";
+        const advance = () => {
+          gameRef.current?.SFX?.click?.();
+          if (step.end) {
+            setRiverTalk(null);
+            gameRef.current?.endRiverTalk?.(step);
+            return;
+          }
+          const nextIdx = riverTalk.step + 1;
+          gameRef.current?.riverStepFx?.(RIVER_SCRIPT[nextIdx]);
+          setRiverTalk({ step: nextIdx });
+        };
+        return (
+          <div style={{
+            position: "absolute", left: "50%", transform: "translateX(-50%)",
+            bottom: `calc(24px + env(safe-area-inset-bottom, 0px))`,
+            width: "min(430px, 94vw)", zIndex: 36, fontFamily: T_UI.font,
+            animation: "byReadIn .3s ease-out both", pointerEvents: "auto",
+          }}>
+            <div style={{
+              borderRadius: 14, padding: "12px 14px 12px",
+              background: "linear-gradient(180deg,#f4e7cd,#e3d0ab)",
+              border: "2px solid #4a3218",
+              boxShadow: "0 10px 30px rgba(10,6,18,.55), inset 0 1px 0 rgba(255,255,255,.5)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <div style={{
+                  width: 34, height: 34, borderRadius: 999, flex: "0 0 auto",
+                  background: "radial-gradient(circle at 35% 30%, #b7a2e0, #7a5fae)",
+                  border: "2px solid #4a3218", display: "flex", alignItems: "center",
+                  justifyContent: "center", fontSize: 17,
+                }}>🏮</div>
+                <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 1.6, color: "#6a4a90" }}>RIVER</div>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.42, color: "#43301c" }}>
+                “{lineText}”
+              </div>
+              <button onClick={advance} style={{
+                marginTop: 10, width: "100%", padding: "10px 12px", borderRadius: 10,
+                border: "2px solid #3a2812", cursor: "pointer", fontFamily: "inherit",
+                fontSize: 13.5, fontWeight: 800, color: "#3a2510",
+                background: "linear-gradient(180deg,#ffd98a,#e8a94e)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,.45), 0 2px 0 rgba(0,0,0,.28)",
+                WebkitTapHighlightColor: "transparent",
+              }}>{step.btn}</button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Season 1 — the town Bible at the library. Same player, no quiz:
+          the reward is a LIGHT, and the world spawns it out of the pages. */}
+      {started && townRead && (
+        <ReadingPlayer
+          town
+          data={townRead}
+          api={window.YGTEEV_API}
+          duck={(on) => { try { gameRef.current?.duckMusic?.(on); } catch (e) {} }}
+          sfx={{
+            click: () => gameRef.current?.SFX?.click?.(),
+            right: () => gameRef.current?.SFX?.correct?.(),
+            wrong: () => gameRef.current?.SFX?.wrong?.(),
+            level: () => gameRef.current?.SFX?.pass?.(),
+          }}
+          onXp={(total) => gameRef.current?.applyXp?.(total)}
+          onPhase={(ph) => {
+            const g = gameRef.current;
+            if (!g) return;
+            const locked = ph === "play";
+            if (g.readingLock && !locked) g.readingGraceUntil = (g.time || 0) + 1.2;
+            g.readingLock = locked;
+          }}
+          onLight={(r) => {
+            // the light escapes the pages NOW; River holds her tongue until
+            // the player taps Grab The Light and the reader is out of the way
+            const g = gameRef.current;
+            if (!g) return;
+            g.pendingLightN = r.lights;
+            g.seasonDone = r.lights;
+            g.spawnTownLight?.();
+            g.__justLit = true;
+            g.awardGems?.(8); // every light home also fills the level bar
+          }}
+          onDone={() => {
+            setTownRead(null);
+            const g = gameRef.current;
+            if (g && g.__justLit) {
+              g.__justLit = false;
+              // River reacts to the first light with disbelief, to the
+              // second with dawning hope — and then lets you read in peace
+              const step = !g.riverAmazedDone ? 8 : !g.riverAmazed2Done ? 10 : null;
+              if (step === 8) g.riverAmazedDone = 1;
+              if (step === 10) g.riverAmazed2Done = 1;
+              if (step != null) {
+                setTimeout(() => {
+                  g.riverStepFx?.(RIVER_SCRIPT[step]);
+                  reqRiverRef.current({ step });
+                }, 700);
+              }
+            }
+          }}
+        />
       )}
 
       {/* Read a section of Scripture for XP — offered on level-up, ahead of

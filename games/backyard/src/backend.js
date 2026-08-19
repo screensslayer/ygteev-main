@@ -144,6 +144,34 @@ export function createApi() {
       return data; // { awarded, xp, already, question: { prompt, choices, answer_xp } }
     },
 
+    // ---- Season 1: the town Bible at the Meadow Town library ----------
+    // Next unread chapter of the season (John -> Genesis -> Colossians ->
+    // selected Psalms). section null + audio_pending while the next
+    // chapter's narration is still being recorded.
+    async townReading() {
+      const { data, error } = await supabase.rpc("by_town_reading");
+      if (error) throw error;
+      for (const v of data?.section?.verses ?? []) {
+        v.url = supabase.storage.from("verse-audio").getPublicUrl(v.path).data.publicUrl;
+      }
+      return data ?? null;
+    },
+
+    // Chapter finished at the lectern. No quiz on this track - the reward is
+    // a light: { lights, total } is the town's new bulb count.
+    async townFinishReading(sectionId) {
+      const { data, error } = await supabase.rpc("by_town_finish_reading", { _section_id: sectionId });
+      if (error) throw error;
+      return data; // { awarded, xp, already, lights, total, title }
+    },
+
+    // Cheap read for map load: how many strand bulbs burn tonight?
+    async townProgress() {
+      const { data, error } = await supabase.rpc("by_town_progress");
+      if (error) throw error;
+      return data ?? { done: 0, total: 0 };
+    },
+
     // One shot per section; correct answers credit once.
     async answerReading(sectionId, choiceIdx) {
       const { data, error } = await supabase.rpc("by_answer_reading", {

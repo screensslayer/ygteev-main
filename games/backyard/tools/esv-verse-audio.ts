@@ -24,6 +24,7 @@ const BOOK_IDS: Record<string, string> = {
   "james": "JAS", "john": "JHN", "romans": "ROM", "ephesians": "EPH",
   "galatians": "GAL", "philippians": "PHP", "hebrews": "HEB",
   "1 peter": "1PE", "proverbs": "PRO", "acts": "ACT",
+  "genesis": "GEN", "colossians": "COL", "psalm": "PSA", "psalms": "PSA",
 };
 
 function parseRef(ref: string) {
@@ -39,10 +40,16 @@ function parseRef(ref: string) {
 function splitVerses(raw: string): Record<number, string> {
   const body = raw.replace(/\s*\(ESV\)\s*$/, "").trim();
   const out: Record<number, string> = {};
+  // Walk number->text pairs wherever they fall: psalm superscriptions ("A
+  // Psalm of David") sit BEFORE [1], which shifted the old fixed-stride
+  // pairing off by one and silently produced zero verses for titled psalms.
   const parts = body.split(/\[(\d+)\]/).filter((p) => p !== "");
-  for (let i = 0; i + 1 < parts.length; i += 2) {
-    const n = parseInt(parts[i], 10);
-    if (!isNaN(n)) out[n] = parts[i + 1].replace(/\s+/g, " ").trim();
+  for (let i = 0; i < parts.length - 1; i++) {
+    const t = parts[i].trim();
+    if (/^\d+$/.test(t)) {
+      out[parseInt(t, 10)] = parts[i + 1].replace(/\s+/g, " ").trim();
+      i++;
+    }
   }
   return out;
 }

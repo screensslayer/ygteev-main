@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:a": "vite build && node tools/stamp-build.mjs staging-a && fly deploy -c fly.staging.toml --ha=false",
+    "deploy:b": "vite build && node tools/stamp-build.mjs staging-b && fly deploy -c fly.staging-b.toml --ha=false",
+    "which": "for u in https://ygteev-backyard-staging.fly.dev https://ygteev-backyard-staging-b.fly.dev; do printf '%s  ' \"$u\"; curl -s $u | grep -o 'ygteev-build[^>]*' || echo '(no stamp)'; done"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
