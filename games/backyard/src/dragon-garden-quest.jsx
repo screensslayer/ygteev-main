@@ -421,6 +421,10 @@ export default function DragonGardenQuest() {
   const [riverTalk, setRiverTalk] = useState(null);
   const reqRiverRef = useRef(() => {});
   reqRiverRef.current = (payload) => setRiverTalk(payload);
+  // Season 1 promo card — first walk into Meadow Town, once ever
+  const [seasonPromo, setSeasonPromo] = useState(false);
+  const reqSeasonPromoRef = useRef(() => {});
+  reqSeasonPromoRef.current = (v) => setSeasonPromo(v);
   // Eli's community-garden welcome — current page index (0..5) or null
   const [churchIntro, setChurchIntro] = useState(null);
   const reqChurchIntroRef = useRef(() => {});
@@ -537,7 +541,21 @@ export default function DragonGardenQuest() {
   );
 
   const introNext = () => gameRef.current?.introAdvance();
-  const introSkip = () => gameRef.current?.skipIntro();
+  // True while a character voice line is playing. Conversations hide their
+  // advance button until the line finishes, so the words get heard — the
+  // grace timer below keeps a failed audio load from locking the dialog.
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const setVoiceBusyRef = useRef(() => {});
+  setVoiceBusyRef.current = (b) => setVoiceBusy(b);
+  const useVoiceGate = (key) => {
+    const [graceOver, setGraceOver] = useState(false);
+    useEffect(() => {
+      setGraceOver(false);
+      const t = setTimeout(() => setGraceOver(true), 900);
+      return () => clearTimeout(t);
+    }, [key]);
+    return graceOver && !voiceBusy;
+  };
   const counterShopRef = useRef(false);
   const reqCounterRef = useRef(() => {});
   reqCounterRef.current = (kind) => setCounterTalk({ kind, phase: "ask" });
@@ -743,6 +761,7 @@ export default function DragonGardenQuest() {
       src.start(t); src.stop(t + dur);
     }
     function stopVoiceClip() {
+      if (G.setVoiceBusy) G.setVoiceBusy(false);
       if (voiceSrc) { try { voiceSrc.stop(); } catch (e) {} voiceSrc = null; }
       try { G.duckMusic(false); } catch (e) {}
       if (musicBus && voiceDuckOrig != null) {
@@ -798,6 +817,7 @@ export default function DragonGardenQuest() {
         src.onended = () => {
           if (voiceSrc === src) {
             voiceSrc = null;
+            if (G.setVoiceBusy) G.setVoiceBusy(false);
             try { G.duckMusic(false); } catch (e) {}
             if (musicBus && voiceDuckOrig != null) {
               musicBus.gain.setTargetAtTime(voiceDuckOrig, AC.currentTime, 0.35);
@@ -807,7 +827,9 @@ export default function DragonGardenQuest() {
         };
         voiceSrc = src;
         src.start();
+        if (G.setVoiceBusy) G.setVoiceBusy(true);
       };
+      if (G.setVoiceBusy) G.setVoiceBusy(true); // hold buttons while it loads
       if (oneShotBufs[url]) return start(oneShotBufs[url]);
       // Bounded cache. Decoded PCM runs ~10x the mp3, and Eli has nearly 40
       // lines — left uncapped a long session accumulates all of them. Object
@@ -818,7 +840,7 @@ export default function DragonGardenQuest() {
       // quip or quiz line can never be served from a stale browser cache
       fetch(`${url}?v=${VOICE_V}`).then((r) => r.arrayBuffer()).then((ab) => AC.decodeAudioData(ab))
         .then((buf) => { oneShotBufs[url] = buf; start(buf); })
-        .catch(() => {});
+        .catch(() => { if (G.setVoiceBusy) G.setVoiceBusy(false); });
     }
 
     // opts = { bufs, pageOf } routes home vs. church narration through one player
@@ -827,9 +849,12 @@ export default function DragonGardenQuest() {
       const pageOf = opts?.pageOf || (() => G.introPage);
       if (!AC) initAudio();
       if (!AC) return;
-      if (pageOf() !== i) return;
+      if (pageOf() !== i) { if (tries > 0 && G.setVoiceBusy) G.setVoiceBusy(false); return; }
       if (!bufs[i]) {
-        if (tries < 16) setTimeout(() => playVoiceClip(i, tries + 1, opts), 250);
+        if (tries < 16) {
+          if (G.setVoiceBusy) G.setVoiceBusy(true); // line is coming — hold the button
+          setTimeout(() => playVoiceClip(i, tries + 1, opts), 250);
+        } else if (G.setVoiceBusy) G.setVoiceBusy(false); // clip never arrived
         return;
       }
       stopVoiceClip();
@@ -844,6 +869,7 @@ export default function DragonGardenQuest() {
       src.onended = () => {
         if (voiceSrc === src) {
           voiceSrc = null;
+          if (G.setVoiceBusy) G.setVoiceBusy(false);
           try { G.duckMusic(false); } catch (e) {}
       if (musicBus && voiceDuckOrig != null) {
             musicBus.gain.setTargetAtTime(voiceDuckOrig, AC.currentTime, 0.35);
@@ -853,6 +879,7 @@ export default function DragonGardenQuest() {
       };
       voiceSrc = src;
       src.start();
+      if (G.setVoiceBusy) G.setVoiceBusy(true);
     }
 
     function stopTrack(fadeSec = 1.2) {
@@ -3627,6 +3654,7 @@ export default function DragonGardenQuest() {
         riverWow: G.riverAmazedDone ? 1 : 0,
         riverWow2: G.riverAmazed2Done ? 1 : 0,
         bossT2: G.bossTaunt2Done ? 1 : 0,
+        s1promo: G.seasonPromoDone ? 1 : 0,
         awayEaten: G.awayEaten || [],
         inv: G.inv,
         homePlots: G.homePlots.map((p) => p.seed ? {
@@ -3641,7 +3669,7 @@ export default function DragonGardenQuest() {
     // ticking doesn't spam writes; the payload still carries exact timers
     function stateSig() {
       return JSON.stringify([
-        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 10), G.goldBagFound, G.level, G.gems, G.lantern, G.riverIntroDone,
+        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 10), G.goldBagFound, G.level, G.gems, G.lantern, G.riverIntroDone, G.seasonPromoDone,
         G.homePlots.map((p) => p.seed ? p.seed + (p.regrowAt != null ? "r" : "g") : "-"),
       ]);
     }
@@ -3667,6 +3695,7 @@ export default function DragonGardenQuest() {
       G.riverAmazedDone = d.riverWow === 1 ? 1 : 0;
       G.riverAmazed2Done = d.riverWow2 === 1 ? 1 : 0;
       G.bossTaunt2Done = d.bossT2 === 1 ? 1 : 0;
+      G.seasonPromoDone = d.s1promo === 1 ? 1 : 0;
       if (Array.isArray(d.awayEaten)) G.awayEaten = d.awayEaten; // report survives a restart
       if (typeof d.hunger === "number") G.hunger = Math.min(100, Math.max(0, d.hunger)); // exact restore — a starving Ember stays starving
       if (Array.isArray(d.homePlots)) {
@@ -3783,7 +3812,7 @@ export default function DragonGardenQuest() {
       playerHopT: 0, transitioning: false, pendingMap: null, hungerAlertT: 0,
       // Season 1 — River, the lantern, and the town lights
       lantern: 0, riverIntroDone: 0, riverAmazedDone: 0, riverAmazed2Done: 0, riverIntroPlaying: false,
-      bossTaunt2Done: 0,
+      bossTaunt2Done: 0, seasonPromoDone: 0,
       pendingLightN: 0, seasonDone: 0, seasonTotal: 84,
       hungerPlaqueT: 0, // how long the hangry plaque has nagged (auto-hides at 60s)
       outfit: { skin: 0xf2c9a4, hair: 0x4a2f1c, hairStyle: "crop", style: "tee", shirt: 0x3a72c9, boots: 0x3f2f20, hat: "straw", accessory: "basket" },
@@ -3872,7 +3901,18 @@ export default function DragonGardenQuest() {
     G.reqRedBag = (p) => reqRedBagRef.current(p);
     G.reqTownRead = (p) => reqTownReadRef.current(p);
     G.awardGems = awardGems;
+    G.setVoiceBusy = (b) => setVoiceBusyRef.current(b);
     G.reqRiver = (p) => reqRiverRef.current(p);
+    // the season announces itself on the first step into town — after the
+    // map curtain lifts, and never over another dialog
+    G.startSeasonPromo = () => {
+      if (G.seasonPromoDone || G.map !== "TOWN") return;
+      if (shopOpenRef.current || G.transitioning) {
+        setTimeout(() => G.startSeasonPromo(), 700);
+        return;
+      }
+      reqSeasonPromoRef.current(true);
+    };
     G.reqChurchIntro = (n) => reqChurchIntroRef.current(n);
     G.flyCoins = (n) => flyCoinsRef.current(n);
     G.doPendingMap = () => { if (G.pendingMap) { loadMap(G.pendingMap.to, G.pendingMap.spawn); G.pendingMap = null; } };
@@ -6806,6 +6846,9 @@ export default function DragonGardenQuest() {
       });
       townKitHandle = townKit;
       G.townLights = townKit.lights;
+      if (!G.seasonPromoDone) {
+        setTimeout(() => { if (G.map === "TOWN") G.startSeasonPromo(); }, 1200);
+      }
       // Season 1: light the strand to the server's count. If the player is
       // carrying a fresh light home, hold one bulb back — the flight in the
       // frame loop delivers it.
@@ -10127,7 +10170,7 @@ export default function DragonGardenQuest() {
   }, []); // scene boots once on mount; splash dismissal must NOT rebuild the engine
 
   const shopOpenRef = useRef(false);
-  useEffect(() => { shopOpenRef.current = !started || !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!redBag || !!seedGift || churchIntro != null || board || !!townRead || !!riverTalk; }, [started, shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, redBag, seedGift, churchIntro, board, townRead, riverTalk]);
+  useEffect(() => { shopOpenRef.current = !started || !!shop || !!quiz || !!mapFx || !!counterTalk || introDlg || bridgeTalk || !!goldBagStep || !!redBag || !!seedGift || churchIntro != null || board || !!townRead || !!riverTalk || seasonPromo; }, [started, shop, quiz, mapFx, counterTalk, introDlg, bridgeTalk, goldBagStep, redBag, seedGift, churchIntro, board, townRead, riverTalk, seasonPromo]);
   useEffect(() => { const g = gameRef.current; if (g) g.styleActive = shop === "style"; }, [shop]);
   // pre-warm the big painted shop boards so their first open doesn't flash
   useEffect(() => {
@@ -10138,6 +10181,16 @@ export default function DragonGardenQuest() {
   // Eli talking (home intro, community-garden welcome, or his quiz) quiets the
   // music for as long as the conversation is on screen.
   const eliTalking = introDlg || churchIntro != null || !!quiz || !!counterTalk;
+  // one gate per voiced conversation surface, keyed by its current page
+  const introGate = useVoiceGate("i" + String(introInfo.page));
+  const churchGate = useVoiceGate("c" + String(churchIntro));
+  const riverGate = useVoiceGate("r" + String(riverTalk ? riverTalk.step : "-"));
+  const gateStyle = (open) => ({
+    visibility: open ? "visible" : "hidden",
+    pointerEvents: open ? "auto" : "none",
+    opacity: open ? 1 : 0,
+    transition: "opacity .25s ease",
+  });
   useEffect(() => {
     const g = gameRef.current;
     if (g && g.duckMusic) g.duckMusic(eliTalking);
@@ -10475,6 +10528,122 @@ export default function DragonGardenQuest() {
         </div>
       )}
 
+      {/* Season 1 promo — a floating 3D card, first step into Meadow Town */}
+      {started && seasonPromo && (() => {
+        const g = gameRef.current;
+        const done = g?.seasonDone || 0;
+        const close = () => {
+          g?.SFX?.pass?.();
+          if (g) g.seasonPromoDone = 1;
+          setSeasonPromo(false);
+          setTimeout(() => gameRef.current?.__toast?.("Find the LIBRARY — River is waiting ✨", "info"), 400);
+        };
+        return (
+          <div style={{
+            position: "absolute", inset: 0, zIndex: 40,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "radial-gradient(ellipse at 50% 45%, rgba(10,6,20,.25), rgba(10,6,20,.78))",
+            animation: "byReadIn .4s ease-out both",
+            perspective: "1100px", fontFamily: T_UI.font,
+          }}>
+            <div style={{
+              position: "relative", width: "min(400px, 88vw)",
+              transformStyle: "preserve-3d",
+              animation: "bySeasonIn .9s cubic-bezier(.2,1.3,.4,1) both, bySeasonFloat 7s ease-in-out 0.9s infinite",
+            }}>
+              <div style={{
+                borderRadius: 20, padding: "26px 22px 22px", textAlign: "center",
+                background: "linear-gradient(168deg, #2b2542 0%, #1d1a30 55%, #241d38 100%)",
+                border: "2px solid #4a3218",
+                boxShadow: "0 24px 70px rgba(5,3,12,.8), 0 0 0 4px rgba(255,205,110,.14), inset 0 1px 0 rgba(255,255,255,.1)",
+                overflow: "hidden",
+              }}>
+                {/* the stolen strand: a sagging string of mostly-dark bulbs */}
+                <svg width="100%" height="34" viewBox="0 0 360 34" style={{ position: "absolute", top: 8, left: 0, opacity: 0.9 }}>
+                  <path d="M-4,6 Q90,30 180,18 Q270,6 364,24" fill="none" stroke="#0f0c1c" strokeWidth="2" />
+                  {[20, 60, 100, 140, 180, 220, 260, 300, 340].map((x, i) => {
+                    const y = 6 + 24 * (x / 360) * (1 - x / 360) * 4 * 0.55 + (x > 180 ? (x - 180) * 0.045 : 0);
+                    const lit = i === 2;
+                    return (
+                      <g key={i}>
+                        {lit && <circle cx={x} cy={y + 8} r="7" fill="rgba(255,210,120,.35)" />}
+                        <circle cx={x} cy={y + 8} r="3.4" fill={lit ? "#ffd98a" : "#2c2740"} stroke="#0f0c1c" strokeWidth="1" />
+                      </g>
+                    );
+                  })}
+                </svg>
+                <div style={{
+                  width: 74, height: 74, margin: "16px auto 10px", borderRadius: 999,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36,
+                  background: "radial-gradient(circle at 35% 28%, #fff6d8, #ffce6e 58%, #b8862c)",
+                  border: "2.5px solid #4a3218",
+                  animation: "byLightGlow 1.8s ease-in-out infinite",
+                }}>💡</div>
+                <div style={{
+                  fontSize: 12, fontWeight: 900, letterSpacing: 4.5, color: "#b9a6e8",
+                  textShadow: "0 0 12px rgba(150,110,230,.6)",
+                }}>SEASON 1</div>
+                <div style={{
+                  fontSize: 31, fontWeight: 900, lineHeight: 1.08, margin: "6px 0 10px",
+                  background: "linear-gradient(180deg, #fff8e2 8%, #ffd156 45%, #e8912e 90%)",
+                  WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent",
+                  filter: "drop-shadow(0 2px 0 rgba(40,20,4,.9)) drop-shadow(0 4px 10px rgba(0,0,0,.5))",
+                }}>
+                  Saving the Meadow
+                </div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.45, color: "#cfc4e6", padding: "0 8px" }}>
+                  The Gloom stole every light in town. Read the town Bible —
+                  and bring all <b style={{ color: "#ffd98a" }}>84 lights</b> home.
+                </div>
+                <button onClick={close} style={{
+                  marginTop: 16, width: "100%", padding: "13px 12px", borderRadius: 12,
+                  border: "2px solid #3a2812", cursor: "pointer", fontFamily: "inherit",
+                  fontSize: 15.5, fontWeight: 900, letterSpacing: 0.5, color: "#3a2510",
+                  background: "linear-gradient(180deg,#ffd98a,#e8a94e)",
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,.5), 0 3px 0 rgba(0,0,0,.35), 0 0 18px rgba(255,200,100,.35)",
+                  WebkitTapHighlightColor: "transparent",
+                  animation: "byGrabPulse 1.6s ease-in-out infinite",
+                }}>
+                  {done > 0 ? `Continue — ${done}/84 lights` : "Begin"}
+                </button>
+                {/* shine sweep across the whole card */}
+                <div style={{
+                  position: "absolute", top: 0, bottom: 0, width: "38%", left: "-40%",
+                  background: "linear-gradient(105deg, transparent, rgba(255,240,200,.11), transparent)",
+                  animation: "bySeasonShine 3.4s ease-in-out 1.2s infinite",
+                  pointerEvents: "none",
+                }} />
+              </div>
+            </div>
+            <style>{`
+              @keyframes bySeasonIn {
+                from { opacity: 0; transform: translateY(60px) rotateX(28deg) scale(.86) }
+                to   { opacity: 1; transform: translateY(0) rotateX(0) scale(1) }
+              }
+              @keyframes bySeasonFloat {
+                0%,100% { transform: translateY(0) rotateX(2.5deg) rotateY(-2deg) }
+                50%     { transform: translateY(-9px) rotateX(-2deg) rotateY(2.4deg) }
+              }
+              @keyframes bySeasonShine {
+                0%       { left: -40% }
+                55%,100% { left: 110% }
+              }
+              @keyframes byLightGlow {
+                0%,100% { box-shadow: 0 0 10px 2px rgba(255,205,110,.55) }
+                50%     { box-shadow: 0 0 24px 8px rgba(255,205,110,.9) }
+              }
+              @keyframes byGrabPulse {
+                0%,100% { transform: scale(1) }
+                50%     { transform: scale(1.035) }
+              }
+              @keyframes byReadIn {
+                from { opacity: 0 } to { opacity: 1 }
+              }
+            `}</style>
+          </div>
+        );
+      })()}
+
       {/* River — the librarian. Voiced panel; one button moves the scene on. */}
       {started && riverTalk && (() => {
         const step = RIVER_SCRIPT[riverTalk.step] || RIVER_SCRIPT[0];
@@ -10522,6 +10691,7 @@ export default function DragonGardenQuest() {
                 background: "linear-gradient(180deg,#ffd98a,#e8a94e)",
                 boxShadow: "inset 0 1px 0 rgba(255,255,255,.45), 0 2px 0 rgba(0,0,0,.28)",
                 WebkitTapHighlightColor: "transparent",
+                ...gateStyle(riverGate),
               }}>{step.btn}</button>
             </div>
           </div>
@@ -11068,7 +11238,7 @@ export default function DragonGardenQuest() {
                     <div style={{ fontSize: 10, letterSpacing: 1.8, fontWeight: 800, color: "#6b5232", textShadow: "0 1px 0 rgba(255,252,242,.6)", marginBottom: 14 }}>{R.tier.toUpperCase()}</div>
                     <div
                       role="button"
-                      onClick={() => { gameRef.current?.claimIntroGift(seedGift.page); setSeedGift(null); gameRef.current?.introAdvance(); }}
+                      onClick={() => { if (!introGate) return; gameRef.current?.claimIntroGift(seedGift.page); setSeedGift(null); gameRef.current?.introAdvance(); }}
                       style={{
                         cursor: "pointer", WebkitTapHighlightColor: "transparent", userSelect: "none",
                         padding: "11px 0 12px", borderRadius: 10, fontSize: 15, fontWeight: 800, letterSpacing: 0.5,
@@ -11223,7 +11393,6 @@ export default function DragonGardenQuest() {
               <div style={{ fontSize: 9.5, letterSpacing: 2, color: "#f0c261", fontWeight: 800, textShadow: "0 1px 2px rgba(35,18,4,.7)" }}>ELI'S TASK</div>
               <div style={{ fontSize: 14, fontWeight: 800, color: "#ffe9b8", textShadow: "0 1px 2px rgba(35,18,4,.75)" }}>{INTRO_TASK_LABEL[introInfo.task]}</div>
             </div>
-            <button onClick={introSkip} style={{ background: "none", border: "none", color: "#e8d8b8", opacity: 0.55, fontSize: 11, cursor: "pointer", fontFamily: "inherit", padding: "4px 2px", flex: "0 0 auto", alignSelf: "flex-start" }}>skip ›</button>
           </div>
         </div>
       )}
@@ -11236,7 +11405,6 @@ export default function DragonGardenQuest() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ color: "#7a4a22", fontWeight: 800, letterSpacing: 1.4, fontSize: 14 }}>OLD GARDENER ELI</div>
-                <button onClick={introSkip} style={{ background: "none", border: "none", color: "#7d6444", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>skip ›</button>
               </div>
               <div style={{ fontSize: 15.5, lineHeight: 1.38, margin: "6px 2px 11px", color: "#4a3520" }}>"{pg.t}"</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -11245,7 +11413,7 @@ export default function DragonGardenQuest() {
                     <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: i <= introInfo.page ? "#c8781e" : "rgba(90,60,30,0.25)" }} />
                   ))}
                 </div>
-                <button onClick={introNext} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, padding: "8px 22px" }}>
+                <button onClick={introNext} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, padding: "8px 22px", ...gateStyle(introGate) }}>
                   {pg.end ? "Let's grow!" : pg.task ? "I'm on it" : "Next ▸"}
                 </button>
               </div>
@@ -11263,7 +11431,6 @@ export default function DragonGardenQuest() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ color: "#7a4a22", fontWeight: 800, letterSpacing: 1.4, fontSize: 14 }}>OLD GARDENER ELI</div>
-                <button onClick={() => gameRef.current?.skipChurchIntro()} style={{ background: "none", border: "none", color: "#7d6444", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>skip ›</button>
               </div>
               <div style={{ fontSize: 15.5, lineHeight: 1.38, margin: "6px 2px 11px", color: "#4a3520" }}>"{pg.t}"</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -11272,7 +11439,7 @@ export default function DragonGardenQuest() {
                     <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: i <= churchIntro ? "#c8781e" : "rgba(90,60,30,0.25)" }} />
                   ))}
                 </div>
-                <button onClick={() => gameRef.current?.churchIntroNext()} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, padding: "8px 22px" }}>
+                <button onClick={() => gameRef.current?.churchIntroNext()} style={{ ...S.btn(goldBtnBg, "#5a3305"), fontSize: 13.5, padding: "8px 22px", ...gateStyle(churchGate) }}>
                   {pg.end ? "Let's grow!" : "Next ▸"}
                 </button>
               </div>
