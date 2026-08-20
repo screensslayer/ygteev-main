@@ -8620,7 +8620,20 @@ export default function DragonGardenQuest() {
     window.addEventListener("keyup", ku);
 
     const joy = { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+    // A latched stick is worse than a dropped one. iOS fires touchCANCEL —
+    // not touchend — when a system gesture steals the finger (notification
+    // shade, Control Center, edge swipes). Without handling it, the stick
+    // stayed pushed forever and every new touch was ignored, so the player
+    // "ran off on their own" until the game was restarted.
+    const releaseJoy = () => { joy.active = false; joy.dx = 0; joy.dy = 0; };
     const onTouchStart = (e) => {
+      // self-heal: if the finger we were tracking is no longer on the glass
+      // (its end/cancel never reached us), release so THIS touch can steer
+      if (joy.active) {
+        let alive = false;
+        for (const t of e.touches) if (t.identifier === joy.id) { alive = true; break; }
+        if (!alive) releaseJoy();
+      }
       for (const t of e.changedTouches) {
         // floating joystick anywhere on the 3D view (edge to edge). UI
         // buttons are separate DOM elements, so touches on them don't reach
@@ -8641,11 +8654,21 @@ export default function DragonGardenQuest() {
     };
     const onTouchEnd = (e) => {
       for (const t of e.changedTouches)
-        if (joy.active && t.identifier === joy.id) { joy.active = false; joy.dx = 0; joy.dy = 0; }
+        if (joy.active && t.identifier === joy.id) releaseJoy();
     };
     mount.addEventListener("touchstart", onTouchStart, { passive: true });
     mount.addEventListener("touchmove", onTouchMove, { passive: true });
     mount.addEventListener("touchend", onTouchEnd, { passive: true });
+    mount.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    // app-switching or tab-hiding strands touches AND held keys: clear both
+    const clearAllInput = () => {
+      releaseJoy();
+      for (const k in keys) keys[k] = false;
+      rushHold = null;
+    };
+    const onHidden = () => { if (document.hidden) clearAllInput(); };
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("blur", clearAllInput);
 
     // Tap-to-act: a short tap on the 3D view (not a joystick drag, not a UI
     // button) that lands on/near the highlighted target triggers the same
@@ -8776,7 +8799,9 @@ export default function DragonGardenQuest() {
       if (!ns.behind && Math.hypot(sx - ns.x, sy - ns.y) < R * 1.6) doAction();
     };
 
+    const onPointerCancel = () => { rushHold = null; tap.moved = true; };
     mount.addEventListener("pointerdown", onTapDown);
+    mount.addEventListener("pointercancel", onPointerCancel);
     mount.addEventListener("pointermove", onTapMove);
     mount.addEventListener("pointerup", onTapUp);
 
@@ -10848,7 +10873,11 @@ export default function DragonGardenQuest() {
       mount.removeEventListener("touchstart", onTouchStart);
       mount.removeEventListener("touchmove", onTouchMove);
       mount.removeEventListener("touchend", onTouchEnd);
+      mount.removeEventListener("touchcancel", onTouchEnd);
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("blur", clearAllInput);
       mount.removeEventListener("pointerdown", onTapDown);
+      mount.removeEventListener("pointercancel", onPointerCancel);
       mount.removeEventListener("pointermove", onTapMove);
       mount.removeEventListener("pointerup", onTapUp);
       window.removeEventListener("pointerdown", unlockAudio);

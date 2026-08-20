@@ -470,7 +470,30 @@ export default function ReadingPlayer({
                 </div>
               </div>
               <div style={{ flex: "0 0 auto", textAlign: "right" }}>
-                <GemStrip gems={gems} active={section.ordinal} />
+                {/* short books get the gem-per-section strip; long books
+                    (Proverbs, 76 sections) get a compact bar — 76 dots
+                    would blow out the dock */}
+                {gems.length <= 20 ? (
+                  <GemStrip gems={gems} active={section.ordinal} />
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end" }}>
+                    <img
+                      src={`${KIT}level-gem.png`} alt="" draggable={false}
+                      style={{ width: 13, height: 14.3, objectFit: "contain", filter: "drop-shadow(0 0 4px rgba(120,200,255,.85))" }}
+                    />
+                    <div style={{
+                      width: 86, height: 8, borderRadius: 99, overflow: "hidden",
+                      background: "#3a2c18", boxShadow: "inset 0 1px 2px rgba(0,0,0,.55)",
+                    }}>
+                      <div style={{
+                        width: `${Math.max(3, (100 * (data.completed || 0)) / Math.max(1, gems.length))}%`, height: "100%",
+                        background: "linear-gradient(90deg,#9fd8ff,#5ab0ff)",
+                        boxShadow: "0 0 8px rgba(120,190,255,.8)",
+                        transition: "width .6s ease",
+                      }} />
+                    </div>
+                  </div>
+                )}
                 {town ? (
                   <div style={{ marginTop: 3 }}>
                     <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: 1.4, color: "#8a6a42", textAlign: "right" }}>
