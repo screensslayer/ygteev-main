@@ -10,5 +10,12 @@ export default defineConfig({
     // The game is one intentionally-huge component (~740 KB with embedded
     // audio/logo). Raise the warning limit so builds stay quiet.
     chunkSizeWarningLimit: 2500,
+    rollupOptions: {
+      input: {
+        main: "index.html",
+        // character design bench (river-lab.html) — reviewable on staging
+        riverLab: "river-lab.html",
+      },
+    },
   },
 });

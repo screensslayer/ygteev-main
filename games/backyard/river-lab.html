@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>River Lab</title>
+<style>
+html,body{margin:0;height:100%;background:#e8eaec}#app{position:fixed;inset:0}
+#bar{position:fixed;top:10px;left:10px;z-index:9;display:flex;gap:6px}
+button{font:600 13px system-ui;padding:7px 12px;border-radius:9px;border:0;background:#2c3e50;color:#eef;cursor:pointer}
+</style></head>
+<body>
+<div id="app"></div>
+<div id="bar">
+  <button onclick="__cam('front')">front</button>
+  <button onclick="__cam('tq')">3/4</button>
+  <button onclick="__cam('side')">side</button>
+  <button onclick="__cam('back')">back</button>
+  <button onclick="__cam('face')">face</button>
+  <button onclick="__cam('tq');__walkPose(1.25)">walk</button>
+</div>
+<script type="module" src="/src/river-lab.js"></script>
+</body>
+</html>

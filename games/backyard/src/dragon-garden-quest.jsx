@@ -3054,6 +3054,381 @@ export default function DragonGardenQuest() {
       return g;
     }
 
+    function makeRiverGirl() {
+      const g = new THREE.Group();
+      const U = {}; // rig contract: body/head/armL/armR/legL/legR (walk + idle code)
+      const PC = {
+        skin: 0xf0bf98, skinD: 0xdca27b, blush: 0xe89a80,
+        hair: 0x8a5a38, hairD: 0x71462a, hairL: 0x9c6a40,
+        teal: 0x3b968a, tealD: 0x2f7f76, tealXD: 0x27695f,
+        denim: 0x4b505a, denimL: 0x5d636e, rip: 0xc9bfb4,
+        tan: 0xc79e5e, tanD: 0xac8449, tanXD: 0x916e3a,
+        black: 0x24262b, sole: 0xdfdfdb, lace: 0xc8ccd2,
+        eye: 0x5a3a22, brow: 0x6e4429, mouth: 0xb56a5c,
+      };
+      const M = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.castShadow = true; return m; };
+
+      const mSkin = flat(PC.skin), mHair = flat(PC.hair), mHairD = flat(PC.hairD), mHairL = flat(PC.hairL);
+      const mTeal = flat(PC.teal), mTealD = flat(PC.tealD), mTealXD = flat(PC.tealXD);
+      const mDenim = flat(PC.denim), mDenimL = flat(PC.denimL);
+      const mTan = flat(PC.tan), mTanD = flat(PC.tanD), mTanXD = flat(PC.tanXD);
+      const mBlack = flat(PC.black), mSole = flat(PC.sole), mLace = flat(PC.lace);
+
+      // ============================ legs ============================
+      const mkLeg = (side) => {
+        const leg = new THREE.Group();
+        leg.position.set(0.105 * side, 1.42, 0);
+        const thigh = M(new THREE.CylinderGeometry(0.096, 0.086, 0.52, 7), mDenim);
+        thigh.position.y = -0.26; leg.add(thigh);
+        const shin = M(new THREE.CylinderGeometry(0.084, 0.07, 0.58, 7), mDenim);
+        shin.position.y = -0.78; leg.add(shin);
+        // rolled cuff — lighter wash, sitting right on the shoe collar
+        const cuff = M(new THREE.CylinderGeometry(0.09, 0.094, 0.095, 7), mDenimL);
+        cuff.position.y = -1.12; leg.add(cuff);
+        // black ankle stub bridging into the hi-top, so no angle shows a gap
+        const ankle = M(new THREE.CylinderGeometry(0.064, 0.068, 0.12, 7), mBlack);
+        ankle.position.y = -1.2; leg.add(ankle);
+        // torn knees: a dark slit, pale skin behind, frayed white edge
+        const rip = (y, w, tilt) => {
+          const hole = M(new THREE.BoxGeometry(w, 0.035, 0.03), flat(0x2e3138));
+          hole.position.set(0, y, 0.072); hole.rotation.z = tilt;
+          leg.add(hole);
+          const skinPeek = M(new THREE.BoxGeometry(w * 0.45, 0.01, 0.032), flat(0xcfa584));
+          skinPeek.position.set(0, y, 0.074); skinPeek.rotation.z = tilt;
+          leg.add(skinPeek);
+          const fray = M(new THREE.BoxGeometry(w * 0.9, 0.005, 0.031), flat(0x878d98));
+          fray.position.set(0, y + 0.019, 0.073); fray.rotation.z = tilt;
+          leg.add(fray);
+        };
+        if (side > 0) { rip(-0.46, 0.1, 0.05); rip(-0.66, 0.085, -0.08); }
+        else { rip(-0.32, 0.09, -0.06); rip(-0.58, 0.1, 0.08); }
+
+        // ---- hi-top sneaker ----
+        const shoe = new THREE.Group();
+        shoe.position.set(0, -1.395, 0.02);
+        const sole = M(new THREE.BoxGeometry(0.16, 0.05, 0.32), mSole);
+        sole.position.set(0, 0.025, 0.035); shoe.add(sole);
+        const upper = M(new THREE.BoxGeometry(0.142, 0.095, 0.28), mBlack);
+        upper.position.set(0, 0.095, 0.02); shoe.add(upper);
+        const toe = M(new THREE.BoxGeometry(0.148, 0.048, 0.08), mSole);
+        toe.position.set(0, 0.052, 0.18); shoe.add(toe);
+        const collar = M(new THREE.CylinderGeometry(0.08, 0.086, 0.1, 7), mBlack);
+        collar.position.set(0, 0.18, -0.05); shoe.add(collar);
+        for (let i = 0; i < 3; i++) {
+          const l = M(new THREE.BoxGeometry(0.105, 0.014, 0.015), flat(0xe8ebef));
+          l.position.set(0, 0.142 - i * 0.024, 0.118 + i * 0.014);
+          l.rotation.x = -0.5; l.rotation.z = i % 2 ? 0.16 : -0.16;
+          shoe.add(l);
+        }
+        const dot = M(new THREE.CylinderGeometry(0.022, 0.022, 0.012, 8), mSole);
+        dot.rotation.z = Math.PI / 2;
+        dot.position.set(0.077 * side, 0.16, -0.05);
+        dot.rotation.y = side * -0.12;
+        shoe.add(dot);
+        leg.add(shoe);
+        return leg;
+      };
+      U.legL = mkLeg(-1); U.legR = mkLeg(1);
+      g.add(U.legL, U.legR);
+
+      const hips = M(new THREE.BoxGeometry(0.3, 0.18, 0.2), mDenim);
+      hips.position.y = 1.44; g.add(hips);
+
+      // body group: torso, arms, head and pack together, so the walk lean and
+      // idle breathing move one mass (same contract as the player rig)
+      const bodyG = new THREE.Group();
+      g.add(bodyG);
+      U.body = bodyG;
+
+      // ============================ hoodie ============================
+      // slightly oversized: widest at the hem, one smooth taper to the shoulder
+      const torso = new THREE.Group();
+      torso.scale.z = 0.8;
+      bodyG.add(torso);
+      const prof = [
+        [0.298, 1.5], [0.308, 1.6], [0.295, 1.76], [0.28, 1.94],
+        [0.255, 2.1], [0.21, 2.2], [0.12, 2.3], [0.0, 2.33],
+      ];
+      const body = M(new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 10), mTeal);
+      torso.add(body);
+      const hem = M(new THREE.CylinderGeometry(0.287, 0.293, 0.07, 10), mTealD);
+      hem.position.y = 1.53; torso.add(hem);
+      // kangaroo pocket with angled side openings
+      const pocket = M(new THREE.BoxGeometry(0.28, 0.15, 0.05), mTealD);
+      pocket.position.set(0, 1.72, 0.222); pocket.rotation.x = 0.07; bodyG.add(pocket);
+      const pLip = M(new THREE.BoxGeometry(0.284, 0.02, 0.052), mTealXD);
+      pLip.position.set(0, 1.788, 0.219); pLip.rotation.x = 0.07;
+      bodyG.add(pLip);
+
+      // hood: a fat folded roll hugging the back of the neck
+      const roll = M(new THREE.TorusGeometry(0.14, 0.09, 7, 14, Math.PI), mTeal);
+      roll.position.set(0, 2.27, -0.09);
+      roll.rotation.set(-1.25, 0, 0);
+      bodyG.add(roll);
+      const mound = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6), mTealD);
+      mound.scale.set(1.32, 0.68, 0.78);
+      mound.position.set(0, 2.24, -0.2);
+      bodyG.add(mound);
+      // snug hoodie collar closing the neckline
+      const collar = M(new THREE.CylinderGeometry(0.118, 0.135, 0.09, 9), mTeal);
+      collar.position.set(0, 2.31, 0.01);
+      bodyG.add(collar);
+      const vnotch = M(new THREE.BoxGeometry(0.05, 0.06, 0.02), mTealD);
+      vnotch.position.set(0, 2.26, 0.128); vnotch.rotation.z = Math.PI / 4;
+      vnotch.scale.y = 0.9;
+      bodyG.add(vnotch);
+      // drawstrings + aglets, tucked close under the collar
+      for (const s of [-1, 1]) {
+        const str = M(new THREE.CylinderGeometry(0.0075, 0.0075, 0.1, 5), flat(0xe3e9e7));
+        str.position.set(0.05 * s, 2.2, 0.235); str.rotation.x = 0.12; str.rotation.z = s * 0.05;
+        bodyG.add(str);
+        const ag = M(new THREE.CylinderGeometry(0.011, 0.011, 0.03, 5), mTealXD);
+        ag.position.set(0.054 * s, 2.14, 0.243);
+        bodyG.add(ag);
+      }
+
+      // ============================ arms ============================
+      // sleeves grow straight out of the shoulder line — no ball joints
+      const mkArm = (side) => {
+        const arm = new THREE.Group();
+        arm.position.set(0.225 * side, 2.24, 0);
+        arm.rotation.z = side * 0.1;
+        const yoke = M(new THREE.SphereGeometry(0.1, 8, 6), mTeal);
+        yoke.scale.set(0.95, 0.72, 0.85);
+        yoke.position.set(-0.025 * side, -0.03, 0);
+        arm.add(yoke);
+        const up = M(new THREE.CylinderGeometry(0.088, 0.078, 0.42, 7), mTeal);
+        up.position.set(0.02 * side, -0.19, 0); up.rotation.z = side * 0.05;
+        arm.add(up);
+        const lo = M(new THREE.CylinderGeometry(0.074, 0.065, 0.3, 7), mTeal);
+        lo.position.set(0.028 * side, -0.53, 0);
+        arm.add(lo);
+        const cuffA = M(new THREE.CylinderGeometry(0.079, 0.083, 0.08, 7), mTealD);
+        cuffA.position.set(0.028 * side, -0.72, 0);
+        arm.add(cuffA);
+        const hand = new THREE.Group();
+        hand.position.set(0.028 * side, -0.785, 0.004);
+        const palm = M(new THREE.SphereGeometry(0.055, 7, 6), mSkin);
+        palm.scale.set(0.52, 1.1, 0.78); // flat paddle, thumb-side toward the body
+        hand.add(palm);
+        const fingers = M(new THREE.SphereGeometry(0.045, 6, 5), mSkin);
+        fingers.scale.set(0.48, 0.8, 0.68);
+        fingers.position.set(0, -0.048, 0.004);
+        hand.add(fingers);
+        const thumb = M(new THREE.SphereGeometry(0.022, 6, 5), mSkin);
+        thumb.scale.set(0.72, 1.25, 0.72);
+        thumb.position.set(-0.03 * side, -0.002, 0.024);
+        thumb.rotation.z = side * -0.42;
+        hand.add(thumb);
+        arm.add(hand);
+        return arm;
+      };
+      U.armL = mkArm(-1); U.armR = mkArm(1);
+      bodyG.add(U.armL, U.armR);
+
+      // ============================ head ============================
+      const headG = new THREE.Group();
+      headG.position.set(0, 2.36, 0);
+      bodyG.add(headG);
+      U.headG = headG;
+      const neck = M(new THREE.CylinderGeometry(0.075, 0.085, 0.1, 7), mSkin);
+      neck.position.y = 0.02; headG.add(neck);
+      // bigger head, gently squared jaw
+      const skull = M(new THREE.SphereGeometry(0.34, 11, 9), mSkin);
+      skull.scale.set(0.8, 1.02, 0.82);
+      skull.position.y = 0.375; headG.add(skull);
+      for (const s of [-1, 1]) {
+        const ear = M(new THREE.SphereGeometry(0.048, 6, 5), mSkin);
+        ear.scale.set(0.45, 0.9, 0.65); ear.position.set(0.275 * s, 0.32, -0.03);
+        headG.add(ear);
+      }
+      // ---- face (eyes sit at the head's vertical middle, like the ref) ----
+      const face = (m) => { m.castShadow = false; return m; };
+      for (const s of [-1, 1]) {
+        // pivot sits ON the skull surface, rotated to the local normal, so the
+        // whole eye cluster hugs the curve instead of poking past the profile
+        const eyeG = new THREE.Group();
+        eyeG.position.set(0.108 * s, 0.335, 0.246);
+        eyeG.rotation.y = s * 0.3;
+        headG.add(eyeG);
+        const white = face(new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), flat(0xffffff)));
+        white.scale.set(1, 1.22, 0.3);
+        eyeG.add(white);
+        const iris = face(new THREE.Mesh(new THREE.SphereGeometry(0.042, 8, 6), flat(PC.eye)));
+        iris.scale.set(1, 1.28, 0.32); iris.position.set(-0.004 * s, -0.005, 0.012);
+        eyeG.add(iris);
+        const pupil = face(new THREE.Mesh(new THREE.SphereGeometry(0.019, 6, 5), flat(0x1c1210)));
+        pupil.scale.set(1, 1.25, 0.36); pupil.position.set(-0.006 * s, -0.01, 0.02);
+        eyeG.add(pupil);
+        const glint = face(new THREE.Mesh(new THREE.SphereGeometry(0.01, 5, 4), flat(0xffffff, { emissive: 0xffffff, emissiveIntensity: 0.55 })));
+        glint.position.set(0.013, 0.02, 0.026);
+        eyeG.add(glint);
+        const brow = face(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.026), flat(PC.brow)));
+        brow.position.set(0.004 * s, 0.107, 0.006);
+        brow.rotation.z = s * -0.07;
+        eyeG.add(brow);
+      }
+      for (const s of [-1, 1]) {
+        const cheek = face(new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.006, 8), flat(PC.blush)));
+        cheek.rotation.set(Math.PI / 2 - 0.3, s * 0.55, 0, "YXZ");
+        cheek.position.set(0.148 * s, 0.235, 0.198);
+        cheek.material.transparent = true; cheek.material.opacity = 0.5;
+        headG.add(cheek);
+      }
+      const nose = face(new THREE.Mesh(new THREE.SphereGeometry(0.027, 6, 5), mSkin));
+      nose.scale.set(0.75, 0.85, 0.85); nose.position.set(0, 0.265, 0.272);
+      headG.add(nose);
+      const mouth = face(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.013, 0.018), flat(PC.mouth)));
+      mouth.position.set(0, 0.175, 0.222);
+      headG.add(mouth);
+
+      // ---- hair: smooth swept cap, side pieces, messy top bun ----
+      const hairG = new THREE.Group();
+      headG.add(hairG);
+      U.hair = hairG;
+      // clean faceted dome, big enough to read as a full head of hair
+      // partial sphere: covers the top ~112 degrees only, pitched back so the
+      // front rim sits above the brows and the back rim wraps the nape
+      const cap = M(new THREE.SphereGeometry(0.36, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.62), mHair);
+      cap.scale.set(0.94, 0.98, 0.98);
+      cap.position.set(0, 0.4, -0.02);
+      cap.rotation.x = -0.3;
+      hairG.add(cap);
+      // center-part fringe: one swept slab per side, high at the part and
+      // dipping toward the temples — the reference's shallow-M hairline
+      for (const s of [-1, 1]) {
+        const slab = M(new THREE.BoxGeometry(0.19, 0.08, 0.1), mHair);
+        slab.position.set(0.095 * s, 0.625, 0.195);
+        slab.rotation.set(0.3, s * 0.25, s * -0.26);
+        hairG.add(slab);
+        const tip = M(new THREE.BoxGeometry(0.1, 0.065, 0.1), mHairD);
+        tip.position.set(0.215 * s, 0.545, 0.148);
+        tip.rotation.set(0.2, s * 0.45, s * -0.22);
+        hairG.add(tip);
+      }
+      // side pieces in front of the ears
+      for (const s of [-1, 1]) {
+        const panel = M(new THREE.SphereGeometry(0.16, 7, 5), mHair);
+        panel.scale.set(0.32, 1.1, 0.78);
+        panel.position.set(0.245 * s, 0.33, 0.03);
+        panel.rotation.z = s * 0.05;
+        hairG.add(panel);
+        const strand = M(new THREE.BoxGeometry(0.05, 0.2, 0.06), mHairD);
+        strand.position.set(0.28 * s, 0.22, 0.1);
+        strand.rotation.set(0.06, 0, s * 0.07);
+        hairG.add(strand);
+        const wisp = M(new THREE.ConeGeometry(0.02, 0.09, 5), mHairD);
+        wisp.position.set(0.29 * s, 0.1, 0.1);
+        wisp.rotation.set(Math.PI * 0.98, 0, s * -0.12);
+        hairG.add(wisp);
+        const temple = M(new THREE.BoxGeometry(0.07, 0.16, 0.14), mHair);
+        temple.position.set(0.235 * s, 0.45, 0.1);
+        temple.rotation.set(0.1, s * 0.45, s * -0.15);
+        hairG.add(temple);
+      }
+      // low back coverage — strictly BEHIND the head
+      const nape = M(new THREE.SphereGeometry(0.3, 9, 6), mHairD);
+      nape.scale.set(0.88, 0.78, 0.6);
+      nape.position.set(0, 0.26, -0.15);
+      hairG.add(nape);
+      for (const s of [-1, 1]) {
+        const w = M(new THREE.ConeGeometry(0.028, 0.11, 5), mHairD);
+        w.position.set(0.08 * s, 0.1, -0.24);
+        w.rotation.set(Math.PI * 0.96, 0, s * 0.18);
+        hairG.add(w);
+      }
+      // ---- the messy top bun ----
+      const bun = new THREE.Group();
+      bun.position.set(0, 0.83, -0.06);
+      hairG.add(bun);
+      U.bun = bun;
+      const wrap = M(new THREE.TorusGeometry(0.125, 0.05, 7, 12), mHairD);
+      wrap.rotation.x = Math.PI / 2 - 0.12;
+      wrap.position.y = -0.045;
+      bun.add(wrap);
+      const lobes = [
+        [0, 0.09, 0, 0.15, 0], [-0.1, 0.03, 0.03, 0.11, 1], [0.1, 0.04, -0.02, 0.115, 2],
+        [0.02, 0.015, 0.1, 0.1, 3], [-0.03, 0.02, -0.1, 0.105, 4], [0.065, 0.13, 0.05, 0.085, 5],
+        [-0.07, 0.12, -0.045, 0.08, 6],
+        [0.0, 0.03, -0.115, 0.095, 7], [-0.09, 0.0, -0.07, 0.085, 8],
+      ];
+      for (const [x, y, z, r, seed] of lobes) {
+        const lb = M(new THREE.IcosahedronGeometry(r, 0), seed % 2 ? mHair : mHairL);
+        lb.position.set(x, y, z);
+        lb.rotation.set(seed * 1.3, seed * 2.1, seed * 0.7);
+        lb.scale.set(1, 0.8, 0.92);
+        bun.add(lb);
+      }
+      const tips = [
+        [0.11, 0.18, 0.02, 0.55, 0.9], [-0.12, 0.15, -0.04, -0.65, 0.7],
+        [0.02, 0.21, -0.08, 0.15, -0.85], [-0.05, 0.2, 0.09, -0.2, 0.45],
+      ];
+      for (const [x, y, z, rz, rx] of tips) {
+        const t = M(new THREE.ConeGeometry(0.026, 0.12, 5), mHair);
+        t.position.set(x, y, z);
+        t.rotation.set(rx, 0, rz);
+        bun.add(t);
+      }
+
+      // ============================ backpack ============================
+      const pack = new THREE.Group();
+      bodyG.add(pack);
+      U.pack = pack;
+      const packBody = M(new THREE.BoxGeometry(0.35, 0.46, 0.2), mTan);
+      packBody.position.set(0, 1.92, -0.345);
+      pack.add(packBody);
+      const packTop = M(new THREE.BoxGeometry(0.36, 0.1, 0.21), mTan);
+      packTop.position.set(0, 2.17, -0.345);
+      pack.add(packTop);
+      const pkt = M(new THREE.BoxGeometry(0.25, 0.2, 0.06), mTan);
+      pkt.position.set(0, 1.8, -0.47);
+      pack.add(pkt);
+      const flap = M(new THREE.BoxGeometry(0.26, 0.085, 0.066), mTanD);
+      flap.position.set(0, 1.905, -0.471);
+      flap.rotation.x = 0.1;
+      pack.add(flap);
+      const zip = M(new THREE.BoxGeometry(0.016, 0.05, 0.015), mTanXD);
+      zip.position.set(0, 1.845, -0.502);
+      pack.add(zip);
+      const handle = M(new THREE.TorusGeometry(0.06, 0.017, 6, 10, Math.PI), mTanD);
+      handle.position.set(0, 2.23, -0.345);
+      pack.add(handle);
+      // side gussets so the body reads rounded, not slab-sided
+      for (const s of [-1, 1]) {
+        const gusset = M(new THREE.BoxGeometry(0.06, 0.4, 0.16), mTanD);
+        gusset.position.set(0.185 * s, 1.91, -0.33);
+        gusset.rotation.y = s * 0.18;
+        pack.add(gusset);
+      }
+      // straps: hug the shoulders, then a slim sliver down the chest edge
+      for (const s of [-1, 1]) {
+        const back = M(new THREE.BoxGeometry(0.05, 0.24, 0.028), mTanD);
+        back.position.set(0.13 * s, 2.11, -0.23);
+        back.rotation.x = 0.46;
+        pack.add(back);
+        const saddle = M(new THREE.BoxGeometry(0.048, 0.024, 0.17), mTanD);
+        saddle.position.set(0.15 * s, 2.26, -0.04);
+        saddle.rotation.x = 0.12; saddle.rotation.z = s * -0.1;
+        pack.add(saddle);
+        const chest = M(new THREE.BoxGeometry(0.036, 0.3, 0.07), mTanD);
+        chest.position.set(0.175 * s, 2.06, 0.115);
+        chest.rotation.x = -0.42; chest.rotation.z = s * 0.14; chest.rotation.y = s * 0.3;
+        pack.add(chest);
+      }
+
+      U.head = U.headG;
+      // the game's rigs are CHUNKY (player w/h ~0.45 vs this rig's ~0.24 as
+      // drafted) — widen the whole silhouette so she reads like a lead
+      // character, not a beanpole beside the player. The widening lives on
+      // an INNER group so callers can setScalar() the root freely.
+      const root = new THREE.Group();
+      g.scale.set(1.24, 1, 1.24);
+      root.add(g);
+      root.userData = U;
+      g.userData = U;
+      return root;
+    }
+
     // ---- Villagers: shopkeepers, customers, strollers ----
     function makeVillager(x, z, rotY, opts = {}) {
       const g = new THREE.Group();
@@ -4970,8 +5345,9 @@ export default function DragonGardenQuest() {
       }
       // wherever the talk ends, she drifts back to her desk
       if (libraryRiver && G.map === "LIBRARY") {
-        G.riverWalk = { t: 0, from: libraryRiver.position.clone(),
-                        to: new THREE.Vector3(2.1, 0, -2.6) };
+        const from = libraryRiver.position.clone();
+        const d = Math.hypot(2.1 - from.x, -2.6 - from.z);
+        G.riverWalk = { t: 0, from, to: new THREE.Vector3(2.1, 0, -2.6), dur: Math.max(1.1, d / 0.85) };
       }
     };
     // the light that escapes the pages when a chapter is finished
@@ -7673,25 +8049,21 @@ export default function DragonGardenQuest() {
       // Built on the PLAYER's rig, not the villager kit: full face, real
       // hairstyles, tailored clothes — she is a lead character, and reads
       // like one standing next to the player.
-      libraryRiver = makePlayer();
-      applyOutfitTo(libraryRiver, {
-        skin: 0xf2cdb0, hair: 0xb5502e, hairStyle: "long",
-        style: "raincoat", shirt: 0x9a86c8, boots: 0x4a3a5e,
-        hat: "none", accessory: "none",
-      });
+      // the hand-built hero model from river-lab.html (design bench)
+      libraryRiver = makeRiverGirl();
       libraryRiver.position.set(2.1, 0, -2.6);
       libraryRiver.rotation.y = 2.5;
-      libraryRiver.scale.setScalar(0.965); // a shade shorter than the player
+      libraryRiver.scale.setScalar(0.68); // player crown ~2.1; her bun tops out just above
       worldGroup.add(libraryRiver);
-      { // her book — a librarian is never empty-handed
+      { // her book — a librarian is never empty-handed; it rides in her left hand
         const bk = new THREE.Group();
-        const cover = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.055, 0.27), flat(0x6a2f3e));
-        const pages = new THREE.Mesh(new THREE.BoxGeometry(0.176, 0.034, 0.244), flat(0xe8dfc2));
-        pages.position.y = 0.004;
+        const cover = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.08, 0.4), flat(0x6a2f3e));
+        const pages = new THREE.Mesh(new THREE.BoxGeometry(0.264, 0.05, 0.364), flat(0xe8dfc2));
+        pages.position.y = 0.006;
         bk.add(cover, pages);
-        bk.position.set(-0.3, 0.62, 0.13);
-        bk.rotation.set(0.2, 0.25, 0.35);
-        libraryRiver.add(bk);
+        bk.position.set(-0.04, -0.72, 0.14);
+        bk.rotation.set(0.35, 0.15, 0.1);
+        libraryRiver.userData.armL.add(bk);
       }
 
       exits = [{ x: 0, z: 5.9, r: 1.6, to: "TOWN", spawn: [7.6, -5.5] }];
@@ -9224,7 +9596,7 @@ export default function DragonGardenQuest() {
         // she relaxes her limbs, breathes, and keeps her eyes on you.
         if (G.riverWalk && libraryRiver) {
           const w = G.riverWalk, ru = libraryRiver.userData;
-          w.t = Math.min(1, w.t + dt / 1.35);
+          w.t = Math.min(1, w.t + dt / (w.dur || 1.35));
           const e = w.t * w.t * (3 - 2 * w.t);
           libraryRiver.position.lerpVectors(w.from, w.to, e);
           const tw = G.time * 8.2, sw = Math.sin(tw);
@@ -9232,8 +9604,8 @@ export default function DragonGardenQuest() {
           ru.legR.rotation.x = -sw * 0.6;
           ru.armL.rotation.x = -sw * 0.5;
           ru.armR.rotation.x = Math.sin(tw + 0.35) * 0.55;
-          ru.armL.rotation.z = -0.26 - Math.abs(sw) * 0.06;
-          ru.armR.rotation.z = 0.26 + Math.abs(Math.sin(tw + 0.35)) * 0.06;
+          ru.armL.rotation.z = -0.1 - Math.abs(sw) * 0.06;
+          ru.armR.rotation.z = 0.1 + Math.abs(Math.sin(tw + 0.35)) * 0.06;
           ru.body.rotation.x += (0.08 - ru.body.rotation.x) * 0.2;
           libraryRiver.position.y = Math.abs(sw) * 0.028;   // step bounce
           const face = Math.atan2(w.to.x - w.from.x, w.to.z - w.from.z);
@@ -9245,8 +9617,8 @@ export default function DragonGardenQuest() {
           const relax = 1 - Math.min(1, dt * 5);
           ru.legL.rotation.x *= relax; ru.legR.rotation.x *= relax;
           ru.armL.rotation.x *= relax; ru.armR.rotation.x *= relax;
-          ru.armL.rotation.z += (-0.26 - ru.armL.rotation.z) * 0.15;
-          ru.armR.rotation.z += (0.26 - ru.armR.rotation.z) * 0.15;
+          ru.armL.rotation.z += (-0.1 - ru.armL.rotation.z) * 0.15;
+          ru.armR.rotation.z += (0.1 - ru.armR.rotation.z) * 0.15;
           ru.body.rotation.x *= relax;
           ru.body.scale.y = 1 + Math.sin(G.time * 1.7) * 0.012;   // breathing
           ru.head.rotation.y = Math.sin(G.time * 0.5) * 0.06;     // soft glances
@@ -9254,6 +9626,25 @@ export default function DragonGardenQuest() {
           const face = Math.atan2(playerPos.x - libraryRiver.position.x, playerPos.z - libraryRiver.position.z);
           const turn = ((face - libraryRiver.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
           libraryRiver.rotation.y += turn * Math.min(1, dt * 3);
+        }
+        // librarian rounds: every so often she walks her loop — desk, the
+        // aisles, past the lectern — pausing wherever she lands. She stays
+        // put during the intro, any open dialog, or while you stand close.
+        if (libraryRiver && !G.riverWalk && !G.riverIntroPlaying && !shopOpenRef.current) {
+          G.riverStrollT = (G.riverStrollT ?? 5 + Math.random() * 5) - dt;
+          if (G.riverStrollT <= 0) {
+            const nearPlayer = Math.hypot(playerPos.x - libraryRiver.position.x, playerPos.z - libraryRiver.position.z) < 2.4;
+            if (nearPlayer) G.riverStrollT = 3; // she waits while you're with her
+            else {
+              const SPOTS = [[2.1, -2.6], [-2.6, -2.4], [4.6, 0.6], [-4.6, 0.2], [2.6, 2.4]];
+              const cur = libraryRiver.position;
+              const options = SPOTS.filter(([x, z]) => Math.hypot(x - cur.x, z - cur.z) > 1.6);
+              const [nx, nz] = options[Math.floor(Math.random() * options.length)] || SPOTS[0];
+              const d = Math.hypot(nx - cur.x, nz - cur.z);
+              G.riverWalk = { t: 0, from: cur.clone(), to: new THREE.Vector3(nx, 0, nz), dur: Math.max(1.2, d / 0.85) };
+              G.riverStrollT = 7 + Math.random() * 8;
+            }
+          }
         }
         // the freed light: drops off the lectern, waits, is picked up
         if (libLight && !libLight.picked) {
