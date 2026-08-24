@@ -4183,6 +4183,7 @@ export default function DragonGardenQuest() {
         riverWow2: G.riverAmazed2Done ? 1 : 0,
         bossT2: G.bossTaunt2Done ? 1 : 0,
         s1promo: G.seasonPromoDone ? 1 : 0,
+        litShown: G.litShownN || 0,
         awayEaten: G.awayEaten || [],
         inv: G.inv,
         homePlots: G.homePlots.map((p) => p.seed ? {
@@ -4197,7 +4198,7 @@ export default function DragonGardenQuest() {
     // ticking doesn't spam writes; the payload still carries exact timers
     function stateSig() {
       return JSON.stringify([
-        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 10), G.goldBagFound, G.level, G.gems, G.lantern, G.riverIntroDone, G.seasonPromoDone,
+        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 10), G.goldBagFound, G.level, G.gems, G.lantern, G.riverIntroDone, G.seasonPromoDone, G.litShownN,
         G.homePlots.map((p) => p.seed ? p.seed + (p.regrowAt != null ? "r" : "g") : "-"),
       ]);
     }
@@ -4224,6 +4225,7 @@ export default function DragonGardenQuest() {
       G.riverAmazed2Done = d.riverWow2 === 1 ? 1 : 0;
       G.bossTaunt2Done = d.bossT2 === 1 ? 1 : 0;
       G.seasonPromoDone = d.s1promo === 1 ? 1 : 0;
+      G.litShownN = typeof d.litShown === "number" ? Math.max(0, d.litShown | 0) : 0;
       if (Array.isArray(d.awayEaten)) G.awayEaten = d.awayEaten; // report survives a restart
       if (typeof d.hunger === "number") G.hunger = Math.min(100, Math.max(0, d.hunger)); // exact restore — a starving Ember stays starving
       if (Array.isArray(d.homePlots)) {
@@ -4340,7 +4342,7 @@ export default function DragonGardenQuest() {
       playerHopT: 0, transitioning: false, pendingMap: null, hungerAlertT: 0,
       // Season 1 — River, the lantern, and the town lights
       lantern: 0, riverIntroDone: 0, riverAmazedDone: 0, riverAmazed2Done: 0, riverIntroPlaying: false,
-      bossTaunt2Done: 0, seasonPromoDone: 0,
+      bossTaunt2Done: 0, seasonPromoDone: 0, litShownN: 0,
       pendingLightN: 0, seasonDone: 0, seasonTotal: 84,
       hungerPlaqueT: 0, // how long the hangry plaque has nagged (auto-hides at 60s)
       outfit: { skin: 0xf2c9a4, hair: 0x4a2f1c, hairStyle: "crop", style: "tee", shirt: 0x3a72c9, boots: 0x3f2f20, hat: "straw", accessory: "basket" },
@@ -5690,7 +5692,7 @@ export default function DragonGardenQuest() {
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
       babies = []; boomFx = [];
-      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; riverFoam = null; swayers = []; petals = []; fountainFx = null; townKitHandle = null; G.townLights = null; libraryRiver = null; libLight = null; townLightRing = null; libSeasonPlate = null; G.flyLight = null; G.__eastGloomK = -1; goldBag = null; redBagMeshes = {}; shopWords = []; emberBar = null; turtle = null; G.turtleSeq = null;
+      gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; riverFoam = null; swayers = []; petals = []; fountainFx = null; townKitHandle = null; G.townLights = null; libraryRiver = null; libLight = null; townLightRing = null; libSeasonPlate = null; G.flyLight = null; G.flyLightQueue = []; G.flyLightGapT = 0; G.__eastGloomK = -1; goldBag = null; redBagMeshes = {}; shopWords = []; emberBar = null; turtle = null; G.turtleSeq = null;
       throwns.forEach((t) => worldGroup.remove(t.m)); throwns = [];
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
       // the "already greeted" latch belongs to the keeper we just destroyed —
@@ -7458,16 +7460,22 @@ export default function DragonGardenQuest() {
       if (!G.seasonPromoDone) {
         setTimeout(() => { if (G.map === "TOWN") G.startSeasonPromo(); }, 1200);
       }
-      // Season 1: light the strand to the server's count. If the player is
-      // carrying a fresh light home, hold one bulb back — the flight in the
-      // frame loop delivers it.
+      // Season 1: light the strand to what the player has already WATCHED
+      // arrive, then fly every light earned since — one delivery each.
+      // (The old code assumed exactly one new light: read two chapters
+      // back-to-back and the first bulb popped on silently with no flight.)
       if (window.YGTEEV_API && window.YGTEEV_API.townProgress) {
         window.YGTEEV_API.townProgress().then((pr) => {
           if (G.map !== "TOWN" || !townKitHandle) return;
           G.seasonDone = pr.done; G.seasonTotal = pr.total;
-          const carrying = G.pendingLightN > 0 && pr.done >= G.pendingLightN;
-          townKitHandle.lights.setLit(carrying ? pr.done - 1 : pr.done);
-          if (carrying) G.flyLightReq = { n: pr.done };
+          let shown = Math.max(0, Math.min(G.litShownN || 0, pr.done));
+          // saves from before litShownN existed (or a lost save) would owe
+          // dozens of flights — snap all but the newest and fly just that one
+          if (pr.done - shown > 3) shown = pr.done - 1;
+          townKitHandle.lights.setLit(shown);
+          G.litShownN = shown;
+          G.flyLightQueue = [];
+          for (let k = shown + 1; k <= pr.done; k++) G.flyLightQueue.push(k);
           // season already won (cold start straight into town): the Gloom
           // has no business here — clear them and swap the music now
           if (pr.done >= pr.total && pr.total > 0) {
@@ -9691,9 +9699,9 @@ export default function DragonGardenQuest() {
         }
       }
       // the flight home: carried light rises to the next unlit strand bulb
-      if (G.map === "TOWN" && G.flyLightReq && townKitHandle && !G.transitioning && !shopOpenRef.current) {
-        const n = G.flyLightReq.n;
-        G.flyLightReq = null;
+      if (G.flyLightGapT > 0) G.flyLightGapT -= dt;
+      if (G.map === "TOWN" && !G.flyLight && !(G.flyLightGapT > 0) && G.flyLightQueue && G.flyLightQueue.length && townKitHandle && !G.transitioning && !shopOpenRef.current) {
+        const n = G.flyLightQueue.shift();
         const grp = new THREE.Group();
         const core = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8),
           new THREE.MeshStandardMaterial({ color: SRGB(0xfff2c8), emissive: SRGB(0xffcf6a), emissiveIntensity: 1.7 }));
@@ -9719,6 +9727,10 @@ export default function DragonGardenQuest() {
           SFX.pass();
           worldGroup.remove(f.grp);
           G.flyLight = null;
+          // this delivery has been SEEN — never replay it, even after reload
+          G.litShownN = Math.max(G.litShownN || 0, f.n);
+          G.saveT = 0.2;
+          G.flyLightGapT = 0.8; // a breath between back-to-back deliveries
           // the second light landing is the boss's cue: he cannot believe
           // you're actually doing it, and wants you to know it changes
           // nothing. Once ever (fires on the next delivery for saves that
