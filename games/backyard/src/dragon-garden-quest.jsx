@@ -9915,7 +9915,12 @@ export default function DragonGardenQuest() {
           TU.head.rotation.y = Math.sin(G.time * 0.7) * 0.3;
           TU.jaw.position.y = -0.24 + Math.max(0, Math.sin(G.time * 1.3)) * -0.06;
         }
-        const onBridgeRoad = Math.abs(playerPos.z - 3) < 2 && playerPos.x > -18 && playerPos.x < -9;
+        // Safe area around the bridge: deck (x -16.4..-10), both ramps and a
+        // shoulder of road on each bank. The lure reaches 4.6 and the turtle
+        // hugs x ≈ -12.6..-13.9 here, so the box must run past -8.1/-18.5 or
+        // stepping onto a ramp still gets yanked mid-crossing. The prank only
+        // fires on the open riverbank, never on the road.
+        const onBridgeRoad = Math.abs(playerPos.z - 3) < 2.6 && playerPos.x > -21.5 && playerPos.x < -6.5;
         if (!seq && G.turtleCd <= 0 && !G.introActive && !G.introLock && !shopOpenRef.current && !onBridgeRoad
             && Math.hypot(playerPos.x - turtle.position.x, playerPos.z - turtle.position.z) < 4.6) {
           G.turtleSeq = { phase: "board", t: 0, fx: playerPos.x, fz: playerPos.z, fy: player.position.y };
