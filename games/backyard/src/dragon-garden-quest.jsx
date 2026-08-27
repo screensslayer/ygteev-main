@@ -11860,7 +11860,6 @@ export default function DragonGardenQuest() {
                       });
                     }
                     else if (k === "league") { setShop(null); setBoard(true); gameRef.current?.refreshLeague?.(); }
-                    else if (k === "replay") { const ok = gameRef.current?.replayIntro(); if (ok) setShop(null); }
                     else if (k === "close") { setLockNote(false); setShop(null); }
                   }}
                   onInfo={() => setAlmanac(true)}

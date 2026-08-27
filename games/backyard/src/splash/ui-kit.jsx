@@ -1359,11 +1359,10 @@ const PROF = {
   // (slab-black-blank.png) with live lettering, rather than as baked art.
   // Both slabs are the same height, so the tops are spaced evenly.
   btns: [
-    { key: "customize", top: 0.345, w: 0.62, label: "CUSTOMIZE CHARACTER", locked: true },
+    { key: "customize", top: 0.400, w: 0.62, label: "CUSTOMIZE CHARACTER", locked: true },
     // the carved LEADERBOARD board art itself (same slab family) — not live
     // lettering, so it always matches the splash sign
-    { key: "league",    top: 0.506, w: 0.62, art: "header-leaderboard.png" },
-    { key: "replay",    top: 0.682, w: 0.62 },
+    { key: "league",    top: 0.630, w: 0.62, art: "header-leaderboard.png" },
     { key: "close",     top: 0.885, w: 0.50 },
   ],
 };
