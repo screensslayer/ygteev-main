@@ -92,6 +92,15 @@ export function createApi() {
       return data ?? {};
     },
 
+    // Cloudtop challenge: the caller's group's live challenge (or null),
+    // with per-participant progress toward the goal town. Server-computed;
+    // the chest latches open server-side the moment the goal is met.
+    async getChallenge() {
+      const { data, error } = await supabase.rpc("by_get_challenge");
+      if (error) throw error;
+      return data?.challenge ?? null;
+    },
+
     // Daily red bags: 3 hidden question-pouches per player per UTC day.
     // First call of the day creates them server-side (spot = index into the
     // client's 12-spot hiding pool). Question level (ms/hs) and rewards are

@@ -126,7 +126,7 @@ const VOICE_V = 11;
 // the door swings wide, the daylight returns and the TRAIL exit comes back.
 const S2_TRAIL_OPEN = false;
 
-const MAP_LABELS = { CHURCH_HALL: "The Chapel", TRAIL: "The Old Trail",
+const MAP_LABELS = { CLOUDS: "The Cloudtop", CHURCH_HALL: "The Chapel", TRAIL: "The Old Trail",
   HOME: "🏡 Home Meadow", TOWN: "🏘️ Meadow Town", CHURCH: "⛪ Grace Community Garden",
   SHOP_SEEDS: "🌱 Rosie's Rare Seeds", SHOP_MARKET: "🧺 The Berry Market", SHOP_TOOLS: "⚒️ Grimble's Toolworks",
   EASTROAD: "🛤️ The East Road",
@@ -432,6 +432,10 @@ export default function DragonGardenQuest() {
   const [seasonPromo, setSeasonPromo] = useState(false);
   const reqSeasonPromoRef = useRef(() => {});
   reqSeasonPromoRef.current = (v) => setSeasonPromo(v);
+  // Cloudtop challenge welcome / rules card (null | { rules: bool })
+  const [cloudIntro, setCloudIntro] = useState(null);
+  const reqCloudIntroRef = useRef(() => {});
+  reqCloudIntroRef.current = (v) => setCloudIntro(v);
   // Eli's community-garden welcome — current page index (0..5) or null
   const [churchIntro, setChurchIntro] = useState(null);
   const reqChurchIntroRef = useRef(() => {});
@@ -672,8 +676,10 @@ export default function DragonGardenQuest() {
       TOWN_GLOOM: "/music/meadow-gloom.m4a",
       // the chapel: a soft cathedral bed, barely above the candles
       CHURCH_HALL: "/music/cathedral.m4a",
+      // the Cloudtop: mysterious wind, thin and high
+      CLOUDS: "/music/clouds.m4a",
     };
-    const TRACK_LEVEL = { TOWN_GLOOM: 0.22, CHURCH_HALL: 0.18 };
+    const TRACK_LEVEL = { TOWN_GLOOM: 0.22, CHURCH_HALL: 0.18, CLOUDS: 0.26 };
     let trackBufs = {}, trackSrc = null, trackGain = null, trackKey = null, trackWanted = null;
     const MUSIC_FULL = 0.4, MUSIC_DUCKED = 0.11;
     let musicDucked = false;
@@ -4196,6 +4202,8 @@ export default function DragonGardenQuest() {
         refFed: G.refugeesFed || [0, 0, 0, 0, 0],
         refGreet: G.refGreeted || [0, 0, 0, 0, 0],
         litShown: G.litShownN || 0,
+        cloudw: G.cloudWelcome || {},
+        chestw: G.chestSeen || {},
         awayEaten: G.awayEaten || [],
         inv: G.inv,
         homePlots: G.homePlots.map((p) => p.seed ? {
@@ -4210,7 +4218,7 @@ export default function DragonGardenQuest() {
     // ticking doesn't spam writes; the payload still carries exact timers
     function stateSig() {
       return JSON.stringify([
-        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 10), G.goldBagFound, G.level, G.gems, G.lantern, G.riverIntroDone, G.seasonPromoDone, G.litShownN, G.s1FinaleSeen, G.refugeesFed, G.refGreeted,
+        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 10), G.goldBagFound, G.level, G.gems, G.lantern, G.riverIntroDone, G.seasonPromoDone, G.litShownN, G.s1FinaleSeen, G.refugeesFed, G.refGreeted, G.cloudWelcome, G.chestSeen,
         G.homePlots.map((p) => p.seed ? p.seed + (p.regrowAt != null ? "r" : "g") : "-"),
       ]);
     }
@@ -4241,6 +4249,8 @@ export default function DragonGardenQuest() {
       G.s1FinaleSeen = d.s1fin === 1 ? 1 : 0;
       G.refugeesFed = Array.isArray(d.refFed) ? d.refFed.slice(0, 5).map((v) => (v ? 1 : 0)) : [0, 0, 0, 0, 0];
       G.refGreeted = Array.isArray(d.refGreet) ? d.refGreet.slice(0, 5).map((v) => (v ? 1 : 0)) : [0, 0, 0, 0, 0];
+      G.cloudWelcome = (d.cloudw && typeof d.cloudw === "object") ? d.cloudw : {};
+      G.chestSeen = (d.chestw && typeof d.chestw === "object") ? d.chestw : {};
       if (Array.isArray(d.awayEaten)) G.awayEaten = d.awayEaten; // report survives a restart
       if (typeof d.hunger === "number") G.hunger = Math.min(100, Math.max(0, d.hunger)); // exact restore — a starving Ember stays starving
       if (Array.isArray(d.homePlots)) {
@@ -4325,7 +4335,23 @@ export default function DragonGardenQuest() {
         if (G.map === "HOME") spawnRedBags();
       } catch (e) { /* bags are a daily bonus — fail quiet */ }
     }
-    if (window.YGTEEV_API) { syncLeague(); setInterval(syncLeague, 60000); syncRedBags(); setInterval(syncRedBags, 300000); }
+    // Cloudtop challenge: fetched at boot and on demand; null when the
+    // player's group has no live challenge (the turtle stays a prankster).
+    async function syncChallenge() {
+      const api = window.YGTEEV_API;
+      if (!api || !api.getChallenge) return;
+      try {
+        const ch = await api.getChallenge();
+        const prev = G.challenge;
+        G.challenge = ch || null;
+        // the chest flipping open while we watch from the clouds = the show
+        if (ch && ch.completed && prev && !prev.completed && G.map === "CLOUDS" && cloudCity) {
+          refreshCloudArena();
+          startChestFete();
+        } else if (G.map === "CLOUDS" && cloudCity) refreshCloudArena();
+      } catch (e) {}
+    }
+    if (window.YGTEEV_API) { syncLeague(); setInterval(syncLeague, 60000); syncRedBags(); setInterval(syncRedBags, 300000); syncChallenge(); }
 
     // ================= GAME STATE =================
     // Player levelling: gems fill a 10-slot bar, each full bar is a level.
@@ -4358,6 +4384,7 @@ export default function DragonGardenQuest() {
       // Season 1 — River, the lantern, and the town lights
       lantern: 0, riverIntroDone: 0, riverAmazedDone: 0, riverAmazed2Done: 0, riverIntroPlaying: false,
       bossTaunt2Done: 0, seasonPromoDone: 0, litShownN: 0, s1FinaleSeen: 0, refugeesFed: [0, 0, 0, 0, 0], refGreeted: [0, 0, 0, 0, 0],
+      challenge: null, cloudWelcome: {}, chestSeen: {}, cloudFlashT: 0, cloudRide: null, cloudFete: null, cloudPollT: 0,
       pendingLightN: 0, seasonDone: 0, seasonTotal: 84,
       hungerPlaqueT: 0, // how long the hangry plaque has nagged (auto-hides at 60s)
       outfit: { skin: 0xf2c9a4, hair: 0x4a2f1c, hairStyle: "crop", style: "tee", shirt: 0x3a72c9, boots: 0x3f2f20, hat: "straw", accessory: "basket" },
@@ -4444,6 +4471,8 @@ export default function DragonGardenQuest() {
     G.reqForecast = (f) => reqForecastRef.current(f);
     G.reqGoldBag = () => reqGoldBagRef.current();
     G.reqRedBag = (p) => reqRedBagRef.current(p);
+    G.reqCloudIntro = (p) => reqCloudIntroRef.current(p);
+    G.syncChallenge = syncChallenge; // bound here — G doesn't exist yet at the boot-sync block
     G.reqTownRead = (p) => reqTownReadRef.current(p);
     G.awardGems = awardGems;
     G.setVoiceBusy = (b) => setVoiceBusyRef.current(b);
@@ -4660,6 +4689,7 @@ export default function DragonGardenQuest() {
     let butterflies = [], glowNodes = [], embers = [], smokes = [], caveLight = null, npcs = [], zzz = [];
     let trailRefs = []; // the five refugees' rigs + encounter state
     let trailFoams = []; // drifting foam flecks on the trail stream
+    let cloudCity = null; // Cloudtop challenge arena (chest, lanes, plates, turtle pad)
     let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, winsSprite = null, water = null, foams = [], riverFoam = null, swayers = [], petals = [], fountainFx = null, townKitHandle = null, libraryRiver = null, libLight = null, townLightRing = null, libSeasonPlate = null;
     let buildCells = [], ghostMesh = null, buildMarkers = null, counterKeeper = null;
     // Glowlands per-map handles live further down (glowHomeHandle /
@@ -5228,7 +5258,7 @@ export default function DragonGardenQuest() {
       const gid = G.activeGarden?.id || window.YGTEEV?.profile?.groupId;
       if (!gid) return;
       liveCh = api.joinGarden(gid, {
-        me: { id: MY_LIVE_ID, name: window.YGTEEV?.profile?.name || "Gardener", outfit: { ...G.outfit } },
+        me: { id: MY_LIVE_ID, name: window.YGTEEV?.profile?.name || "Gardener", outfit: { ...G.outfit }, m: G.map },
         onSync: (state) => {
           const seen = {};
           for (const key in state) {
@@ -5240,6 +5270,9 @@ export default function DragonGardenQuest() {
         },
         onPos: (p) => {
           if (!p || p.i === MY_LIVE_ID) return;
+          // one channel serves both social maps — only walkers on MY map
+          // materialize (legacy clients without a map tag are church-side)
+          if ((typeof p.mp === "string" ? p.mp : "CHURCH") !== G.map) { if (livePlayers[p.i]) livePlayers[p.i].tgt = null; return; }
           const lp = ensureLivePlayer(p.i, null);
           lp.tgt = p;
           lp.lastMsg = G.time;
@@ -5718,7 +5751,7 @@ export default function DragonGardenQuest() {
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
-      babies = []; boomFx = []; trailRefs = []; trailFoams = [];
+      babies = []; boomFx = []; trailRefs = []; trailFoams = []; cloudCity = null;
       gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; riverFoam = null; swayers = []; petals = []; fountainFx = null; townKitHandle = null; G.townLights = null; libraryRiver = null; libLight = null; townLightRing = null; libSeasonPlate = null; G.flyLight = null; G.flyLightQueue = []; G.flyLightGapT = 0; G.__eastGloomK = -1; goldBag = null; redBagMeshes = {}; shopWords = []; emberBar = null; turtle = null; G.turtleSeq = null;
       throwns.forEach((t) => worldGroup.remove(t.m)); throwns = [];
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
@@ -7296,6 +7329,9 @@ export default function DragonGardenQuest() {
         { x: -24, z: 3, r: 2.2, to: "CHURCH", spawn: [26, 0], label: "← " + (G.activeGarden?.name || ((window.YGTEEV?.profile?.memberships || []).length > 1 ? "Community Gardens" : "Community Garden")) },
       ];
       hotspots = [{ x: 0, z: -10.4, r: 3.4, type: "dragon", label: "Feed Ember the dragon" }];
+      // the turtle doubles as the Cloudtop shuttle whenever the player's
+      // youth group has a live challenge — the prompt follows him upriver
+      hotspots.push({ x: 0, z: 0, r: 4.2, type: "turtle", label: "Feed the turtle" });
 
       // —— Glowlands: Home Garden annex (Eastgate arch, Lantern Post,
       //    Wayfarer's Table, Satchel Hook) — additive, after props are placed.
@@ -9090,6 +9126,349 @@ export default function DragonGardenQuest() {
         },
       };
     }
+    // -------- THE CLOUDTOP — the youth group challenge arena --------
+    // A ring of glowing member names in the sky, progress lanes of light
+    // running to a central treasure chest. The snapping turtle is the only
+    // way up and the only way home.
+    function makeCloudText(label, opts = {}) {
+      const cv = document.createElement("canvas");
+      cv.width = 512; cv.height = 128;
+      const c = cv.getContext("2d");
+      c.textAlign = "center"; c.textBaseline = "middle";
+      const size = opts.size || 54;
+      c.font = `900 ${size}px 'Trebuchet MS', sans-serif`;
+      // dark sky-slate pill behind every name — white-on-white was unreadable
+      if (!opts.noPlate) {
+        const tw = Math.min(488, c.measureText(label).width + 56);
+        const x0 = 256 - tw / 2, r = 30;
+        c.beginPath();
+        c.moveTo(x0 + r, 14);
+        c.arcTo(x0 + tw, 14, x0 + tw, 114, r);
+        c.arcTo(x0 + tw, 114, x0, 114, r);
+        c.arcTo(x0, 114, x0, 14, r);
+        c.arcTo(x0, 14, x0 + tw, 14, r);
+        c.closePath();
+        c.fillStyle = "rgba(22,32,62,0.78)"; c.fill();
+        c.lineWidth = 5; c.strokeStyle = opts.glow || "rgba(255,214,110,0.9)"; c.stroke();
+      }
+      c.shadowColor = opts.glow || "rgba(255,214,110,0.95)";
+      c.shadowBlur = 22;
+      c.fillStyle = opts.color || "#fff6d8";
+      c.fillText(label, 256, 66, 460);
+      const tex = new THREE.CanvasTexture(cv);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+      sp.scale.set(4.6 * (opts.sc || 1), 1.15 * (opts.sc || 1), 1);
+      return sp;
+    }
+    function drawChestBanner() {
+      const cc = cloudCity; if (!cc) return;
+      const ch = G.challenge;
+      const cv = cc.bannerCv, c = cv.getContext("2d");
+      c.clearRect(0, 0, cv.width, cv.height);
+      c.textAlign = "center"; c.textBaseline = "middle";
+      const daysLeft = ch ? Math.max(0, Math.ceil((new Date(ch.ends_at).getTime() - Date.now()) / 86400000)) : 0;
+      // one dark board behind both lines — readable against the bright sky
+      const rr = 40;
+      c.beginPath();
+      c.moveTo(24 + rr, 8);
+      c.arcTo(744, 8, 744, 216, rr);
+      c.arcTo(744, 216, 24, 216, rr);
+      c.arcTo(24, 216, 24, 8, rr);
+      c.arcTo(24, 8, 744, 8, rr);
+      c.closePath();
+      c.fillStyle = "rgba(20,30,58,0.82)"; c.fill();
+      c.lineWidth = 6; c.strokeStyle = "rgba(255,214,110,0.85)"; c.stroke();
+      c.font = "900 84px 'Trebuchet MS', sans-serif";
+      c.shadowColor = "rgba(255,220,120,0.8)"; c.shadowBlur = 22;
+      c.fillStyle = "#ffe9a0";
+      const top = ch && ch.completed ? "CHEST OPEN!" : ch ? `${ch.done_count} / ${ch.required} SAVED` : "NO CHALLENGE";
+      c.fillText(top, 384, 78);
+      c.font = "800 50px 'Trebuchet MS', sans-serif";
+      c.shadowBlur = 12;
+      c.fillStyle = "#bfe9ff";
+      const sub = ch && ch.completed ? `${ch.prize} UNLOCKED 🎉` : ch ? `${ch.prize} · ${daysLeft} DAYS LEFT` : "";
+      c.fillText(sub, 384, 158);
+      cc.bannerTex.needsUpdate = true;
+    }
+    function refreshCloudArena() {
+      const cc = cloudCity; if (!cc) return;
+      const ch = G.challenge;
+      drawChestBanner();
+      const parts = (ch && ch.participants) || [];
+      cc.lanes.forEach((lane, i) => {
+        const P = parts[i];
+        // one LED per completed chapter, straight off the server count
+        const doneN = P ? Math.min(cc.segN, P.done_n | 0) : 0;
+        if (cc.leds) {
+          for (let j = 0; j < cc.segN; j++) {
+            cc.leds.setColorAt(i * cc.segN + j,
+              SRGB(j < doneN ? (P && P.done ? 0xffd76a : 0xffe23c) : 0x243452));
+          }
+        }
+        if (lane.tip) {
+          const showTip = doneN > 0 && !(P && P.done);
+          lane.tip.visible = showTip;
+          if (showTip) {
+            const rr = cc.laneR0 - doneN * cc.segL;
+            lane.tip.position.set(lane.dirx * rr, 0.44, lane.dirz * rr);
+          }
+        }
+        if (P && P.done && !lane.done) {
+          lane.done = true;
+          const crown = makeCloudText("👑", { sc: 0.45 });
+          crown.position.copy(lane.plate.position).add(new THREE.Vector3(0, 1.05, 0));
+          worldGroup.add(crown);
+          lane.crown = crown;
+        }
+      });
+      if (cc.leds && cc.leds.instanceColor) cc.leds.instanceColor.needsUpdate = true;
+      // chest state (instant when arriving at an already-open chest; the
+      // fete animates the lid itself when it happens live)
+      if (ch && ch.completed && !cc.feteRunning && !G.cloudFete) {
+        cc.lid.rotation.x = -1.9;
+        cc.glow.material.opacity = 0.9;
+        cc.pillar.visible = true;
+      }
+    }
+    function startChestFete() {
+      if (!cloudCity || G.cloudFete) return;
+      cloudCity.feteRunning = true;
+      G.cloudFete = { t: 0, stage: "shake", burstT: 0 };
+      G.introLock = true; // hold the player for the spectacle's first beats
+    }
+    // cheap confetti quads that flutter out of the open chest and settle on
+    // the cloud deck — the celebration is paper and light, not money
+    function spawnConfetti(n, x, y, z, spread) {
+      const cc = cloudCity; if (!cc || !cc.confettiGeo) return;
+      for (let i = 0; i < n; i++) {
+        if (cc.confetti.length > 160) break;
+        const m = new THREE.Mesh(cc.confettiGeo, cc.confettiMats[(Math.random() * cc.confettiMats.length) | 0]);
+        m.position.set(x + (Math.random() - 0.5) * spread, y + Math.random() * 0.4, z + (Math.random() - 0.5) * spread);
+        m.rotation.set(Math.random() * 9, Math.random() * 9, Math.random() * 9);
+        worldGroup.add(m);
+        cc.confetti.push({
+          m,
+          vx: (Math.random() - 0.5) * 2.6, vy: 1.5 + Math.random() * 2.6, vz: (Math.random() - 0.5) * 2.6,
+          rx: (Math.random() - 0.5) * 7, rz: (Math.random() - 0.5) * 7,
+          ph: Math.random() * 9, ttl: 4.5 + Math.random() * 2,
+        });
+      }
+    }
+    G.__chest = () => startChestFete(); // staging preview hook (?chest=1)
+    function buildClouds() {
+      clearWorld();
+      // a DEEP sky: rich blue overhead so the white cloudscape pops off it
+      setAtmosphere(0x3f8fe8, 0x8fc0f4, 0xdcedff, 0xcfe4fb, 0xfff2cc, 1.55, 0xbcd9fa, 0x9db8dc);
+      terrainY = (x, z) => 0.16 * Math.sin(x * 0.5) * Math.sin(z * 0.45);
+
+      const puffMat = flat(0xffffff, { roughness: 1 });
+      const puffMatB = flat(0xdde9fa, { roughness: 1 }); // shadowed blue-white for depth
+      // the floor: a blue-tinted deck so white puffs and gold light read on it
+      const floor = new THREE.Mesh(new THREE.CircleGeometry(27, 40).rotateX(-Math.PI / 2), flat(0xcfe0f5, { roughness: 1 }));
+      floor.position.y = -0.06;
+      floor.receiveShadow = true;
+      worldGroup.add(floor);
+      for (let i = 0; i < 70; i++) {
+        const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 23.5;
+        const p = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7 + Math.random() * 1.5, 0), Math.random() < 0.5 ? puffMat : puffMatB);
+        p.scale.y = 0.35 + Math.random() * 0.2;
+        p.position.set(Math.cos(a) * r, -0.15 + Math.random() * 0.1, Math.sin(a) * r);
+        p.rotation.y = Math.random() * 9;
+        worldGroup.add(p);
+      }
+      // rim banks: tall cloud walls all around, fencing the arena
+      for (let i = 0; i < 26; i++) {
+        const a = (i / 26) * Math.PI * 2;
+        const b = new THREE.Mesh(new THREE.IcosahedronGeometry(2.2 + Math.random() * 1.6, 0), i % 2 ? puffMat : puffMatB);
+        b.scale.set(1.3, 0.9 + Math.random() * 0.5, 1.3);
+        b.position.set(Math.cos(a) * 26.5, 0.4, Math.sin(a) * 26.5);
+        worldGroup.add(b);
+        addCircleCol(Math.cos(a) * 26.5, Math.sin(a) * 26.5, 2.6);
+      }
+
+      // ---- the treasure chest: FLOATING on its own islet above the arena,
+      // every lane of light pointing up at it ----
+      const islet = new THREE.Group();
+      for (const [ix, iy, iz, is] of [[0, 0, 0, 1.6], [-1.2, -0.25, 0.5, 1.0], [1.1, -0.2, -0.4, 1.1], [0.3, -0.35, 0.9, 0.8]]) {
+        const ip = new THREE.Mesh(new THREE.IcosahedronGeometry(is, 0), puffMatB);
+        ip.scale.y = 0.45;
+        ip.position.set(ix, iy, iz);
+        islet.add(ip);
+      }
+      islet.position.y = 2.6;
+      worldGroup.add(islet);
+      // soft gold pool on the deck below, so the float reads from the ground
+      const chestPool = new THREE.Mesh(new THREE.PlaneGeometry(6.5, 6.5),
+        new THREE.MeshBasicMaterial({ map: glowTex, color: SRGB(0xffd76a), transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending }));
+      chestPool.rotation.x = -Math.PI / 2;
+      chestPool.position.y = 0.07;
+      worldGroup.add(chestPool);
+      const chest = new THREE.Group();
+      const wood = flat(0x8a5a2e, { roughness: 0.8 });
+      const woodD = flat(0x6b4626, { roughness: 0.85 });
+      const gold = flat(0xffd76a, { emissive: 0xb8862c, emissiveIntensity: 0.5, roughness: 0.4 });
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.0, 1.25), wood);
+      base.position.y = 0.5; base.castShadow = true;
+      const lid = new THREE.Group();
+      const lidM = new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.55, 1.3), woodD);
+      lidM.position.set(0, 0.27, 0.62);
+      lid.add(lidM);
+      lid.position.set(0, 1.0, -0.62); // hinged along the back edge
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.02, 1.27), gold);
+      band.position.y = 0.5;
+      const lock = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.34, 0.1), gold);
+      lock.position.set(0, 0.95, 0.66);
+      // the money inside: a heap of gold + a bill stack, hidden until open
+      const loot = new THREE.Group();
+      const heap = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 0), gold);
+      heap.scale.y = 0.5; heap.position.y = 1.05;
+      const bills = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.36), flat(0x7fd97a, { emissive: 0x2f8a3a, emissiveIntensity: 0.4 }));
+      bills.position.set(0.32, 1.12, 0.1); bills.rotation.y = 0.5;
+      loot.add(heap, bills);
+      chest.add(base, lid, band, lock, loot);
+      chest.position.y = 3.15; // riding the islet, high over every lane
+      chest.scale.set(1.25, 1.25, 1.25);
+      worldGroup.add(chest);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffd76a), transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
+      glow.scale.set(7, 7, 1); glow.position.y = 4.3;
+      worldGroup.add(glow);
+      // the light pillar that erupts when the chest opens
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.6, 26, 10, 1, true),
+        new THREE.MeshBasicMaterial({ map: glowTex, color: SRGB(0xffe9a0), transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      pillar.position.y = 13.4; pillar.visible = false;
+      worldGroup.add(pillar);
+      // floating banner: "11 / 15 SAVED · $1,000 · 17 DAYS LEFT"
+      const bannerCv = document.createElement("canvas");
+      bannerCv.width = 768; bannerCv.height = 224;
+      const bannerTex = new THREE.CanvasTexture(bannerCv);
+      const banner = new THREE.Sprite(new THREE.SpriteMaterial({ map: bannerTex, transparent: true, depthWrite: false }));
+      banner.scale.set(10.4, 3.05, 1);
+      banner.position.set(0, 7.0, 0); // crowning the floating chest
+      worldGroup.add(banner);
+
+      // ---- the ring of participants: glowing names + LED chapter meters ----
+      // One LED per CHAPTER of the goal town (84 for Meadow Town): your very
+      // first chapter lights your very first LED — progress reads instantly.
+      const ch = G.challenge;
+      const parts = ((ch && ch.participants) || []).slice(0, 24);
+      const lanes = [];
+      const N = Math.max(1, parts.length);
+      const SEG_N = Math.max(10, (ch && ch.track_total) || 84);
+      const LANE_R0 = 13.2, LANE_LEN = 10.0, SEG_L = LANE_LEN / SEG_N;
+      parts.forEach((P, i) => {
+        const a = (i / N) * Math.PI * 2;
+        const dirx = Math.cos(a), dirz = Math.sin(a);
+        const plate = makeCloudText(P.name, {
+          color: P.is_me ? "#b8fff0" : P.done ? "#ffe9a0" : "#f4f8ff",
+          glow: P.done ? "rgba(255,200,90,0.95)" : P.is_me ? "rgba(90,240,200,0.9)" : "rgba(140,170,255,0.8)",
+        });
+        plate.position.set(dirx * 15.5, 2.3 + Math.sin(a * 3) * 0.15, dirz * 15.5);
+        worldGroup.add(plate);
+        // the LED housing: a dark rail the strip sits in, so unlit segments
+        // still read against the white deck
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(LANE_LEN + 0.3, 0.07, 0.3),
+          new THREE.MeshBasicMaterial({ color: SRGB(0x1d2742) }));
+        rail.position.set(dirx * (LANE_R0 - LANE_LEN / 2), 0.27, dirz * (LANE_R0 - LANE_LEN / 2));
+        rail.rotation.y = -a;
+        worldGroup.add(rail);
+        // the bright head of the meter — pulses at the newest lit chapter
+        const tip = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffe23c), transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+        tip.scale.set(1.1, 1.1, 1);
+        tip.visible = false;
+        worldGroup.add(tip);
+        lanes.push({ plate, dirx, dirz, ang: a, tip, done: false, isMe: P.is_me });
+        if (P.is_me) {
+          const me = makeCloudText("YOU", { sc: 0.4, color: "#b8fff0", glow: "rgba(90,240,200,0.9)" });
+          me.position.set(dirx * 15.5, 3.25, dirz * 15.5);
+          worldGroup.add(me);
+        }
+      });
+      // every LED in the arena in ONE instanced mesh (24 lanes x 84 segments
+      // is ~2000 boxes — a single draw call this way)
+      let leds = null;
+      if (parts.length) {
+        const segGeo = new THREE.BoxGeometry(SEG_L * 0.82, 0.09, 0.2);
+        leds = new THREE.InstancedMesh(segGeo, new THREE.MeshBasicMaterial(), parts.length * SEG_N);
+        const dummy = new THREE.Object3D();
+        lanes.forEach((lane, i) => {
+          for (let j = 0; j < SEG_N; j++) {
+            const rr = LANE_R0 - (j + 0.5) * SEG_L;
+            dummy.position.set(lane.dirx * rr, 0.34, lane.dirz * rr);
+            dummy.rotation.set(0, -lane.ang, 0);
+            dummy.updateMatrix();
+            leds.setMatrixAt(i * SEG_N + j, dummy.matrix);
+            leds.setColorAt(i * SEG_N + j, SRGB(0x243452));
+          }
+        });
+        leds.instanceMatrix.needsUpdate = true;
+        worldGroup.add(leds);
+      }
+      if ((ch && ch.participants || []).length > 24) {
+        const more = makeCloudText(`+${ch.participants.length - 24} more climbing`, { sc: 0.55, color: "#d8e6ff", glow: "rgba(140,170,255,0.7)" });
+        more.position.set(0, 6.4, 0);
+        worldGroup.add(more);
+      }
+
+      // ---- the floating question mark: challenge rules ----
+      const help = new THREE.Group();
+      const qArc = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.14, 7, 14, Math.PI * 1.45), gold);
+      qArc.rotation.z = -Math.PI * 0.18;
+      qArc.position.y = 0.55;
+      const qStem = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.34, 0.24), gold);
+      qStem.position.set(0.02, -0.12, 0);
+      const qDot = new THREE.Mesh(new THREE.SphereGeometry(0.15, 7, 6), gold);
+      qDot.position.set(0.02, -0.62, 0);
+      const qHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffd76a), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+      qHalo.scale.set(3, 3, 1);
+      help.add(qArc, qStem, qDot, qHalo);
+      help.position.set(6.4, 2.0, 12.5);
+      worldGroup.add(help);
+
+      // ---- the turtle waits on his pad, blushing and proud ----
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.9, 0.42, 9), puffMatB);
+      pad.position.set(0, 0.05, 20.2);
+      worldGroup.add(pad);
+      const ct = makeTurtle();
+      ct.position.set(0, 0.35, 20.2);
+      ct.rotation.y = Math.PI; // facing the arena, ready to dive
+      worldGroup.add(ct);
+      ct.traverse((o) => { if (o.isMesh && o.material && o.material.color) o.material.color.lerp(SRGB(0xff9ad0), 0.35); });
+      addCircleCol(0, 20.2, 1.5); // solid shell — no walking through the pilot
+
+      cloudCity = {
+        chest, lid, loot, glow, pillar, banner, bannerCv, bannerTex,
+        islet, chestPool, lanes, leds, segN: SEG_N, laneR0: LANE_R0, segL: SEG_L,
+        help, turtle: ct, feteRunning: false,
+        confetti: [],
+        confettiGeo: new THREE.PlaneGeometry(0.16, 0.11),
+        confettiMats: [0xff5a7a, 0xffd76a, 0x7fd97a, 0x7dd0ff, 0xff9ad0, 0xc9a0ff].map((cx) =>
+          new THREE.MeshBasicMaterial({ color: SRGB(cx), side: THREE.DoubleSide })),
+      };
+      refreshCloudArena();
+
+      exits = []; // the only way down is the turtle
+      hotspots = [
+        { x: 0, z: 20.2, r: 5.0, type: "turtleride", label: "Fly back home" },
+        { x: 6.4, z: 12.5, r: 2.0, type: "cloudhelp", label: "What is this place?" },
+      ];
+
+      // arrival fx + the challenge welcome (once per challenge)
+      G.cloudPollT = 40;
+      setTimeout(() => {
+        if (G.map !== "CLOUDS") return;
+        const c2 = G.challenge;
+        if (c2 && !G.cloudWelcome[c2.id]) {
+          G.cloudWelcome[c2.id] = 1;
+          G.saveT = 0.2;
+          if (G.reqCloudIntro) G.reqCloudIntro({ rules: false });
+        }
+        // chest already open when you arrive late to the party — still show
+        // the fireworks ONCE per player, then it's simply gloriously open
+        if (c2 && c2.completed && !G.chestSeen[c2.id]) startChestFete();
+        if (new URLSearchParams(window.location.search).get("chest") === "1" && !G.__chestFeteDone) startChestFete();
+      }, 1100);
+    }
+
     function loadMap(name, spawn) {
       // per-map music: recorded loop when we have one, generative otherwise
       try {
@@ -9121,12 +9500,14 @@ export default function DragonGardenQuest() {
       else if (name === "LIBRARY") { buildLibraryInterior(); glowTriggers = []; }
       else if (name === "CHURCH_HALL") { buildChurchHall(); glowTriggers = []; }
       else if (name === "TRAIL") { buildTrail(); glowTriggers = []; }
+      else if (name === "CLOUDS") { buildClouds(); glowTriggers = []; }
       else { buildShopInterior(name); glowTriggers = []; }
       // Glowlands map-entry hooks (prologue resume in town, road travel bed)
       if (name === "TOWN") setTimeout(() => { if (G.map === "TOWN" && !G.transitioning) glowEnterTown(); }, 1400);
       if (name === "EASTROAD") { try { startEastRoadTravelLoop(); } catch (e) {} }
       else { try { stopEastRoadTravelLoop(); } catch (e) {} }
-      if (window.YGTEEV_API) { if (name === "CHURCH") joinLiveGarden(); else leaveLiveGarden(); }
+      if (window.YGTEEV_API) { if (name === "CHURCH" || name === "CLOUDS") joinLiveGarden(); else leaveLiveGarden(); }
+      if (name === "HOME" || name === "CLOUDS") { try { G.syncChallenge && G.syncChallenge(); } catch (e) {} }
       // "while you were gone…" — report any off-map raids once the garden loads
       if (name === "HOME" && G.awayEaten && G.awayEaten.length && G.reqAwayReport) {
         const eaten = G.awayEaten.slice();
@@ -9294,6 +9675,37 @@ export default function DragonGardenQuest() {
         if (Math.hypot(playerPos.x - dragon.position.x, playerPos.z - dragon.position.z) <= TAP_REACH) {
           currentPrompt = { type: "dragon" };
           doAction();
+          return;
+        }
+      }
+
+      // --- Cloudtop: tap the waiting turtle from anywhere nearby to fly home ---
+      if (G.map === "CLOUDS" && cloudCity && cloudCity.turtle && !G.turtleSeq) {
+        const cts = toScreen(cloudCity.turtle.position.x, cloudCity.turtle.position.y + 0.6, cloudCity.turtle.position.z);
+        const ctD = cts.behind ? Infinity : Math.hypot(sx - cts.x, sy - cts.y);
+        if (ctD < R * 1.8 && ctD < pickD) {
+          if (Math.hypot(playerPos.x - cloudCity.turtle.position.x, playerPos.z - cloudCity.turtle.position.z) <= 8) {
+            currentPrompt = { type: "turtleride" };
+            doAction();
+          } else {
+            toast("Bounce a little closer to the turtle to fly home 🐢", "warn");
+          }
+          return;
+        }
+      }
+
+      // --- the turtle: tap him directly to feed (cloud shuttle duty) ---
+      if (turtle && G.map === "HOME" && G.challenge && !G.turtleSeq && G.turtleCd <= 0) {
+        const ts2 = toScreen(turtle.position.x, turtle.position.y + 0.6, turtle.position.z);
+        const tD = ts2.behind ? Infinity : Math.hypot(sx - ts2.x, sy - ts2.y);
+        if (tD < R * 1.6 && tD < pickD) {
+          // he swims mid-river, so the reach is long — the fruit arcs out
+          if (Math.hypot(playerPos.x - turtle.position.x, playerPos.z - turtle.position.z) <= 7.5) {
+            currentPrompt = { type: "turtle" };
+            doAction();
+          } else {
+            toast("Walk to the water's edge to feed the turtle 🐢", "warn");
+          }
           return;
         }
       }
@@ -9570,6 +9982,51 @@ export default function DragonGardenQuest() {
             setTimeout(() => toast("🕊️ Every traveler fed — five levels of kindness on the road.", "info"), 2200);
           }
         });
+      }
+      else if (type === "turtle") {
+        // the cloud shuttle: a fruit makes him blush pink, then he sweeps
+        // you onto the shell and corkscrews up to the Cloudtop
+        if (!turtle || G.turtleSeq || !G.challenge) return;
+        const order = ["strawberry", "blueberry", "sunfruit", "glowberry", "starberry", "dawnberry", "gloryberry"];
+        const k = (G.activeKind === "fruit" && G.inv.fruit[G.selectedFruit] > 0)
+          ? G.selectedFruit
+          : order.find((f) => G.inv.fruit[f] > 0);
+        if (!k) {
+          SFX.wrong();
+          toast("The turtle eyes your empty basket… bring him a fruit and he'll fly you to the clouds! ☁️", "warn");
+          return;
+        }
+        G.inv.fruit[k]--;
+        G.saveT = 0.2;
+        G.turtleCd = 12; // hold any prank window while the flight winds up
+        const tx = turtle.position.x, tz = turtle.position.z;
+        throwFruit(playerPos.x, playerPos.z, tx, 0.9, tz, SEEDS[k].color, () => {
+          if (!turtle || G.map !== "HOME") return;
+          SFX.feed();
+          spawnBurst(turtle.position.x, turtle.position.z, 0xff9ad0, 10, { glow: true, vy: 2.0, y0: 0.6 });
+          const TU = turtle.userData;
+          if (!TU.tintMats) {
+            TU.tintMats = [];
+            turtle.traverse((o) => { if (o.isMesh && o.material && o.material.color) TU.tintMats.push({ m: o.material, c: o.material.color.clone() }); });
+          }
+          TU.tintK = 0; TU.tinting = true;
+          toast("🐢💕 The turtle is DELIGHTED — hold on tight!", "info");
+          setTimeout(() => {
+            if (G.map === "HOME" && turtle && !G.turtleSeq) {
+              SFX.whoosh();
+              G.turtleSeq = { phase: "flyboard", t: 0, fx: playerPos.x, fz: playerPos.z, fy: player.position.y };
+            }
+          }, 950);
+        });
+      }
+      else if (type === "turtleride") {
+        if (!cloudCity || G.turtleSeq) return;
+        SFX.click();
+        G.turtleSeq = { phase: "cboard", t: 0, fx: playerPos.x, fz: playerPos.z, fy: player.position.y };
+      }
+      else if (type === "cloudhelp") {
+        SFX.click();
+        if (G.reqCloudIntro) G.reqCloudIntro({ rules: true });
       }
       else if (type === "bridge") { if (G.reqBridge) G.reqBridge(); }
       else if (type === "goldbag") {
@@ -10348,6 +10805,100 @@ export default function DragonGardenQuest() {
           toast("The side door is bolted shut. Somewhere beyond it, an old road waits… soon.", "warn");
         } else if (dDoor > 3.6 && G.trailDoorNagged) G.trailDoorNagged = false;
       }
+      // Cloud-run flash: fades wherever we land, so a dive home can never
+      // strand the player behind a stuck white overlay
+      if (G.cloudFlashT > 0) {
+        G.cloudFlashT -= dt;
+        if (G.setFlash) G.setFlash(Math.max(0, Math.min(1, G.cloudFlashT / 1.2)));
+      }
+      // ---- THE CLOUDTOP: ambience, the ride home, and the chest fete ----
+      if (G.map === "CLOUDS" && cloudCity) {
+        const cc = cloudCity;
+        // everything up here breathes: the ? bobs, the chest pulses, the
+        // lit lane-orbs shimmer, the turtle paddles in his sleep
+        cc.help.position.y = 2.0 + Math.sin(G.time * 1.3) * 0.25;
+        cc.help.rotation.y += dt * 1.2;
+        const chestBob = Math.sin(G.time * 1.1) * 0.12;
+        cc.chest.position.y = 3.15 + chestBob;
+        cc.islet.position.y = 2.6 + chestBob;
+        cc.chestPool.material.opacity = 0.22 + Math.sin(G.time * 1.1) * 0.07;
+        cc.banner.position.y = 7.0 + Math.sin(G.time * 0.9) * 0.12;
+        cc.turtle.position.y = 0.35 + Math.sin(G.time * 1.9) * 0.06;
+        cc.turtle.userData.flippers.forEach((f) => { f.rotation.x = Math.sin(G.time * 3 + f.userData.ph) * 0.3; });
+        if (!G.cloudFete) cc.glow.material.opacity = (G.challenge && G.challenge.completed) ? 0.85 : 0.32 + Math.sin(G.time * 2.2) * 0.1;
+        for (const lane of cc.lanes) if (lane.tip && lane.tip.visible) {
+          // the meter head breathes at the newest lit chapter
+          const ts3 = 1.0 + Math.sin(G.time * 3.4 + lane.ang * 5) * 0.18;
+          lane.tip.scale.set(ts3, ts3, 1);
+          lane.tip.material.opacity = 0.7 + Math.sin(G.time * 3.4 + lane.ang * 5) * 0.25;
+        }
+        // confetti: flutter down, settle on the deck, shrink away
+        if (cc.confetti.length) {
+          for (let ci = cc.confetti.length - 1; ci >= 0; ci--) {
+            const cf = cc.confetti[ci];
+            cf.ttl -= dt;
+            cf.vy -= dt * 3.2;
+            if (cf.vy < -1.3) cf.vy = -1.3; // paper falls slow
+            cf.m.position.x += (cf.vx + Math.sin(G.time * 2.6 + cf.ph) * 0.5) * dt;
+            cf.m.position.z += (cf.vz + Math.cos(G.time * 2.2 + cf.ph) * 0.5) * dt;
+            cf.m.position.y += cf.vy * dt;
+            cf.m.rotation.x += cf.rx * dt;
+            cf.m.rotation.z += cf.rz * dt;
+            if (cf.m.position.y < 0.06) { cf.m.position.y = 0.06; cf.vx *= 0.9; cf.vz *= 0.9; cf.rx *= 0.9; cf.rz *= 0.9; }
+            if (cf.ttl < 0.5) cf.m.scale.setScalar(Math.max(0.01, cf.ttl / 0.5));
+            if (cf.ttl <= 0) { worldGroup.remove(cf.m); cc.confetti.splice(ci, 1); }
+          }
+        }
+        // live results: quiet re-pull while people read down below
+        G.cloudPollT -= dt;
+        if (G.cloudPollT <= 0) { G.cloudPollT = 40; try { G.syncChallenge && G.syncChallenge(); } catch (e) {} }
+        // (the ride-home machine lives AFTER the walk/ground code, in the
+        // same frame slot as the home turtle — see "Cloudtop ride home")
+        // THE FETE: shake -> lid blast -> golden rain over the whole arena
+        const F = G.cloudFete;
+        if (F) {
+          F.t += dt;
+          if (F.stage === "shake") {
+            cc.chest.rotation.z = Math.sin(G.time * 34) * 0.06 * Math.min(1, F.t);
+            cc.chest.position.y = 3.15 + Math.abs(Math.sin(G.time * 17)) * 0.1;
+            if (F.t > 0.25 && !F.rumbled) { F.rumbled = 1; SFX.roar(); G.shakeT = 0.35; }
+            if (F.t >= 1.4) { F.stage = "blast"; F.t = 0; }
+          } else if (F.stage === "blast") {
+            const k = Math.min(1, F.t / 0.35);
+            cc.lid.rotation.x = -1.9 * k;
+            cc.chest.rotation.z = 0;
+            if (!F.popped) {
+              F.popped = 1;
+              if (G.setFlash) G.setFlash(0.7);
+              G.cloudFlashT = 0.7;
+              cc.pillar.visible = true;
+              cc.glow.material.opacity = 1;
+              SFX.pass(); SFX.coin(3);
+              G.shakeT = 0.4;
+              spawnBurst(0, 0, 0xffd76a, 22, { glow: true, vy: 3.4, vs: 2.2, ttl: 1.2, y0: 3.6, size: 0.16 });
+              spawnConfetti(46, 0, 4.2, 0, 2.4); // the lid blows a paper storm
+              const ch2 = G.challenge;
+              toast(`🎉 CHALLENGE COMPLETE! The chest is OPEN — ${(ch2 && ch2.prize) || "$1,000"} for your youth group!`, "info");
+              if (ch2 && ch2.completed) { G.chestSeen[ch2.id] = 1; G.saveT = 0.2; }
+              G.__chestFeteDone = 1;
+            }
+            if (F.t >= 0.6) { F.stage = "rain"; F.t = 0; F.burstT = 0; G.introLock = false; }
+          } else if (F.stage === "rain") {
+            F.burstT -= dt;
+            if (F.burstT <= 0) {
+              F.burstT = 0.16;
+              const a = Math.random() * Math.PI * 2, r = 2 + Math.random() * 14;
+              const cols = [0xffd76a, 0x7fd97a, 0xff9ad0, 0x7dd0ff, 0xfff2b8];
+              spawnBurst(Math.cos(a) * r, Math.sin(a) * r, cols[(Math.random() * cols.length) | 0], 6,
+                { glow: true, vy: 2.6, vs: 1.4, ttl: 1.0, y0: 2.2 + Math.random() * 2, size: 0.12 });
+              spawnConfetti(3, 0, 4.4, 0, 1.8); // a steady pour from the open chest
+              if (Math.random() < 0.18) SFX.sparkle();
+            }
+            cc.pillar.material.opacity = 0.4 + Math.sin(G.time * 5) * 0.15;
+            if (F.t >= 6.0) { G.cloudFete = null; }
+          }
+        }
+      }
       if (G.map === "TRAIL" && trailFoams.length) {
         for (const f2 of trailFoams) {
           f2.sp.position.x += f2.v * dt;
@@ -10608,7 +11159,22 @@ export default function DragonGardenQuest() {
         hop = Math.sin((1 - G.playerHopT / 0.32) * Math.PI);
       }
       player.scale.set(1 + hop * 0.12, 1 - hop * 0.2, 1 + hop * 0.12);
-      player.position.y = groundY + hop * 0.3 + (moving ? Math.abs(Math.sin(G.time * 11)) * 0.05 : 0);
+      // low gravity up top: big slow moon-bounces instead of the walk jitter,
+      // and even standing still you float a little on the cloud
+      const cloudBounce = G.map === "CLOUDS"
+        ? (moving ? Math.abs(Math.sin(G.time * 4.6)) * 0.42 : 0.04 + Math.sin(G.time * 1.7) * 0.045)
+        : (moving ? Math.abs(Math.sin(G.time * 11)) * 0.05 : 0);
+      // the Cloudtop ride machine runs earlier in the frame and owns the
+      // player's height while boarding/diving — don't stomp it back to deck
+      if (!(G.map === "CLOUDS" && G.turtleSeq)) player.position.y = groundY + hop * 0.3 + cloudBounce;
+      if (G.map === "CLOUDS" && moving) {
+        // a puff each time the bounce touches down
+        const bph = Math.sin(G.time * 4.6);
+        if (bph > -0.12 && bph < 0.12 && G.time - (G.cloudPuffT || -9) > 0.4) {
+          G.cloudPuffT = G.time;
+          spawnBurst(playerPos.x, playerPos.z, 0xffffff, 4, { size: 0.1, vy: 1.0, vs: 0.8, ttl: 0.5, y0: 0.08 });
+        }
+      }
 
       // ---- the snapping turtle: swim, lure, tantrum, yeet ----
       if (turtle && G.map === "HOME") {
@@ -10656,7 +11222,15 @@ export default function DragonGardenQuest() {
         // stepping onto a ramp still gets yanked mid-crossing. The prank only
         // fires on the open riverbank, never on the road.
         const onBridgeRoad = Math.abs(playerPos.z - 3) < 2.6 && playerPos.x > -21.5 && playerPos.x < -6.5;
-        if (!seq && G.turtleCd <= 0 && !G.introActive && !G.introLock && !shopOpenRef.current && !onBridgeRoad
+        // pink delight: once fed, he blushes head-to-shell for the flight
+        if (TU.tinting && TU.tintMats) {
+          TU.tintK = Math.min(1, (TU.tintK || 0) + dt * 1.6);
+          const pinkC = SRGB(0xff9ad0);
+          TU.tintMats.forEach((tm) => { tm.m.color.copy(tm.c).lerp(pinkC, TU.tintK * 0.75); });
+        }
+        // challenge live = the turtle is ON DUTY as the cloud shuttle: no
+        // pranks, boarding happens only by feeding him
+        if (!seq && !G.challenge && G.turtleCd <= 0 && !G.introActive && !G.introLock && !shopOpenRef.current && !onBridgeRoad
             && Math.hypot(playerPos.x - turtle.position.x, playerPos.z - turtle.position.z) < 4.6) {
           G.turtleSeq = { phase: "board", t: 0, fx: playerPos.x, fz: playerPos.z, fy: player.position.y };
           SFX.whoosh();
@@ -10665,7 +11239,37 @@ export default function DragonGardenQuest() {
           const q = G.turtleSeq;
           q.t += dt;
           const shellY = () => turtle.position.y + TU.shellTopY;
-          if (q.phase === "board") {
+          if (q.phase === "flyboard") {
+            // swept aboard for the CLOUD RUN — same scoop, kinder pilot
+            const k = Math.min(1, q.t / 0.5);
+            playerPos.x = q.fx + (turtle.position.x - q.fx) * k;
+            playerPos.z = q.fz + (turtle.position.z - q.fz) * k;
+            player.position.set(playerPos.x, q.fy + (shellY() - q.fy) * k + Math.sin(k * Math.PI) * 1.4, playerPos.z);
+            if (k >= 1) { q.phase = "liftoff"; q.t = 0; q.bx = turtle.position.x; q.bz = turtle.position.z; SFX.whoosh(); }
+          } else if (q.phase === "liftoff") {
+            // spiral ascent: tight climbing corkscrew, flippers paddling sky,
+            // white cloud-layer punch-through at the top
+            const T = 3.0, k = Math.min(1, q.t / T);
+            const ang = q.t * 2.4;
+            const rad = 2.2 * Math.min(1, q.t * 0.8) * (1 - k * 0.65);
+            turtle.position.x = q.bx + Math.cos(ang) * rad;
+            turtle.position.z = q.bz + Math.sin(ang) * rad;
+            turtle.position.y = -0.16 + k * k * 17;
+            turtle.rotation.y = ang + Math.PI / 2;
+            turtle.rotation.z = Math.sin(G.time * 6) * 0.08;
+            TU.flippers.forEach((f) => { f.rotation.x = Math.sin(G.time * 13 + f.userData.ph) * 0.7; });
+            playerPos.x = turtle.position.x; playerPos.z = turtle.position.z;
+            player.position.set(playerPos.x, shellY(), playerPos.z);
+            player.rotation.y = turtle.rotation.y;
+            if (!q.puffed && q.t > 1.1) { q.puffed = 1; spawnBurst(playerPos.x, playerPos.z, 0xffffff, 10, { size: 0.12, vy: 1.5, vs: 1.2, ttl: 0.8, y0: 0.3 }); }
+            if (G.setFlash) G.setFlash(Math.max(0, (q.t - (T - 0.7)) / 0.7));
+            if (k >= 1) {
+              if (G.setFlash) G.setFlash(1);
+              G.cloudFlashT = 1.2;
+              loadMap("CLOUDS", [0, 17.2]);
+              return; // the world just changed under us — nothing more this frame
+            }
+          } else if (q.phase === "board") {
             const k = Math.min(1, q.t / 0.5);
             playerPos.x = q.fx + (turtle.position.x - q.fx) * k;
             playerPos.z = q.fz + (turtle.position.z - q.fz) * k;
@@ -10716,8 +11320,55 @@ export default function DragonGardenQuest() {
         }
       }
 
+      // ---- Cloudtop ride home: leap on, a proud lap, then the dive ----
+      // Runs AFTER every ground/walk write, exactly like the home turtle's
+      // machine, so nothing later in the frame can pull the rider off the
+      // shell. Three beats: cboard (the leap), cride (he lifts off and
+      // carries you through one slow turn), cdive (rear up, white, HOME).
+      if (G.map === "CLOUDS" && cloudCity && G.turtleSeq) {
+        const q2 = G.turtleSeq, ct3 = cloudCity.turtle;
+        const seat = () => ct3.position.y + (ct3.userData.shellTopY || 0.9);
+        q2.t += dt;
+        if (q2.phase === "cboard") {
+          const k = Math.min(1, q2.t / 0.6);
+          playerPos.x = q2.fx + (ct3.position.x - q2.fx) * k;
+          playerPos.z = q2.fz + (ct3.position.z - q2.fz) * k;
+          player.position.set(playerPos.x, q2.fy + (seat() - q2.fy) * k + Math.sin(k * Math.PI) * 2.0, playerPos.z);
+          player.rotation.y = ct3.rotation.y;
+          if (k >= 1) {
+            q2.phase = "cride"; q2.t = 0;
+            G.playerHopT = 0.32; // landing squash on the shell
+            spawnBurst(playerPos.x, playerPos.z, 0xff9ad0, 6, { glow: true, vy: 1.6, y0: seat(), size: 0.09 });
+            SFX.feed();
+          }
+        } else if (q2.phase === "cride") {
+          const k = Math.min(1, q2.t / 1.5);
+          ct3.position.y = 0.35 + k * 1.1;
+          ct3.rotation.y = Math.PI + k * Math.PI * 2; // one slow proud lap
+          ct3.rotation.z = Math.sin(G.time * 5) * 0.05;
+          ct3.userData.flippers.forEach((f) => { f.rotation.x = Math.sin(G.time * 11 + f.userData.ph) * 0.6; });
+          playerPos.x = ct3.position.x; playerPos.z = ct3.position.z;
+          player.position.set(playerPos.x, seat(), playerPos.z);
+          player.rotation.y = ct3.rotation.y;
+          if (k >= 1) { q2.phase = "cdive"; q2.t = 0; SFX.whoosh(); }
+        } else if (q2.phase === "cdive") {
+          ct3.position.y = 1.45 + q2.t * 1.3;
+          ct3.rotation.z = Math.sin(G.time * 9) * 0.08;
+          ct3.userData.flippers.forEach((f) => { f.rotation.x = Math.sin(G.time * 14 + f.userData.ph) * 0.75; });
+          playerPos.x = ct3.position.x; playerPos.z = ct3.position.z;
+          player.position.set(playerPos.x, seat(), playerPos.z);
+          player.rotation.y = ct3.rotation.y;
+          if (G.setFlash) G.setFlash(Math.max(0, (q2.t - 0.45) / 0.5));
+          if (q2.t >= 0.95) {
+            if (G.setFlash) G.setFlash(1);
+            G.cloudFlashT = 1.2;
+            loadMap("HOME", [-8.2, 5.6]);
+          }
+        }
+      }
+
       // ---- live groupmates: broadcast my position, animate theirs ----
-      if (liveCh && G.map === "CHURCH") {
+      if (liveCh && (G.map === "CHURCH" || G.map === "CLOUDS")) {
         liveSendGate -= dt;
         if (liveSendGate <= 0) {
           const dxy = Math.abs(playerPos.x - lastSent.x) + Math.abs(playerPos.z - lastSent.z);
@@ -10726,7 +11377,7 @@ export default function DragonGardenQuest() {
           if (dxy > 0.06 || Math.abs(dAng) > 0.1 || moving !== lastSent.m || G.time - lastSent.t > 2.5) {
             lastSent.x = playerPos.x; lastSent.z = playerPos.z; lastSent.a = playerAngle; lastSent.m = moving; lastSent.t = G.time;
             liveSendGate = 0.12; // ~8 Hz max while actually moving
-            try { liveCh.sendPos({ i: MY_LIVE_ID, x: +playerPos.x.toFixed(2), z: +playerPos.z.toFixed(2), a: +playerAngle.toFixed(2), m: moving }); } catch (e) {}
+            try { liveCh.sendPos({ i: MY_LIVE_ID, x: +playerPos.x.toFixed(2), z: +playerPos.z.toFixed(2), a: +playerAngle.toFixed(2), m: moving, mp: G.map }); } catch (e) {}
           } else liveSendGate = 0.05;
         }
       }
@@ -10757,7 +11408,9 @@ export default function DragonGardenQuest() {
         let rHop = 0;
         if (lp.hopT > 0) { lp.hopT -= dt; rHop = Math.sin((1 - lp.hopT / 0.32) * Math.PI); }
         m.scale.set(1 + rHop * 0.12, 1 - rHop * 0.2, 1 + rHop * 0.12);
-        m.position.y = terrainY(m.position.x, m.position.z) + rHop * 0.3 + (walking ? Math.abs(Math.sin(G.time * 11 + m.position.x)) * 0.05 : 0);
+        m.position.y = terrainY(m.position.x, m.position.z) + rHop * 0.3 + (G.map === "CLOUDS"
+          ? (walking ? Math.abs(Math.sin(G.time * 4.6 + m.position.x)) * 0.42 : 0.04 + Math.sin(G.time * 1.7 + m.position.z) * 0.045)
+          : (walking ? Math.abs(Math.sin(G.time * 11 + m.position.x)) * 0.05 : 0));
       }
 
       if (G.introTask && G.introTaskDone === G.introTask) {
@@ -11268,6 +11921,12 @@ export default function DragonGardenQuest() {
           hx = trailRefs[h.idx].g.position.x;
           hz = trailRefs[h.idx].g.position.z;
         }
+        if (h.type === "turtle") {
+          // cloud shuttle duty: only with a live challenge, only while he's
+          // free — and never while the player stands in the bridge safe area
+          if (!G.challenge || !turtle || G.turtleSeq || G.turtleCd > 0) continue;
+          hx = turtle.position.x; hz = turtle.position.z;
+        }
         if (h.type === "dragon" && G.dragonState !== "idle") {
           // he's out of the cave — the feed prompt follows him while he
           // prowls; while he's charging or running home he can't be fed
@@ -11771,7 +12430,7 @@ export default function DragonGardenQuest() {
   const RARE_CROPS = ["glowberry", "starberry", "dawnberry", "gloryberry"];
   const INV_TILE_CROPS = [...HOME_CROPS, ...RARE_CROPS]; // all have tile art now
   const inCommunity = hud.map === "CHURCH";
-  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", lockeddoor: "🔒", refugee: "🤲", townbible: "📖", riverchat: "💬", bridge: "🌉", goldbag: "💰", redbag: "🎒", glow: "✨" };
+  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", lockeddoor: "🔒", refugee: "🤲", townbible: "📖", riverchat: "💬", bridge: "🌉", goldbag: "💰", redbag: "🎒", glow: "✨", turtle: "🍓", turtleride: "🐢", cloudhelp: "❓" };
   // the painted market grid has six cells (gloryberry has no cell yet)
   const MARKET_KEYS = ["strawberry", "blueberry", "sunfruit"]; // the painted board sells home fruit only
   const marketTotal = seedKeys.reduce((t, k) => t + hud.inv.fruit[k] * SEEDS[k].sell, 0);
@@ -12988,6 +13647,77 @@ export default function DragonGardenQuest() {
           </div>
         </div>
       )}
+
+      {/* Cloudtop challenge: welcome card on first flight, rules from the ? */}
+      {started && cloudIntro && (() => {
+        const g = gameRef.current;
+        const ch = g?.challenge;
+        const days = ch ? Math.max(0, Math.ceil((new Date(ch.ends_at).getTime() - Date.now()) / 86400000)) : 0;
+        const close = () => { g?.SFX?.pass?.(); setCloudIntro(null); };
+        return (
+          <div style={{
+            position: "absolute", inset: 0, zIndex: 40,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "radial-gradient(ellipse at 50% 45%, rgba(120,170,255,.18), rgba(20,30,60,.78))",
+            animation: "byReadIn .4s ease-out both", fontFamily: T_UI.font,
+          }}>
+            <div style={{
+              width: "min(400px, 88vw)", borderRadius: 20, padding: "24px 22px 20px", textAlign: "center",
+              background: "linear-gradient(168deg, #eaf4ff 0%, #cfe4ff 55%, #b8d4f6 100%)",
+              border: "2px solid #6b8fc2",
+              boxShadow: "0 24px 70px rgba(10,20,50,.55), 0 0 0 4px rgba(255,255,255,.35), inset 0 1px 0 rgba(255,255,255,.8)",
+              animation: "bySeasonIn .8s cubic-bezier(.2,1.3,.4,1) both",
+            }}>
+              <div style={{
+                width: 70, height: 70, margin: "2px auto 8px", borderRadius: 999, fontSize: 34,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: "radial-gradient(circle at 35% 28%, #ffffff, #d8ecff 60%, #9cc0ea)",
+                border: "2.5px solid #6b8fc2",
+              }}>☁️</div>
+              <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 4.5, color: "#4a6ea8" }}>GROUP CHALLENGE</div>
+              <div style={{
+                fontSize: 30, fontWeight: 900, lineHeight: 1.08, margin: "6px 0 10px",
+                background: "linear-gradient(180deg, #3a70c8 8%, #2a4e9a 60%, #1c3670 95%)",
+                WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent",
+              }}>{ch ? ch.title : "The Cloudtop"}</div>
+              {ch ? (
+                <>
+                  <div style={{ fontSize: 14.5, lineHeight: 1.5, color: "#243a5e", fontWeight: 600 }}>
+                    <b>{ch.required} gardeners</b> must light all <b>{ch.track_total} chapters</b> of Meadow Town before the timer runs out.
+                  </div>
+                  <div style={{
+                    margin: "12px auto 10px", padding: "9px 12px", borderRadius: 12, maxWidth: 300,
+                    background: "rgba(255,255,255,.55)", border: "1.5px solid #8fb0d8",
+                    fontSize: 13.5, fontWeight: 800, color: "#1c3670",
+                  }}>
+                    ⭐ {ch.done_count} / {ch.required} heroes finished · ⏳ {days} days left
+                  </div>
+                  <div style={{ fontSize: 14, color: "#243a5e", fontWeight: 700 }}>
+                    Inside the chest: <span style={{ color: "#b8791c" }}>💰 {ch.prize}</span> for your youth group.
+                  </div>
+                  {cloudIntro.rules && (
+                    <div style={{ fontSize: 13, lineHeight: 1.5, color: "#3a5070", margin: "10px 4px 0", textAlign: "left" }}>
+                      📖 Read at the <b>Meadow Town library</b> — every chapter you finish carries your light one step closer to the chest.<br />
+                      👑 Finish all {ch.track_total} and your name turns gold up here.<br />
+                      🐢 The turtle flies you home whenever you're ready.
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ fontSize: 14.5, lineHeight: 1.5, color: "#243a5e", fontWeight: 600 }}>
+                  No challenge is running for your group right now — check back soon!
+                </div>
+              )}
+              <button onClick={close} style={{
+                marginTop: 14, width: "100%", padding: "12px", borderRadius: 12, cursor: "pointer",
+                border: "2px solid #1c3670", fontFamily: "inherit", fontWeight: 900, fontSize: 15.5,
+                background: "linear-gradient(180deg,#ffd76a,#e8a63c)", color: "#4a2f0c",
+                boxShadow: "0 4px 0 #a8742a, 0 8px 18px rgba(20,30,60,.35)",
+              }}>{cloudIntro.rules ? "GOT IT" : "LET'S CLIMB ☁️"}</button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* daily red bag: one Bible question, one attempt, hidden reward */}
       {redBag && (
