@@ -547,8 +547,9 @@ export default function buildMeadowTownKit(ctx) {
     return hm;
   };
   // the plaza's permanent mist pool: smaller, denser billows than sheets —
-  // fog needs visible edges and overlap or it reads as flat lighting
-  for (let i = 0; i < 6; i++) {
+  // fog needs visible edges and overlap or it reads as flat lighting.
+  // A liberated town has NO haze at all.
+  if (!ctx.gloomFree) for (let i = 0; i < 6; i++) {
     mkHaze({
       kind: "orbit",
       orbitR: 1.8 + i * 1.25,
@@ -559,7 +560,7 @@ export default function buildMeadowTownKit(ctx) {
     }, 7.5 + i * 1.1, 0.5 + i * 0.07);
   }
   // wanderers between the buildings — quicker, so the motion itself reads
-  for (let i = 0; i < 10; i++) {
+  if (!ctx.gloomFree) for (let i = 0; i < 10; i++) {
     const ha = Math.random() * Math.PI * 2, hr = 3 + Math.random() * 10;
     const hm = mkHaze({
       kind: "drift",
@@ -573,7 +574,7 @@ export default function buildMeadowTownKit(ctx) {
   }
   // upright wisps: billboards drifting through the square at chest height —
   // from the game's high camera these are what actually says "fog bank"
-  for (let i = 0; i < 5; i++) {
+  if (!ctx.gloomFree) for (let i = 0; i < 5; i++) {
     mkHaze({
       kind: "orbit",
       orbitR: 3 + i * 1.6,
@@ -584,7 +585,7 @@ export default function buildMeadowTownKit(ctx) {
     }, 5.2 + i * 0.8, 1.05, true);
   }
   const smoke = [];
-  if (forgePos) for (let i = 0; i < 4; i++) {
+  if (forgePos && !ctx.gloomFree) for (let i = 0; i < 4; i++) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: fogTex,
       color: SRGB(0x7a7490), transparent: true, opacity: 0, depthWrite: false }));
     sp.position.set(forgePos.x, 1.1, forgePos.z);
@@ -616,6 +617,7 @@ export default function buildMeadowTownKit(ctx) {
   const gloomBoss = (ctx.gloomHooks && !ctx.gloomFree) ? spawnGloomBoss({
     THREE, worldGroup, flat, SRGB, fogTex,
     hooks: ctx.gloomHooks, pos: bossSpot,
+    pads: gloomPads.filter(([px, pz]) => !(px === bossSpot.x && pz === bossSpot.z)),
   }) : null;
 
   const lights = {
@@ -632,9 +634,9 @@ export default function buildMeadowTownKit(ctx) {
   };
 
   // Season 1 complete: the whole Gloom cast leaves town, boss last
-  function retreatAll() {
-    if (gloomlings && gloomlings.retreatAll) gloomlings.retreatAll();
-    if (gloomBoss && gloomBoss.retreat) gloomBoss.retreat();
+  function retreatAll(hurry) {
+    if (gloomlings && gloomlings.retreatAll) gloomlings.retreatAll(hurry);
+    if (gloomBoss && gloomBoss.retreat) gloomBoss.retreat(hurry);
   }
 
   return {

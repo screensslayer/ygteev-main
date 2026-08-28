@@ -20,4 +20,6 @@ export const GLOOMBOSS_LINES = [
   { id: 6, text: "The old book cannot save this town. Nothing can." },
   // fired once, the moment the second light lands on the strings
   { id: 7, text: "What do you think you're doing?! You're wasting your time, little gardener. You will NEVER get rid of us!", taunt2: true },
+  // the liberation: fired the instant the 84th light lands, as the flash builds
+  { id: 8, text: "AHHHH! What's going on?! The light— NO! Fall back! EVERYONE OUT!", finale: true },
 ];

@@ -22,6 +22,7 @@ import { GLOOMBOSS_LINES } from "../data/gloomboss-lines.js";
 
 export default function spawnGloomBoss(ctx) {
   const { THREE, worldGroup, flat, SRGB, fogTex, hooks, pos } = ctx;
+  const pads = ctx.pads || [];
 
   // ---- materials ----------------------------------------------------------
   const stone = flat(0x9aa0b2);
@@ -289,7 +290,7 @@ export default function spawnGloomBoss(ctx) {
 
   // ---- brain ---------------------------------------------------------------
   let lastBark = -99, mood = 0, thumpT = 0, nextThump = 6, rot = boss.rotation.y;
-  let leaving = false, gone = false, tauntT = 0;
+  let leaving = false, gone = false, tauntT = 0, hurrying = false;
 
   // A scripted outburst (e.g. the second light landing on the strings):
   // he flares, slams a knuckle into the dirt, and says his piece — heard
@@ -312,11 +313,21 @@ export default function spawnGloomBoss(ctx) {
       // the dark past the chapel, smog guttering out behind him
       const face = Math.atan2(boss.position.x, boss.position.z); // outward
       const turn = ((face - rot + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-      rot += turn * Math.min(1, dt * 1.6);
+      rot += turn * Math.min(1, dt * (hurrying ? 4.2 : 1.6));
       boss.rotation.y = rot;
-      const sp = Math.abs(turn) < 0.5 ? 0.85 : 0.15; // turn first, then go
+      // liberation: he doesn't stomp out, he RUNS
+      const sp = Math.abs(turn) < 0.5 ? (hurrying ? 3.6 : 0.85) : (hurrying ? 0.8 : 0.15);
       boss.position.x += Math.sin(rot) * sp * dt;
       boss.position.z += Math.cos(rot) * sp * dt;
+      // he flees BETWEEN the buildings, never through them
+      for (const [px, pz, pr] of pads) {
+        const bx = boss.position.x - px, bz = boss.position.z - pz;
+        const bd = Math.hypot(bx, bz), bm = pr + 1.1;
+        if (bd < bm && bd > 0.001) {
+          boss.position.x = px + (bx / bd) * bm;
+          boss.position.z = pz + (bz / bd) * bm;
+        }
+      }
       const sh = Math.sin(t * 5.2);
       legL.hip.position.y = 0.9 + Math.max(0, sh) * 0.1;
       legR.hip.position.y = 0.9 + Math.max(0, -sh) * 0.1;
@@ -453,5 +464,5 @@ export default function spawnGloomBoss(ctx) {
     }
   }
 
-  return { update, pos, taunt, retreat: () => { leaving = true; } };
+  return { update, pos, taunt, retreat: (hurry) => { leaving = true; hurrying = !!hurry; } };
 }

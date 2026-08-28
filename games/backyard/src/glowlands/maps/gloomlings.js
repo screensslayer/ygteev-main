@@ -160,8 +160,14 @@ export default function spawnGloomlings(ctx) {
         if (ud.timer <= 0) {
           const dx = ud.tgt.x - P.x, dz = ud.tgt.z - P.z;
           const face = Math.atan2(dx, dz);
-          P.x += Math.sin(face) * 2.1 * dt;
-          P.z += Math.cos(face) * 2.1 * dt;
+          const lv = ud.leaveSpd || 2.1;
+          P.x += Math.sin(face) * lv * dt;
+          P.z += Math.cos(face) * lv * dt;
+          // fleeing, not phasing: slide around the building pads
+          for (const [px, pz, pr] of pads) {
+            const bx = P.x - px, bz = P.z - pz, bd = Math.hypot(bx, bz), bm = pr + 0.2;
+            if (bd < bm && bd > 0.001) { P.x = px + (bx / bd) * bm; P.z = pz + (bz / bd) * bm; }
+          }
           const turn = ((face - ud.rot + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
           ud.rot += turn * Math.min(1, dt * 8);
           gl.g.rotation.y = ud.rot;
@@ -306,11 +312,12 @@ export default function spawnGloomlings(ctx) {
   // Season won: every Gloomling runs for the tree line and does not come
   // back. The ONE exception to "they never despawn" — this is the exodus,
   // staggered so the square empties as a fleeing crowd, not a formation.
-  function retreatAll() {
+  function retreatAll(hurry) {
     for (const gl of glooms) {
       if (gl.mode === "gone") continue;
       gl.mode = "leave";
-      gl.timer = Math.random() * 1.2; // stagger the panic
+      gl.leaveSpd = hurry ? 5.2 : 2.1;   // the liberation flash is a stampede
+      gl.timer = Math.random() * (hurry ? 0.35 : 1.2); // stagger the panic
       const away = Math.atan2(gl.g.position.z, gl.g.position.x) + (Math.random() - 0.5) * 0.6;
       gl.tgt = { x: Math.cos(away) * 30, z: Math.sin(away) * 30 };
     }

@@ -25,6 +25,7 @@ import ReadingPlayer from "./splash/ReadingPlayer.jsx";
 import buildMeadowAdditions, { MEADOW_TRIGGERS, MEADOW_TUNING } from "./glowlands/maps/meadow-additions.js";
 import buildMeadowTownKit from "./glowlands/maps/meadow-town-kit.js";
 import { RIVER_LINES } from "./glowlands/data/river-lines.js";
+import { TRAIL_REFUGEES } from "./glowlands/data/refugee-lines.js";
 
 // The library cutscene, step by step. `line` indexes RIVER_LINES (1-based),
 // the button is what the PLAYER says or does next, `grant` hands over the
@@ -118,9 +119,14 @@ const SEEDS = {
 // browser happily serves the old take forever. One constant rather than a
 // literal per loader, and tools/gen-intro-lines.mjs bumps it automatically
 // after a render — the version must never depend on someone remembering.
-const VOICE_V = 9;
+const VOICE_V = 11;
 
-const MAP_LABELS = {
+// Season 2 gate: the chapel's side door onto the Old Trail stays shut and
+// locked until the trail + Cinder Hollow are finished. Flip to reopen —
+// the door swings wide, the daylight returns and the TRAIL exit comes back.
+const S2_TRAIL_OPEN = false;
+
+const MAP_LABELS = { CHURCH_HALL: "The Chapel", TRAIL: "The Old Trail",
   HOME: "🏡 Home Meadow", TOWN: "🏘️ Meadow Town", CHURCH: "⛪ Grace Community Garden",
   SHOP_SEEDS: "🌱 Rosie's Rare Seeds", SHOP_MARKET: "🧺 The Berry Market", SHOP_TOOLS: "⚒️ Grimble's Toolworks",
   EASTROAD: "🛤️ The East Road",
@@ -287,6 +293,7 @@ const FRUIT_EMOJI_3D = {
   strawberry: "🍓", blueberry: "🫐", sunfruit: "🍑",
   glowberry: "🔵", starberry: "⭐", dawnberry: "🟠", gloryberry: "🟣",
 };
+
 
 const ELI_QUIPS = [
   /*  1 */ "Hold on, child — I'm searching for encouragement in the book of Job.",
@@ -663,8 +670,10 @@ export default function DragonGardenQuest() {
       // the darkness itself: plays in Meadow Town until all 84 lights burn,
       // then never again — the town-loop takes over
       TOWN_GLOOM: "/music/meadow-gloom.m4a",
+      // the chapel: a soft cathedral bed, barely above the candles
+      CHURCH_HALL: "/music/cathedral.m4a",
     };
-    const TRACK_LEVEL = { TOWN_GLOOM: 0.22 }; // a low dread bed, under everything
+    const TRACK_LEVEL = { TOWN_GLOOM: 0.22, CHURCH_HALL: 0.18 };
     let trackBufs = {}, trackSrc = null, trackGain = null, trackKey = null, trackWanted = null;
     const MUSIC_FULL = 0.4, MUSIC_DUCKED = 0.11;
     let musicDucked = false;
@@ -4183,6 +4192,9 @@ export default function DragonGardenQuest() {
         riverWow2: G.riverAmazed2Done ? 1 : 0,
         bossT2: G.bossTaunt2Done ? 1 : 0,
         s1promo: G.seasonPromoDone ? 1 : 0,
+        s1fin: G.s1FinaleSeen ? 1 : 0,
+        refFed: G.refugeesFed || [0, 0, 0, 0, 0],
+        refGreet: G.refGreeted || [0, 0, 0, 0, 0],
         litShown: G.litShownN || 0,
         awayEaten: G.awayEaten || [],
         inv: G.inv,
@@ -4198,7 +4210,7 @@ export default function DragonGardenQuest() {
     // ticking doesn't spam writes; the payload still carries exact timers
     function stateSig() {
       return JSON.stringify([
-        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 10), G.goldBagFound, G.level, G.gems, G.lantern, G.riverIntroDone, G.seasonPromoDone, G.litShownN,
+        G.gold, G.inv, G.selectedSeed, Math.round(G.hunger / 10), G.goldBagFound, G.level, G.gems, G.lantern, G.riverIntroDone, G.seasonPromoDone, G.litShownN, G.s1FinaleSeen, G.refugeesFed, G.refGreeted,
         G.homePlots.map((p) => p.seed ? p.seed + (p.regrowAt != null ? "r" : "g") : "-"),
       ]);
     }
@@ -4226,6 +4238,9 @@ export default function DragonGardenQuest() {
       G.bossTaunt2Done = d.bossT2 === 1 ? 1 : 0;
       G.seasonPromoDone = d.s1promo === 1 ? 1 : 0;
       G.litShownN = typeof d.litShown === "number" ? Math.max(0, d.litShown | 0) : 0;
+      G.s1FinaleSeen = d.s1fin === 1 ? 1 : 0;
+      G.refugeesFed = Array.isArray(d.refFed) ? d.refFed.slice(0, 5).map((v) => (v ? 1 : 0)) : [0, 0, 0, 0, 0];
+      G.refGreeted = Array.isArray(d.refGreet) ? d.refGreet.slice(0, 5).map((v) => (v ? 1 : 0)) : [0, 0, 0, 0, 0];
       if (Array.isArray(d.awayEaten)) G.awayEaten = d.awayEaten; // report survives a restart
       if (typeof d.hunger === "number") G.hunger = Math.min(100, Math.max(0, d.hunger)); // exact restore — a starving Ember stays starving
       if (Array.isArray(d.homePlots)) {
@@ -4342,7 +4357,7 @@ export default function DragonGardenQuest() {
       playerHopT: 0, transitioning: false, pendingMap: null, hungerAlertT: 0,
       // Season 1 — River, the lantern, and the town lights
       lantern: 0, riverIntroDone: 0, riverAmazedDone: 0, riverAmazed2Done: 0, riverIntroPlaying: false,
-      bossTaunt2Done: 0, seasonPromoDone: 0, litShownN: 0,
+      bossTaunt2Done: 0, seasonPromoDone: 0, litShownN: 0, s1FinaleSeen: 0, refugeesFed: [0, 0, 0, 0, 0], refGreeted: [0, 0, 0, 0, 0],
       pendingLightN: 0, seasonDone: 0, seasonTotal: 84,
       hungerPlaqueT: 0, // how long the hangry plaque has nagged (auto-hides at 60s)
       outfit: { skin: 0xf2c9a4, hair: 0x4a2f1c, hairStyle: "crop", style: "tee", shirt: 0x3a72c9, boots: 0x3f2f20, hat: "straw", accessory: "basket" },
@@ -4643,6 +4658,8 @@ export default function DragonGardenQuest() {
     let shopWords = []; // floating verb signs over the town shops
     let redBagMeshes = {}; // today's hidden question-pouches on HOME, by bag_idx
     let butterflies = [], glowNodes = [], embers = [], smokes = [], caveLight = null, npcs = [], zzz = [];
+    let trailRefs = []; // the five refugees' rigs + encounter state
+    let trailFoams = []; // drifting foam flecks on the trail stream
     let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, winsSprite = null, water = null, foams = [], riverFoam = null, swayers = [], petals = [], fountainFx = null, townKitHandle = null, libraryRiver = null, libLight = null, townLightRing = null, libSeasonPlate = null;
     let buildCells = [], ghostMesh = null, buildMarkers = null, counterKeeper = null;
     // Glowlands per-map handles live further down (glowHomeHandle /
@@ -5326,6 +5343,16 @@ export default function DragonGardenQuest() {
         if (G.reqRiver) G.reqRiver({ step: 0 });
       }, 1050);
     };
+    const s1Won = () => !!(G.s1FinaleSeen || G.__finalePreview);
+    // The liberation flash: a warm-white veil above everything. Driven
+    // per-frame by the cutscene, so it lives outside React's render loop.
+    G.setFlash = (op) => {
+      if (!G.__flashEl) G.__flashEl = document.getElementById("by-liberation-flash");
+      const el = G.__flashEl;
+      if (!el) return;
+      el.style.opacity = String(op);
+      el.style.display = op > 0.002 ? "block" : "none";
+    };
     // step entry: play her line; the lantern lands the moment she offers it
     G.riverStepFx = (step) => {
       if (!step) return;
@@ -5691,7 +5718,7 @@ export default function DragonGardenQuest() {
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
-      babies = []; boomFx = [];
+      babies = []; boomFx = []; trailRefs = []; trailFoams = [];
       gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; riverFoam = null; swayers = []; petals = []; fountainFx = null; townKitHandle = null; G.townLights = null; libraryRiver = null; libLight = null; townLightRing = null; libSeasonPlate = null; G.flyLight = null; G.flyLightQueue = []; G.flyLightGapT = 0; G.__eastGloomK = -1; goldBag = null; redBagMeshes = {}; shopWords = []; emberBar = null; turtle = null; G.turtleSeq = null;
       throwns.forEach((t) => worldGroup.remove(t.m)); throwns = [];
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
@@ -7407,7 +7434,13 @@ export default function DragonGardenQuest() {
       // nothing lit but the Toolworks forge. The near/far fog band is pulled
       // in hard — the mockup's wall of haze — and it also hides the bright
       // aerial-perspective colors baked into the ground at distance.
-      setAtmosphere(0x1d1a2c, 0x312c46, 0x453e5e, 0x393352, 0x9aa0c8, 0.56, 0x6f6a96, 0x403a54, 9, 40, 0.66);
+      if (s1Won()) {
+        // the liberated town: bright, warm, alive — the reward you walk
+        // around in forever after the flash
+        setAtmosphere(PAL.skyTop, PAL.skyMid, PAL.skyHorizon, PAL.fog, PAL.sun, 1.4, PAL.ambientSky, PAL.ambientGnd, 34, 92, 0.62);
+      } else {
+        setAtmosphere(0x1d1a2c, 0x312c46, 0x453e5e, 0x393352, 0x9aa0c8, 0.56, 0x6f6a96, 0x403a54, 9, 40, 0.66);
+      }
 
       // one flat circle for the whole radial town; hills pushed out past it
       terrainY = makeTerrain(
@@ -7419,7 +7452,7 @@ export default function DragonGardenQuest() {
       const townKit = buildMeadowTownKit({
         THREE, worldGroup, flat, SRGB, addBoxCol, addCircleCol,
         makeTextPlate, glowNodes, PAL,
-        gloomFree: (G.seasonTotal || 0) > 0 && G.seasonDone >= G.seasonTotal,
+        gloomFree: s1Won(),
         // Gloomling steal hooks: the module decides WHEN, this decides WHAT.
         // Commons only - rare fruit glows, and Gloomlings are afraid of light.
         gloomHooks: {
@@ -7460,6 +7493,19 @@ export default function DragonGardenQuest() {
       if (!G.seasonPromoDone) {
         setTimeout(() => { if (G.map === "TOWN") G.startSeasonPromo(); }, 1200);
       }
+      // staging-only: ?finale=1 plays the liberation cinematic on entry
+      // without touching the save — for approving the cut before 84/84
+      if (/staging|localhost|127\.0\.0\.1/.test(location.hostname)
+          && new URLSearchParams(location.search).get("finale") === "1"
+          && !G.__finaleTested && !s1Won()) {
+        G.__finaleTested = 1;
+        setTimeout(() => {
+          if (G.map === "TOWN" && !G.liberation) {
+            G.liberation = { stage: "surge", t: 0, i: 0, preview: true };
+            G.introLock = true;
+          }
+        }, 1600);
+      }
       // Season 1: light the strand to what the player has already WATCHED
       // arrive, then fly every light earned since — one delivery each.
       // (The old code assumed exactly one new light: read two chapters
@@ -7476,11 +7522,20 @@ export default function DragonGardenQuest() {
           G.litShownN = shown;
           G.flyLightQueue = [];
           for (let k = shown + 1; k <= pr.done; k++) G.flyLightQueue.push(k);
-          // season already won (cold start straight into town): the Gloom
-          // has no business here — clear them and swap the music now
-          if (pr.done >= pr.total && pr.total > 0) {
-            if (townKitHandle.retreatAll) townKitHandle.retreatAll();
-            playTrack("TOWN");
+          // season already won AND witnessed (cold start into town): the
+          // Gloom has no business here — the kit built gloom-free already
+          if (s1Won()) playTrack("TOWN");
+          // won but never WITNESSED (their 84th landed before the finale
+          // shipped, or another device): play the liberation now — unless a
+          // queued flight is about to trigger it the natural way
+          else if (pr.total > 0 && pr.done >= pr.total) {
+            setTimeout(() => {
+              if (G.map === "TOWN" && !G.liberation && !G.flyLight
+                  && !(G.flyLightQueue || []).length && !s1Won()) {
+                G.liberation = { stage: "surge", t: 0, i: 0 };
+                G.introLock = true;
+              }
+            }, 1400);
           }
         }).catch(() => {});
       }
@@ -7508,7 +7563,7 @@ export default function DragonGardenQuest() {
       worldGroup.add(makeGround(66, PAL.grassBase, (x, z, c) => {
         const dd = Math.hypot(x, z);
         if (dd < 5.9) c.lerp(DIRT, 0.82 * Math.min(1, (5.9 - dd) / 1.1)); // fountain plaza
-        c.lerp(GLOOMC, 0.32); // the Gloom's desaturating cast over everything
+        if (!s1Won()) c.lerp(GLOOMC, 0.32); // the Gloom's desaturating cast
       }));
       addFlagstonePath([[-21, 0], [-5.2, 0]], 2.2);
       { // stepping-stone ring around the fountain plaza
@@ -7694,11 +7749,16 @@ export default function DragonGardenQuest() {
         doorExit(townKit.doors.tools, "SHOP_TOOLS", [0, 2]),
         doorExit(townKit.doors.library, "LIBRARY", [0, 2.6]),
       ];
-      // the chapel keeps its door: locked until its part of the story opens
-      hotspots = [{
-        x: townKit.doors.church.x, z: townKit.doors.church.z, r: 2.4,
-        type: "lockeddoor", kind: "chapel", label: "Try the chapel door",
-      }];
+      // the chapel keeps its door: locked until the liberation opens it
+      if (s1Won()) {
+        exits.push(doorExit(townKit.doors.church, "CHURCH_HALL", [0, 8.4]));
+        hotspots = [];
+      } else {
+        hotspots = [{
+          x: townKit.doors.church.x, z: townKit.doors.church.z, r: 2.4,
+          type: "lockeddoor", kind: "chapel", label: "Try the chapel door",
+        }];
+      }
 
       // —— Glowlands: Meadow Town dressing (library, chapel, East Gate,
       //    gloom stain, public plots) + prologue trigger zones.
@@ -8087,6 +8147,481 @@ export default function DragonGardenQuest() {
       if (!G.riverIntroDone) {
         setTimeout(() => { if (G.map === "LIBRARY") G.startRiverIntro(); }, 950);
       }
+    }
+
+    // -------- THE CHAPEL (interior) — pews, chancel, god-rays --------
+    // Unlocked by the Season 1 liberation. The chancel-right door leads to
+    // the trail (Season 2) — locked until that phase opens.
+    function buildChurchHall() {
+      clearWorld();
+      // warm candlelit dusk — the contrast room after the gloom
+      setAtmosphere(0x241a14, 0x33261a, 0x453022, 0x2e2218, 0xffd9a0, 0.55, 0x8a7a5f, 0x3a2c1e, 10, 46, 0.55);
+      // the chancel is real ground: two steps up onto the platform, so the
+      // player climbs the stage instead of clipping through it
+      terrainY = (x, z) => {
+        if (Math.abs(x) > 5.7) return 0;
+        if (z <= -7.3) return 0.6;
+        if (z <= -6.5) return 0.42;
+        if (z <= -5.66) return 0.22;
+        return 0;
+      };
+      const darkWood = flat(new THREE.Color(PAL.bark).offsetHSL(0, 0.01, -0.1));
+      const pewWood = flat(new THREE.Color(PAL.bark).offsetHSL(0.004, 0.02, -0.04));
+      const stoneF = flat(0x8d8378, { roughness: 0.98 });
+      const wallMat = flat(new THREE.Color(PAL.plaster).offsetHSL(0.008, -0.1, -0.1), { roughness: 0.95 });
+
+      // floor + red runner up the aisle
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(18, 0.2, 24), stoneF);
+      floor.position.set(0, -0.1, 0); floor.receiveShadow = true;
+      worldGroup.add(floor);
+      const runner = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.03, 17.5), flat(0x8e2f2a, { roughness: 0.9 }));
+      runner.position.set(0, 0.015, 2.05); runner.receiveShadow = true;
+      worldGroup.add(runner);
+
+      // walls (no front wall — the camera looks in from +z)
+      const back = new THREE.Mesh(new THREE.BoxGeometry(18, 5.4, 0.35), wallMat);
+      back.position.set(0, 2.7, -12); back.receiveShadow = true;
+      const left = new THREE.Mesh(new THREE.BoxGeometry(0.35, 5.4, 24), wallMat);
+      left.position.set(-9, 2.7, 0);
+      // right wall is split around a REAL doorway opening for the far door
+      const rightA = new THREE.Mesh(new THREE.BoxGeometry(0.35, 5.4, 2.75), wallMat);
+      rightA.position.set(9, 2.7, -10.625);
+      const rightB = new THREE.Mesh(new THREE.BoxGeometry(0.35, 5.4, 19.75), wallMat);
+      rightB.position.set(9, 2.7, 2.125);
+      const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.35, 2.95, 1.5), wallMat);
+      lintel.position.set(9, 3.925, -8.5);
+      worldGroup.add(back, left, rightA, rightB, lintel);
+      addBoxCol(0, -12, 9.1, 0.4); addBoxCol(-9, 0, 0.4, 12.1);
+      // right wall blocks EXCEPT the far doorway gap (z -9.25..-7.75)
+      addBoxCol(9, -10.625, 0.4, 1.4); addBoxCol(9, 2.125, 0.4, 9.9);
+      // the swung-open door slab is solid too
+      // the door slab: angled into the room when open, plugging the whole
+      // doorway gap when Season 2 still has it bolted shut
+      if (S2_TRAIL_OPEN) addBoxCol(8.23, -8.17, 0.1, 0.7, 0.95);
+      else addBoxCol(8.82, -8.5, 0.22, 0.85);
+      addBoxCol(0, 12.6, 9.1, 0.4); // an invisible rail so you can't walk off the front
+
+
+      // ---- pews: five rows a side, worn and heavy ----
+      for (const side of [-1, 1]) {
+        for (let r = 0; r < 5; r++) {
+          const pz = 6.6 - r * 1.9;
+          const pew = new THREE.Group();
+          const seat = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.1, 0.55), pewWood);
+          seat.position.y = 0.5; seat.castShadow = true;
+          const backr = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.6, 0.09), pewWood);
+          backr.position.set(0, 0.82, 0.29); backr.castShadow = true;
+          const kick = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.42, 0.07), darkWood);
+          kick.position.set(0, 0.24, -0.2);
+          for (const ex of [-2.14, 2.14]) {
+            const end = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.95, 0.62), darkWood);
+            end.position.set(ex, 0.48, 0.02); end.castShadow = true;
+            pew.add(end);
+          }
+          pew.add(seat, backr, kick);
+          pew.position.set(side * 3.5, 0, pz);
+          worldGroup.add(pew);
+          addBoxCol(side * 3.5, pz, 2.35, 0.42);
+        }
+      }
+
+      // ---- chancel: two steps, platform, altar, the cross ----
+      const step1 = new THREE.Mesh(new THREE.BoxGeometry(11.5, 0.22, 0.9), stoneF);
+      step1.position.set(0, 0.11, -6.1);
+      const step2 = new THREE.Mesh(new THREE.BoxGeometry(11.5, 0.42, 0.9), stoneF);
+      step2.position.set(0, 0.21, -6.9);
+      const platform = new THREE.Mesh(new THREE.BoxGeometry(11.5, 0.6, 4.6), stoneF);
+      platform.position.set(0, 0.3, -9.6);
+      [step1, step2, platform].forEach((m) => { m.receiveShadow = true; worldGroup.add(m); });
+      // flank walls keep the climb to the FRONT steps (terrainY pops at the
+      // platform's side edges otherwise)
+      addBoxCol(-4.9, -9.0, 0.9, 2.9); addBoxCol(4.9, -9.0, 0.9, 2.9);
+      const chancelRug = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.03, 4.4), flat(0x8e2f2a, { roughness: 0.9 }));
+      chancelRug.position.set(0, 0.615, -9.5);
+      worldGroup.add(chancelRug);
+
+      const altar = new THREE.Group();
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 1.0), darkWood);
+      slab.position.y = 1.0; slab.castShadow = true;
+      const base = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.9, 0.8), pewWood);
+      base.position.y = 0.5; base.castShadow = true;
+      const cloth = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.05, 1.06), flat(0xf2ead6, { roughness: 0.85 }));
+      cloth.position.y = 1.11;
+      altar.add(base, slab, cloth);
+      altar.position.set(0, 0.6, -10.2);
+      worldGroup.add(altar);
+      addBoxCol(0, -10.2, 1.3, 0.6);
+
+      const crossMat = flat(0xc9a24e, { roughness: 0.55, emissive: 0x6a4a10, emissiveIntensity: 0.35 });
+      const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.6, 0.16), crossMat);
+      crossV.position.set(0, 3.2, -11.7);
+      const crossH = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.3, 0.16), crossMat);
+      crossH.position.set(0, 3.7, -11.7);
+      worldGroup.add(crossV, crossH);
+      const crossGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffdf9a), transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
+      crossGlow.scale.set(5.2, 5.2, 1);
+      crossGlow.position.set(0, 3.4, -11.6);
+      worldGroup.add(crossGlow);
+
+      // rose window above the cross + the god-ray onto the altar
+      const rose = new THREE.Mesh(new THREE.CircleGeometry(0.85, 12), flat(0xffd9a0, { emissive: 0xffb75a, emissiveIntensity: 1.2 }));
+      rose.position.set(0, 4.55, -11.8);
+      worldGroup.add(rose);
+      for (let i = 0; i < 3; i++) {
+        const ray = new THREE.Mesh(new THREE.ConeGeometry(1.7 + i * 0.5, 7.2, 10, 1, true),
+          new THREE.MeshBasicMaterial({ color: SRGB(0xffe6b0), transparent: true, opacity: 0.05 + (2 - i) * 0.016, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+        ray.position.set(0, 3.0, -10.1);
+        ray.rotation.x = 0.22;
+        worldGroup.add(ray);
+      }
+      const altarPool = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffe0a0), transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+      altarPool.scale.set(4.4, 2.6, 1);
+      altarPool.position.set(0, 1.35, -10.0);
+      worldGroup.add(altarPool);
+
+      // ---- stained glass: three windows a side, colour pooling below ----
+      const GLASS = [0x7fb2e8, 0xe8a4b8, 0x9fe0a8];
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+          const gz = -6 + i * 6;
+          const pane = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 2.8),
+            flat(GLASS[i], { emissive: GLASS[i], emissiveIntensity: 0.85, roughness: 0.6 }));
+          pane.position.set(side * 8.8, 3.0, gz);
+          pane.rotation.y = -side * Math.PI / 2;
+          worldGroup.add(pane);
+          const mull = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.9, 0.12), darkWood);
+          mull.position.set(side * 8.76, 3.0, gz);
+          worldGroup.add(mull);
+          const pool = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 3.6),
+            new THREE.MeshBasicMaterial({ map: glowTex, color: SRGB(GLASS[i]), transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending }));
+          pool.rotation.x = -Math.PI / 2;
+          pool.position.set(side * 6.6, 0.06, gz + 0.4);
+          worldGroup.add(pool);
+        }
+      }
+
+      // ---- candle stands flanking the steps ----
+      for (const side of [-1, 1]) {
+        const stand = new THREE.Group();
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 1.5, 7), darkWood);
+        pole.position.y = 0.75;
+        const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.1, 0.12, 7), crossMat);
+        cup.position.y = 1.55;
+        const flame = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), flat(0xffd070, { emissive: 0xff9c30, emissiveIntensity: 2.2 }));
+        flame.position.y = 1.68;
+        stand.add(pole, cup, flame);
+        stand.position.set(side * 3.2, 0, -5.6);
+        worldGroup.add(stand);
+        addCircleCol(side * 3.2, -5.6, 0.3);
+        const cl = new THREE.PointLight(SRGB(0xffa040), 0.75, 7);
+        cl.position.set(side * 3.2, 1.8, -5.6);
+        worldGroup.add(cl);
+      }
+
+      // ---- the far door: chancel-right, where Season 2 begins. A real
+      // opening in the wall, hung open, daylight flooding through ----
+      {
+        // door frame around the opening
+        for (const fz of [-9.3, -7.7]) {
+          const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.45, 2.5, 0.14), darkWood);
+          jamb.position.set(9, 1.25, fz);
+          worldGroup.add(jamb);
+        }
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.16, 1.74), darkWood);
+        head.position.set(9, 2.52, -8.5);
+        worldGroup.add(head);
+        // daylight beyond the opening — only while the door actually stands
+        // open. Shut, the doorway must read as bolted wood, not a lamp.
+        if (S2_TRAIL_OPEN) {
+          const beyond = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 3.2),
+            flat(0xfff3cf, { emissive: 0xffedb8, emissiveIntensity: 1.8 }));
+          beyond.position.set(9.55, 1.5, -8.5);
+          beyond.rotation.y = -Math.PI / 2;
+          worldGroup.add(beyond);
+          const outGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xfff0c0), transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+          outGlow.scale.set(4.5, 4.5, 1);
+          outGlow.position.set(9.4, 1.5, -8.5);
+          worldGroup.add(outGlow);
+        }
+        // the door itself: a pivot group sits ON the near jamb, the slab
+        // hangs from it — swung ~55 degrees into the room when the trail is
+        // open, pulled flush into the frame while Season 2 is still building
+        const hinge = new THREE.Group();
+        hinge.position.set(8.78, 1.17, -7.78);
+        const doorM = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.34, 1.35), pewWood);
+        doorM.position.set(0, 0, -0.675); // extends from the hinge along the frame
+        doorM.castShadow = true;
+        const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), crossMat);
+        knob.position.set(-0.09, -0.02, -1.18);
+        hinge.add(doorM, knob);
+        hinge.rotation.y = S2_TRAIL_OPEN ? 0.95 : 0;
+        worldGroup.add(hinge);
+        if (S2_TRAIL_OPEN) {
+          // light spills into the room: a long pool across the stone
+          const spill = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 2.8),
+            new THREE.MeshBasicMaterial({ map: glowTex, color: SRGB(0xffe9b0), transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+          spill.rotation.x = -Math.PI / 2;
+          spill.position.set(6.9, 0.05, -8.5);
+          worldGroup.add(spill);
+          const doorLight = new THREE.PointLight(SRGB(0xffdf9a), 1.1, 9);
+          doorLight.position.set(8.3, 1.7, -8.5);
+          worldGroup.add(doorLight);
+        }
+      }
+
+      exits = [
+        { x: 0, z: 11.4, r: 1.6, to: "TOWN", spawn: [1.4, -9.0] },
+        ...(S2_TRAIL_OPEN ? [{ x: 8.7, z: -8.5, r: 1.1, to: "TRAIL", spawn: [0, 24.9] }] : []),
+      ];
+      hotspots = S2_TRAIL_OPEN ? [] : [
+        { x: 8.3, z: -8.5, r: 1.5, type: "lockeddoor", kind: "traildoor", label: "The side door" },
+      ];
+    }
+
+    // -------- THE OLD TRAIL — the road to Cinder Hollow --------
+    // A winding wayside route: five hungry refugees to feed (a level each),
+    // the Memory Stones (awakening soon), and the sealed gate at the end.
+    function buildTrail() {
+      clearWorld();
+      setAtmosphere(PAL.skyTop, PAL.skyMid, PAL.skyHorizon, PAL.fog, PAL.sun, 1.45, PAL.ambientSky, PAL.ambientGnd, 34, 92, 0.62);
+      terrainY = () => 0;
+
+      const PATH = [
+        [0, 27.5], [-3.4, 21], [2.8, 13], [3.2, 8], [2.2, 5], [-3.8, -2],
+        [-4, -8], [2.4, -13], [0.5, -20], [0, -25.5],
+      ];
+      setPathRoutes([{ pts: PATH, w: 2.2 }]);
+      worldGroup.add(makeGround(64, PAL.grassBase, null));
+      addFlagstonePath(PATH, 1.35);
+
+      // a FULL forest walls the corridor: four staggered rows each side,
+      // scaling up with depth so the canopy reads solid to the horizon
+      for (let z = -30; z <= 30; z += 1.7) {
+        for (let row = 0; row < 4; row++) {
+          const bx = 5.6 + row * 2.1 + Math.random() * 1.2 + (row % 2) * 0.9;
+          if (Math.abs(z - 5) < 1.7 && bx < 10.2) continue; // not in the stream
+          const sc = 0.85 + row * 0.18 + Math.random() * 0.45;
+          // makePine RETURNS the tree — forgetting to add it planted an
+          // invisible forest of nothing but colliders
+          worldGroup.add(makePine(-bx, z + (Math.random() - 0.5) * 1.5, sc));
+          worldGroup.add(makePine(bx, z + (Math.random() - 0.5) * 1.5, sc));
+        }
+      }
+      // far rows: bigger, sparser giants carry the canopy to the map edge
+      for (let z = -31; z <= 31; z += 3.2) {
+        for (let row = 0; row < 3; row++) {
+          const bx = 12.8 + row * 4.2 + Math.random() * 2.4;
+          const sc = 1.5 + row * 0.35 + Math.random() * 0.5;
+          worldGroup.add(makePine(-bx, z + (Math.random() - 0.5) * 2.4, sc));
+          worldGroup.add(makePine(bx, z + (Math.random() - 0.5) * 2.4, sc));
+        }
+      }
+      // the gate sits IN forest: solid trees beside and beyond it
+      for (let gx = 3.4; gx <= 27; gx += 2.1) {
+        for (const gzr of [-27.8, -29.6, -31.4]) {
+          worldGroup.add(makePine(gx + Math.random() * 1.2, gzr + (Math.random() - 0.5) * 1.2, 1.1 + Math.random() * 0.8));
+          worldGroup.add(makePine(-gx - Math.random() * 1.2, gzr + (Math.random() - 0.5) * 1.2, 1.1 + Math.random() * 0.8));
+        }
+      }
+      // and a dark curtain straight across, behind the gate line
+      for (let gx = -3; gx <= 3; gx += 1.4) {
+        worldGroup.add(makePine(gx + Math.random() * 0.8, -30.6 + Math.random(), 1.5 + Math.random() * 0.7));
+      }
+      addBoxCol(-8.9, 0, 0.6, 28); addBoxCol(8.9, 0, 0.6, 28);
+      addBoxCol(0, 30.6, 9.2, 0.5);
+
+      // ---- the chapel archway home: a REAL doorway, not an invisible zone ----
+      {
+        const archStone = flat(0x8d8378, { roughness: 0.95 });
+        for (const asx of [-1, 1]) {
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.7, 2.9, 0.7), archStone);
+          post.position.set(asx * 1.6, 1.45, 28.9);
+          post.castShadow = true;
+          worldGroup.add(post);
+          addCircleCol(asx * 1.6, 28.9, 0.55);
+        }
+        const arch = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.5, 0.8), flat(0x776d60));
+        arch.position.set(0, 3.05, 28.9);
+        worldGroup.add(arch);
+        const chapelDoor = new THREE.Mesh(new THREE.BoxGeometry(2.1, 2.5, 0.16), flat(new THREE.Color(PAL.bark).offsetHSL(0.004, 0, 0.02)));
+        chapelDoor.position.set(0, 1.25, 29.15);
+        worldGroup.add(chapelDoor);
+        const homeGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xffe0a0), transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+        homeGlow.scale.set(3.6, 3.0, 1);
+        homeGlow.position.set(0, 1.5, 28.6);
+        worldGroup.add(homeGlow);
+      }
+
+      // wildflowers off the path
+      for (let i = 0; i < 70; i++) {
+        const fx = (Math.random() - 0.5) * 9.0, fz = -24 + Math.random() * 50;
+        const nearPath = PATH.some(([px, pz]) => Math.hypot(fx - px, fz - pz) < 2.4);
+        if (!nearPath && Math.abs(fz - 5) > 1.6) makeFlower(fx, fz);
+      }
+
+      // ---- the stream and its little bridge (the only way across) ----
+      const deepW = new THREE.Mesh(new THREE.PlaneGeometry(19, 2.4),
+        flat(0x3a6cae, { roughness: 0.25, emissive: 0x16305c, emissiveIntensity: 0.35 }));
+      deepW.rotation.x = -Math.PI / 2;
+      deepW.position.set(0, 0.015, 5);
+      worldGroup.add(deepW);
+      const shallowW = new THREE.Mesh(new THREE.PlaneGeometry(19, 1.3),
+        new THREE.MeshStandardMaterial({ color: SRGB(0x6fa8dc), transparent: true, opacity: 0.55, roughness: 0.3, emissive: SRGB(0x2c507e), emissiveIntensity: 0.3 }));
+      shallowW.rotation.x = -Math.PI / 2;
+      shallowW.position.set(0, 0.03, 5);
+      worldGroup.add(shallowW);
+      // wavy sand banks: overlapping pads instead of a ruler-straight strip
+      const sandM = flat(0xc9b489, { roughness: 0.98 });
+      const wetM = flat(0x6d5a3f, { roughness: 0.98 });
+      for (let bxp = -9.2; bxp <= 9.2; bxp += 1.15) {
+        for (const bs of [-1, 1]) {
+          const pad = new THREE.Mesh(new THREE.CircleGeometry(0.55 + Math.random() * 0.35, 7), sandM);
+          pad.rotation.x = -Math.PI / 2;
+          pad.position.set(bxp + (Math.random() - 0.5) * 0.5, 0.035, 5 + bs * (1.28 + Math.random() * 0.22));
+          worldGroup.add(pad);
+          const wet = new THREE.Mesh(new THREE.CircleGeometry(0.3 + Math.random() * 0.2, 6), wetM);
+          wet.rotation.x = -Math.PI / 2;
+          wet.position.set(bxp + (Math.random() - 0.5) * 0.5, 0.04, 5 + bs * (1.02 + Math.random() * 0.14));
+          worldGroup.add(wet);
+        }
+      }
+      // river stones, banks and midstream
+      for (let st = 0; st < 9; st++) {
+        const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(0.14 + Math.random() * 0.2, 0), flat(0x8a877e));
+        const inWater = st < 3;
+        rock.position.set(-8.5 + Math.random() * 17, inWater ? 0.05 : 0.1,
+          5 + (inWater ? (Math.random() - 0.5) * 0.9 : (Math.random() < 0.5 ? -1 : 1) * (1.35 + Math.random() * 0.3)));
+        rock.rotation.set(Math.random(), Math.random(), Math.random());
+        rock.castShadow = true;
+        worldGroup.add(rock);
+      }
+      // drifting foam flecks — animated in the frame loop
+      for (let ff = 0; ff < 9; ff++) {
+        const fleck = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0xeaf4ff), transparent: true, opacity: 0.5, depthWrite: false }));
+        fleck.scale.set(0.5 + Math.random() * 0.4, 0.22, 1);
+        fleck.position.set(-9 + Math.random() * 18, 0.05, 5 + (Math.random() - 0.5) * 1.0);
+        worldGroup.add(fleck);
+        trailFoams.push({ sp: fleck, v: 0.5 + Math.random() * 0.5, ph: Math.random() * 6.28 });
+      }
+      // stream blocks passage except at the bridge (x 1.3..3.1)
+      addBoxCol(-3.6, 5, 5.3, 1.1); addBoxCol(6.1, 5, 3.1, 1.1);
+      { // the bridge: planks, a gentle camber, low rails
+        const bridge = new THREE.Group();
+        for (let i = 0; i < 7; i++) {
+          const plank = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 0.42), flat(new THREE.Color(PAL.bark).offsetHSL(0.004, 0, 0.03)));
+          const bz = -1.35 + i * 0.45;
+          plank.position.set(0, 0.16 + Math.sin((i / 6) * Math.PI) * 0.12, bz);
+          plank.castShadow = true;
+          bridge.add(plank);
+        }
+        for (const rs of [-1, 1]) {
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 3.0), flat(PAL.bark));
+          rail.position.set(rs * 0.82, 0.62, 0);
+          const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.6, 6), flat(PAL.bark));
+          p1.position.set(rs * 0.82, 0.32, -1.3);
+          const p2 = p1.clone(); p2.position.z = 1.3;
+          bridge.add(rail, p1, p2);
+        }
+        bridge.position.set(2.2, 0, 5);
+        worldGroup.add(bridge);
+      }
+
+      // ---- the Memory Stones (their game awakens next phase) ----
+      {
+        const stoneMat = flat(0x8a8ea0, { roughness: 0.95 });
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2 + 0.4;
+          const st = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.1 + (i % 2) * 0.4, 0.4), stoneMat);
+          st.position.set(-5.3 + Math.cos(a) * 1.6, 0.55, -5 + Math.sin(a) * 1.6);
+          st.rotation.y = a + 1.2;
+          st.castShadow = true;
+          worldGroup.add(st);
+          addCircleCol(st.position.x, st.position.z, 0.42);
+        }
+        const hum = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0x9fd0ff), transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending }));
+        hum.scale.set(4.4, 2.6, 1);
+        hum.position.set(-5.3, 0.9, -5);
+        worldGroup.add(hum);
+      }
+
+      // ---- the refugees, their camp, and the broken cart ----
+      TRAIL_REFUGEES.forEach((R, i) => {
+        const v = makeVillager(R.x, R.z, R.rot, R.opts);
+        if (R.kid && v && v.scale) v.scale.setScalar(0.8);
+        trailRefs.push({ g: v, R, i, home: { x: R.x, z: R.z, rot: R.rot }, state: "idle", t: 0 });
+        if (R.camp) {
+          const fire = new THREE.Group();
+          for (let k = 0; k < 5; k++) {
+            const a = (k / 5) * Math.PI * 2;
+            const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(0.14, 0), flat(0x7d7468));
+            rock.position.set(Math.cos(a) * 0.42, 0.08, Math.sin(a) * 0.42);
+            fire.add(rock);
+          }
+          const log1 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.7, 6), flat(PAL.bark));
+          log1.rotation.z = Math.PI / 2; log1.position.y = 0.1;
+          const flame = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.42, 6), flat(0xffb34a, { emissive: 0xff7a20, emissiveIntensity: 1.8 }));
+          flame.position.y = 0.35;
+          fire.add(log1, flame);
+          fire.position.set(R.x + 1.1, 0, R.z + 0.6);
+          worldGroup.add(fire);
+          const fl = new THREE.PointLight(SRGB(0xff9040), 0.8, 6);
+          fl.position.set(R.x + 1.1, 1.0, R.z + 0.6);
+          worldGroup.add(fl);
+          addCircleCol(R.x + 1.1, R.z + 0.6, 0.55);
+        }
+        if (R.cart) {
+          const cart = new THREE.Group();
+          const bed = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 0.9), flat(PAL.bark));
+          bed.position.y = 0.62; bed.castShadow = true;
+          const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.1, 10), flat(new THREE.Color(PAL.bark).offsetHSL(0, 0, -0.08)));
+          wheel.rotation.z = Math.PI / 2;
+          wheel.position.set(0, 0.32, 0.5);
+          const broken = wheel.clone();
+          broken.rotation.set(Math.PI / 2 - 0.4, 0, 0.9);
+          broken.position.set(1.1, 0.18, -0.6);
+          cart.add(bed, wheel, broken);
+          cart.position.set(R.x - 1.3, 0, R.z - 0.5);
+          cart.rotation.y = 0.5;
+          worldGroup.add(cart);
+          addCircleCol(R.x - 1.3, R.z - 0.5, 0.85);
+        }
+      });
+
+      // ---- the sealed gate of Cinder Hollow ----
+      {
+        const pillarMat = flat(0x6d7280, { roughness: 0.95 });
+        for (const gs of [-1, 1]) {
+          const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.1, 3.4, 1.1), pillarMat);
+          pillar.position.set(gs * 2.2, 1.7, -26.5);
+          pillar.castShadow = true;
+          worldGroup.add(pillar);
+          const cap = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.3, 1.35), flat(0x565b66));
+          cap.position.set(gs * 2.2, 3.5, -26.5);
+          worldGroup.add(cap);
+        }
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.5, 0.8), flat(0x565b66));
+        beam.position.set(0, 3.3, -26.5);
+        worldGroup.add(beam);
+        for (const ds of [-1, 1]) {
+          const leaf = new THREE.Mesh(new THREE.BoxGeometry(1.55, 2.7, 0.18), flat(new THREE.Color(PAL.bark).offsetHSL(0, -0.04, -0.12)));
+          leaf.position.set(ds * 0.82, 1.35, -26.4);
+          worldGroup.add(leaf);
+        }
+        // a violet seep under the doors — the Gloom is on the other side
+        const seep = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: SRGB(0x9b59c9), transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
+        seep.scale.set(3.6, 1.4, 1);
+        seep.position.set(0, 0.4, -25.9);
+        worldGroup.add(seep);
+        addBoxCol(0, -26.5, 4.6, 0.9);
+        addBoxCol(-6.5, -26.5, 4.4, 0.9); addBoxCol(6.5, -26.5, 4.4, 0.9);
+      }
+
+      exits = [{ x: 0, z: 27.9, r: 2.1, to: "CHURCH_HALL", spawn: [7.3, -8.5] }];
+      hotspots = [
+        ...TRAIL_REFUGEES.map((R, i) => ({ x: R.x, z: R.z, r: 1.8, type: "refugee", idx: i, label: `Share food with ${R.name}` })),
+        { x: -5.3, z: -5, r: 2.0, type: "lockeddoor", kind: "stones", label: "The Memory Stones" },
+        { x: 0, z: -25.4, r: 2.2, type: "lockeddoor", kind: "cindergate", label: "The gate to Cinder Hollow" },
+      ];
     }
 
     // -------- GRACE COMMUNITY GARDEN (golden hour, 324 sacred plots) --------
@@ -8560,7 +9095,7 @@ export default function DragonGardenQuest() {
       try {
         // Meadow Town plays the darkness itself until Season 1 is complete;
         // the day the last light lands, the ordinary town loop takes over
-        const won = (G.seasonTotal || 0) > 0 && G.seasonDone >= G.seasonTotal;
+        const won = s1Won();
         playTrack(name === "TOWN" && !won ? "TOWN_GLOOM" : name);
       } catch (e) {}
       if (G.introActive) {
@@ -8584,6 +9119,8 @@ export default function DragonGardenQuest() {
       else if (name === "CHURCH") { buildChurch(); glowTriggers = []; }
       else if (name === "EASTROAD") buildEastRoad();
       else if (name === "LIBRARY") { buildLibraryInterior(); glowTriggers = []; }
+      else if (name === "CHURCH_HALL") { buildChurchHall(); glowTriggers = []; }
+      else if (name === "TRAIL") { buildTrail(); glowTriggers = []; }
       else { buildShopInterior(name); glowTriggers = []; }
       // Glowlands map-entry hooks (prologue resume in town, road travel bed)
       if (name === "TOWN") setTimeout(() => { if (G.map === "TOWN" && !G.transitioning) glowEnterTown(); }, 1400);
@@ -8980,9 +9517,59 @@ export default function DragonGardenQuest() {
         SFX.click();
         toast(currentPrompt.kind === "chapel"
           ? "The chapel door is locked tight. Not yet\u2026"
+          : currentPrompt.kind === "traildoor"
+            ? "The side door is bolted shut. Somewhere beyond it, an old road waits\u2026 soon."
+          : currentPrompt.kind === "stones"
+            ? "The old stones hum softly\u2026 they want to teach you something. Soon."
+          : currentPrompt.kind === "cindergate"
+            ? "The gate to Cinder Hollow is sealed tight. Something dark stirs beyond\u2026"
           : currentPrompt.kind === "desk"
             ? "The reading desk opens soon \u2014 your chapters will live here."
             : "It's locked.", "warn");
+      }
+      else if (type === "refugee") {
+        const R = TRAIL_REFUGEES[currentPrompt.idx];
+        if (!R) return;
+        G.refugeesFed = G.refugeesFed || [0, 0, 0, 0, 0];
+        const idx0 = currentPrompt.idx;
+        const tr0 = trailRefs[idx0];
+        const tx0 = tr0 ? tr0.g.position.x : R.x, tz0 = tr0 ? tr0.g.position.z : R.z;
+        if (G.refugeesFed[idx0]) {
+          SFX.click();
+          playVoiceFile(`voices/refugee-${R.n}-thanks.mp3`);
+          toast(`💬 ${R.name}: "${R.thanks}"`, "info");
+          return;
+        }
+        const order = ["strawberry", "blueberry", "sunfruit", "glowberry", "starberry", "dawnberry", "gloryberry"];
+        const k = (G.activeKind === "fruit" && G.inv.fruit[G.selectedFruit] > 0)
+          ? G.selectedFruit
+          : order.find((f) => G.inv.fruit[f] > 0);
+        if (!k) {
+          SFX.wrong();
+          toast(`💬 ${R.name}: "${R.ask}" — bring fruit from your garden.`, "warn");
+          return;
+        }
+        G.inv.fruit[k]--;
+        G.refugeesFed[idx0] = 1; // marked at the throw so it can't double-fire
+        G.playerHopT = 0.32;
+        G.saveT = 0.2;
+        // the fruit ARCS over to them, Ember-style; everything lands with it
+        throwFruit(playerPos.x, playerPos.z, tx0, 0.9, tz0, SEEDS[k].color, () => {
+          SFX.feed();
+          spawnBurst(tx0, tz0, SEEDS[k].color, 8, { vy: 1.8, spread: 0.5, y0: 1.0 });
+          playVoiceFile(`voices/refugee-${R.n}-thanks.mp3`);
+          toast(`💬 ${R.name}: "${R.thanks}"`, "info");
+          awardGems(10); // a whole level — kindness pays like nothing else
+          if (tr0) {
+            // fed mid-speech: release the cutscene hold the talk state
+            // would otherwise have released (this froze the player)
+            if (tr0.state === "approach" || tr0.state === "talk") G.introLock = false;
+            tr0.state = "return"; tr0.hopT = 1.2; // skips home happy
+          }
+          if (G.refugeesFed.filter(Boolean).length >= TRAIL_REFUGEES.length) {
+            setTimeout(() => toast("🕊️ Every traveler fed — five levels of kindness on the road.", "info"), 2200);
+          }
+        });
       }
       else if (type === "bridge") { if (G.reqBridge) G.reqBridge(); }
       else if (type === "goldbag") {
@@ -9612,7 +10199,7 @@ export default function DragonGardenQuest() {
         const kE = tE * tE * (3 - 2 * tE) * 0.85;
         if (Math.abs(kE - (G.__eastGloomK ?? -1)) > 0.003) {
           G.__eastGloomK = kE;
-          blendAtmo(ATMO_HOME_DAY, ATMO_TOWN_GLOOM, kE);
+          blendAtmo(ATMO_HOME_DAY, ATMO_TOWN_GLOOM, s1Won() ? 0 : kE);
         }
       }
       // River's lantern: only lit where the Gloom is
@@ -9743,12 +10330,160 @@ export default function DragonGardenQuest() {
               }
             }, 1100);
           }
-          // ALL 84 home: the darkness ends — its music dies with it, and the
-          // Gloom Boss leads his whole pack out of town for good
-          if ((G.seasonTotal || 0) > 0 && f.n >= G.seasonTotal) {
-            playTrack("TOWN");
-            if (townKitHandle && townKitHandle.retreatAll) townKitHandle.retreatAll();
-            toast("The last light is home — the Gloom is leaving town!", "info");
+          // ALL 84 home: the LIBERATION — surge, the boss's panic, the
+          // flash, the stampede out, and the town reborn behind the light
+          if ((G.seasonTotal || 0) > 0 && f.n >= G.seasonTotal && !G.s1FinaleSeen) {
+            G.liberation = { stage: "surge", t: 0, i: 0 };
+            G.introLock = true; // it's a cutscene: the player watches
+          }
+        }
+      }
+      // the bolted side door announces itself: walking up close plays the
+      // locked line without needing the button. Once per approach — walking
+      // away past the outer ring re-arms it, so it never spams in place.
+      if (G.map === "CHURCH_HALL" && !S2_TRAIL_OPEN && !G.transitioning && !shopOpenRef.current) {
+        const dDoor = Math.hypot(playerPos.x - 8.3, playerPos.z + 8.5);
+        if (dDoor < 2.3 && !G.trailDoorNagged) {
+          G.trailDoorNagged = true;
+          toast("The side door is bolted shut. Somewhere beyond it, an old road waits… soon.", "warn");
+        } else if (dDoor > 3.6 && G.trailDoorNagged) G.trailDoorNagged = false;
+      }
+      if (G.map === "TRAIL" && trailFoams.length) {
+        for (const f2 of trailFoams) {
+          f2.sp.position.x += f2.v * dt;
+          f2.sp.position.z = 5 + Math.sin(G.time * 0.8 + f2.ph) * 0.45;
+          f2.sp.material.opacity = 0.35 + Math.sin(G.time * 2 + f2.ph) * 0.15;
+          if (f2.sp.position.x > 9.4) f2.sp.position.x = -9.4;
+        }
+      }
+      if (G.map === "TRAIL" && trailRefs.length) {
+        G.refGreeted = G.refGreeted || [0, 0, 0, 0, 0];
+        // self-heal: nothing on the trail may hold the player without an
+        // encounter actually running
+        if (G.introLock && !trailRefs.some((tr) => tr.state === "approach" || tr.state === "talk")) {
+          G.introLock = false;
+        }
+        const anyActive = trailRefs.some((tr) => tr.state === "approach" || tr.state === "talk");
+        for (const tr of trailRefs) {
+          const g2 = tr.g;
+          if (tr.state === "idle") {
+            if (!G.refGreeted[tr.i] && !anyActive && !shopOpenRef.current && !G.introLock
+                && Math.hypot(playerPos.x - tr.home.x, playerPos.z - tr.home.z) < 4.8) {
+              tr.state = "approach";
+              G.introLock = true; // the moment holds you: watch them come
+            }
+            continue;
+          }
+          if (tr.state === "approach") {
+            const dx = playerPos.x - g2.position.x, dz = playerPos.z - g2.position.z;
+            const dd = Math.hypot(dx, dz) || 1;
+            g2.rotation.y = Math.atan2(dx, dz);
+            if (dd > 1.35) {
+              g2.position.x += (dx / dd) * 2.0 * dt;
+              g2.position.z += (dz / dd) * 2.0 * dt;
+              g2.position.y = Math.abs(Math.sin(G.time * 9)) * 0.05;
+            } else {
+              g2.position.y = 0;
+              tr.state = "talk"; tr.t = 0;
+              G.refGreeted[tr.i] = 1;
+              G.saveT = 0.2;
+              playVoiceFile(`voices/refugee-${tr.R.n}-ask.mp3`);
+              toast(`💬 ${tr.R.name}: "${tr.R.ask}"`, "info");
+            }
+          } else if (tr.state === "talk") {
+            tr.t += dt;
+            const dx = playerPos.x - g2.position.x, dz = playerPos.z - g2.position.z;
+            g2.rotation.y = Math.atan2(dx, dz);
+            // the hold is a moment, not a cage: after a breath, pushing the
+            // stick walks you free while they finish talking. Nobody is
+            // forced to share — or to stand and listen.
+            const wantsOut = tr.t > 1.5 && (
+              Math.abs(joy.dx) > 0.3 || Math.abs(joy.dy) > 0.3 ||
+              keys["w"] || keys["a"] || keys["s"] || keys["d"] ||
+              keys["arrowup"] || keys["arrowdown"] || keys["arrowleft"] || keys["arrowright"]
+            );
+            if ((tr.t > 3 && !voiceSrc) || tr.t > 18 || wantsOut) {
+              tr.state = "waiting";
+              G.introLock = false;
+            }
+          } else if (tr.state === "waiting") {
+            const dx = playerPos.x - g2.position.x, dz = playerPos.z - g2.position.z;
+            g2.rotation.y = Math.atan2(dx, dz);
+            g2.position.y = 0;
+            // fed (the throw sends them home happy) or abandoned: drift back
+            if (Math.hypot(dx, dz) > 7) tr.state = "return";
+          } else if (tr.state === "return") {
+            if (tr.hopT > 0) tr.hopT -= dt;
+            const dx = tr.home.x - g2.position.x, dz = tr.home.z - g2.position.z;
+            const dd = Math.hypot(dx, dz);
+            if (dd < 0.12) {
+              g2.position.set(tr.home.x, 0, tr.home.z);
+              g2.rotation.y = tr.home.rot;
+              tr.state = "idle";
+            } else {
+              g2.rotation.y = Math.atan2(dx, dz);
+              g2.position.x += (dx / dd) * 1.6 * dt;
+              g2.position.z += (dz / dd) * 1.6 * dt;
+              g2.position.y = Math.abs(Math.sin(G.time * 8)) * (tr.hopT > 0 ? 0.16 : 0.04);
+            }
+          }
+        }
+      }
+      if (G.liberation && G.map === "TOWN" && townKitHandle) {
+        const L = G.liberation;
+        L.t += dt;
+        if (L.stage === "surge") {
+          // the strand wakes: a ripple of sparks sweeps all 84 bulbs while
+          // the boss realises what is happening
+          if (!L.shouted) {
+            L.shouted = 1;
+            if (townKitHandle.gloomBoss) townKitHandle.gloomBoss.taunt(8);
+            G.shakeT = Math.max(G.shakeT || 0, 0.5);
+          }
+          const total = (townKitHandle.lights && townKitHandle.lights.total) || 84;
+          const want = Math.min(total, Math.floor((L.t / 1.5) * total));
+          while (L.i < want) {
+            const sp = townKitHandle.lights.spot(L.i);
+            if (sp) spawnBurst(sp.x, sp.z, 0xffe9a8, 2, { glow: true, vy: 1.1, y0: sp.y, spread: 0.25, ttl: 0.5 });
+            L.i++;
+          }
+          if (L.t >= 2.0) { L.stage = "flashin"; L.t = 0; }
+        } else if (L.stage === "flashin") {
+          if (G.setFlash) G.setFlash(Math.min(1, L.t / 0.45));
+          if (L.t >= 0.5) {
+            // behind full white: the stampede starts and the dread bed dies
+            if (townKitHandle.retreatAll) townKitHandle.retreatAll(true);
+            if (musicBus && AC) {
+              L.musGain = musicBus.gain.value;
+              musicBus.gain.setTargetAtTime(0.0001, AC.currentTime, 0.06);
+            }
+            L.stage = "veil"; L.t = 0;
+          }
+        } else if (L.stage === "veil") {
+          // ease down to a bright veil and HOLD — the fleeing shadows of the
+          // Gloom read right through it. Near-silence the whole time.
+          const op = L.t < 0.6 ? 1 - (L.t / 0.6) * 0.34 : 0.66;
+          if (G.setFlash) G.setFlash(op);
+          if (L.t >= 4.6) { L.stage = "peak2"; L.t = 0; }
+        } else if (L.stage === "peak2") {
+          if (G.setFlash) G.setFlash(0.66 + Math.min(1, L.t / 0.3) * 0.34);
+          if (L.t >= 0.34) {
+            // behind the second peak the town is rebuilt REBORN: warm sky,
+            // clean grass, no haze, every bulb lit, the chapel unlocked
+            if (L.preview) G.__finalePreview = 1;
+            else { G.s1FinaleSeen = 1; G.saveT = 0.2; }
+            L.stage = "reveal"; L.t = 0;
+            loadMap("TOWN");
+            if (musicBus && AC) musicBus.gain.setTargetAtTime(L.musGain ?? 1, AC.currentTime + 0.9, 1.1);
+          }
+        } else if (L.stage === "reveal") {
+          if (G.setFlash) G.setFlash(Math.max(0, 1 - L.t / 1.5));
+          if (L.t >= 1.6) {
+            if (G.setFlash) G.setFlash(0);
+            G.introLock = false;
+            G.liberation = null;
+            toast("⛪ The Gloom is gone! The chapel door swings open…", "info");
+            SFX.itemGet();
           }
         }
       }
@@ -10529,6 +11264,10 @@ export default function DragonGardenQuest() {
         let hx = h.x, hz = h.z;
         // don't let the action button advertise a pouch it won't open
         if (h.type === "redbag" && G.readingLock) continue;
+        if (h.type === "refugee" && trailRefs[h.idx]) {
+          hx = trailRefs[h.idx].g.position.x;
+          hz = trailRefs[h.idx].g.position.z;
+        }
         if (h.type === "dragon" && G.dragonState !== "idle") {
           // he's out of the cave — the feed prompt follows him while he
           // prowls; while he's charging or running home he can't be fed
@@ -10537,7 +11276,7 @@ export default function DragonGardenQuest() {
         }
         const d = Math.hypot(playerPos.x - hx, playerPos.z - hz);
         if (d < h.r && d < best + 1) {
-          currentPrompt = { type: h.type, kind: h.kind, bagIdx: h.bagIdx };
+          currentPrompt = { type: h.type, kind: h.kind, bagIdx: h.bagIdx, idx: h.idx };
           promptText = h.type === "dragon" && G.dragonState === "prowl"
             ? "Ember is hangry — offer him a berry!"
             : h.type === "dragon" && G.sleepBlend > 0.6 ? "Ember is asleep 💤 — feed him a snack?" : h.label;
@@ -11032,7 +11771,7 @@ export default function DragonGardenQuest() {
   const RARE_CROPS = ["glowberry", "starberry", "dawnberry", "gloryberry"];
   const INV_TILE_CROPS = [...HOME_CROPS, ...RARE_CROPS]; // all have tile art now
   const inCommunity = hud.map === "CHURCH";
-  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", lockeddoor: "🔒", townbible: "📖", riverchat: "💬", bridge: "🌉", goldbag: "💰", redbag: "🎒", glow: "✨" };
+  const ACTION_ICON = { plant: "🌱", harvest: "🧺", dragon: "🍓", seedshop: "🛒", market: "💰", toolsmith: "⚒️", counter: "💬", lockeddoor: "🔒", refugee: "🤲", townbible: "📖", riverchat: "💬", bridge: "🌉", goldbag: "💰", redbag: "🎒", glow: "✨" };
   // the painted market grid has six cells (gloryberry has no cell yet)
   const MARKET_KEYS = ["strawberry", "blueberry", "sunfruit"]; // the painted board sells home fruit only
   const marketTotal = seedKeys.reduce((t, k) => t + hud.inv.fruit[k] * SEEDS[k].sell, 0);
@@ -11521,6 +12260,12 @@ export default function DragonGardenQuest() {
           onDone={endReading}
         />
       )}
+
+      {/* the liberation flash veil — opacity driven per-frame by the engine */}
+      <div id="by-liberation-flash" style={{
+        position: "absolute", inset: 0, background: "#fffdf2",
+        opacity: 0, display: "none", pointerEvents: "none", zIndex: 70,
+      }} />
 
       {/* Ember's travel meter — the gem strip flashes on non-home maps when
           the meter ticks, then slips away. (No painted signboard any more.) */}
