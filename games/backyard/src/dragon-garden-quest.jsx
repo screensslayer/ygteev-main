@@ -137,7 +137,8 @@ const FENCE_TIERS = [
   { x1: -6.2, x2: 9.8, z1: 6.2, z2: 17.0, cols: [-4.7, -1.55, 1.6, 4.75, 7.9], rows: [7.6, 9.9, 12.2, 14.5], cost: 2000 },
   { x1: -9.35, x2: 12.95, z1: 6.2, z2: 19.3, cols: [-7.85, -4.7, -1.55, 1.6, 4.75, 7.9, 11.05], rows: [7.6, 9.9, 12.2, 14.5, 16.8], cost: 4500 },
 ];
-const kitCostAt = (n) => 150 + n * 50;
+// flat price — the old +50-per-kit ramp read as a bug to players
+const kitCostAt = () => 150;
 
 // c = accent (borders/glows on light cards), t = text (dark enough to read)
 const RARITY = {
@@ -13232,7 +13233,7 @@ export default function DragonGardenQuest() {
                 }}
                 onExplain={(k) => {
                   const notes = {
-                    "kit": { title: "🧱 PLOT KIT", body: "Plot Kits are bought where you place them. Get the Garden Hoe, tap the Build button at your home garden, and set a new bed on any glowing square. Each new bed costs a little more than the last." },
+                    "kit": { title: "🧱 PLOT KIT", body: "Plot Kits are bought where you place them. Get the Garden Hoe, tap the Build button at your home garden, and set a new bed on any glowing square. Every bed costs the same — ✨150." },
                     "deed2": { title: "🔒 LOCKED", body: "Grimble grows a fence one deed at a time — buy Fence Deed I before Fence Deed II." },
                     "hoe:poor": { title: "NOT ENOUGH XP", body: "The Garden Hoe costs 500 XP. Harvest fruit and sell it at the Berry Market to earn more." },
                     "deed1:poor": { title: "NOT ENOUGH XP", body: "Fence Deed I costs 2000 XP. Harvest fruit and sell it at the Berry Market to earn more." },
