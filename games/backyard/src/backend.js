@@ -1,7 +1,7 @@
 // YGTeeV Backyard backend bridge — the game reaches Supabase only through
 // window.YGTEEV_API (set in main.jsx before the game mounts). Every method
 // throws on error; game-side call sites degrade gracefully.
-import { supabase } from "./supabaseClient";
+import { supabase, getAuthToken } from "./supabaseClient";
 
 // Dedicated live-position relay (relay/ in this repo, deployed on Fly).
 // Empty string disables it and every garden falls back to Supabase Realtime.
@@ -217,7 +217,10 @@ export function createApi() {
       if (!gid || !me?.id) return null;
 
       const supabaseJoin = () => {
-        supabase.realtime.setAuth(); // private channel needs the user JWT on the socket
+        // private channel needs the user JWT on the socket — bridge token in
+        // the app (embedded mode), session token in the browser
+        const tok = getAuthToken();
+        if (tok) supabase.realtime.setAuth(tok); else supabase.realtime.setAuth();
         const ch = supabase.channel("by:garden:" + gid, {
           config: { private: true, broadcast: { self: false }, presence: { key: me.id } },
         });
@@ -251,7 +254,7 @@ export function createApi() {
       const connect = async () => {
         if (closed) return;
         let token = null;
-        try { token = (await supabase.auth.getSession()).data.session?.access_token; } catch (e) {}
+        try { token = getAuthToken() || (await supabase.auth.getSession()).data.session?.access_token; } catch (e) {}
         if (closed) return;
         if (!token) return useFallback();
         let ws;

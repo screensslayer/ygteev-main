@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { supabase } from "./supabaseClient";
+import { supabase, EMBEDDED_AUTH, getAuthToken, jwtSub } from "./supabaseClient";
 import { installStorage } from "./storage";
 import { createApi } from "./backend";
 
@@ -29,6 +29,15 @@ function parseHashTokens() {
 }
 
 async function resolveSession() {
+  // Embedded single-refresher mode: the app injected window.YGTEEV.auth at
+  // document start and owns all refreshing. No supabase.auth here at all —
+  // the shell only needs the user id, read straight off the JWT.
+  if (EMBEDDED_AUTH) {
+    const token = getAuthToken();
+    const sub = jwtSub(token);
+    return sub ? { user: { id: sub }, access_token: token, embedded: true } : null;
+  }
+  // Legacy hash handoff (OLD app builds) — unchanged until every app updates.
   const tokens = parseHashTokens();
   if (tokens) {
     const { error } = await supabase.auth.setSession(tokens);
@@ -54,6 +63,7 @@ async function mountGame(session) {
     const status = error ? null : data;
     window.YGTEEV_MEMBER = status?.is_member === true;
     window.YGTEEV = {
+      ...window.YGTEEV, // keep the app-injected auth payload intact
       profile: {
         id: userId,
         groupId: status?.group_id ?? null,
@@ -65,7 +75,7 @@ async function mountGame(session) {
     };
   } catch {
     window.YGTEEV_MEMBER = false;
-    window.YGTEEV = { profile: { id: userId } };
+    window.YGTEEV = { ...window.YGTEEV, profile: { id: userId } };
   }
 
   try {
@@ -154,7 +164,7 @@ function DevSignIn({ onSignedIn }) {
   // ?logout=1 — drop the persisted browser session and land on the sign-in
   // form, so testers can switch accounts without digging through devtools.
   const q = new URLSearchParams(window.location.search);
-  if (q.get("logout")) {
+  if (q.get("logout") && !EMBEDDED_AUTH) { // logout is a browser-testing tool; the app owns its own session
     try { await supabase.auth.signOut(); } catch { /* already gone */ }
     history.replaceState(null, "", window.location.pathname);
   }
