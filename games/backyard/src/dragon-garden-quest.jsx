@@ -4205,6 +4205,7 @@ export default function DragonGardenQuest() {
         litShown: G.litShownN || 0,
         cloudw: G.cloudWelcome || {},
         chestw: G.chestSeen || {},
+        zhint: G.zoneHintDone ? 1 : 0,
         awayEaten: G.awayEaten || [],
         inv: G.inv,
         homePlots: G.homePlots.map((p) => p.seed ? {
@@ -4252,6 +4253,7 @@ export default function DragonGardenQuest() {
       G.refGreeted = Array.isArray(d.refGreet) ? d.refGreet.slice(0, 5).map((v) => (v ? 1 : 0)) : [0, 0, 0, 0, 0];
       G.cloudWelcome = (d.cloudw && typeof d.cloudw === "object") ? d.cloudw : {};
       G.chestSeen = (d.chestw && typeof d.chestw === "object") ? d.chestw : {};
+      G.zoneHintDone = d.zhint === 1 ? 1 : 0;
       if (Array.isArray(d.awayEaten)) G.awayEaten = d.awayEaten; // report survives a restart
       if (typeof d.hunger === "number") G.hunger = Math.min(100, Math.max(0, d.hunger)); // exact restore — a starving Ember stays starving
       if (Array.isArray(d.homePlots)) {
@@ -4385,7 +4387,7 @@ export default function DragonGardenQuest() {
       // Season 1 — River, the lantern, and the town lights
       lantern: 0, riverIntroDone: 0, riverAmazedDone: 0, riverAmazed2Done: 0, riverIntroPlaying: false,
       bossTaunt2Done: 0, seasonPromoDone: 0, litShownN: 0, s1FinaleSeen: 0, refugeesFed: [0, 0, 0, 0, 0], refGreeted: [0, 0, 0, 0, 0],
-      challenge: null, cloudWelcome: {}, chestSeen: {}, cloudFlashT: 0, cloudRide: null, cloudFete: null, cloudPollT: 0,
+      challenge: null, cloudWelcome: {}, chestSeen: {}, cloudFlashT: 0, cloudRide: null, cloudFete: null, cloudPollT: 0, zoneHintDone: 0,
       pendingLightN: 0, seasonDone: 0, seasonTotal: 84,
       hungerPlaqueT: 0, // how long the hangry plaque has nagged (auto-hides at 60s)
       outfit: { skin: 0xf2c9a4, hair: 0x4a2f1c, hairStyle: "crop", style: "tee", shirt: 0x3a72c9, boots: 0x3f2f20, hat: "straw", accessory: "basket" },
@@ -7472,7 +7474,9 @@ export default function DragonGardenQuest() {
       addGroundPatches(90, 70, homeAvoid);
       addWildflowers(400, 66, homeAvoid, fenceEdges);
       addForestRing(34, 40, 60, [[24, 3], [-24, 3]]);
-      addMountains([[-34, -52, 17, 21, true], [8, -58, 21, 26, true], [44, -46, 15, 17, false], [-52, 20, 14, 15, true], [52, 26, 16, 18, false]]);
+      addMountains([[-34, -52, 17, 21, true], [8, -58, 21, 26, true], [44, -46, 15, 17, false], [-52, 20, 14, 15, true], [52, 26, 16, 18, false],
+        // southern range: rises behind the boundary treeline
+        [-38, 54, 15, 17, true], [-8, 60, 21, 25, true], [20, 55, 17, 20, true], [46, 50, 13, 14, false]]);
       addClouds(6);
       addButterflies(6, 30);
 
@@ -9807,6 +9811,14 @@ export default function DragonGardenQuest() {
     // stayed pushed forever and every new touch was ignored, so the player
     // "ran off on their own" until the game was restarted.
     const releaseJoy = () => { joy.active = false; joy.dx = 0; joy.dy = 0; };
+    // one-time control hint the first time a touch player lands on an
+    // orbit map — zones aren't discoverable by accident
+    const zoneHint = () => {
+      if (G.zoneHintDone || !ORBIT_MAPS[G.map]) return;
+      G.zoneHintDone = 1;
+      G.saveT = 0.2;
+      toast("👣 Left side to walk · 👀 right side to look", "info");
+    };
     const onTouchStart = (e) => {
       // self-heal: if the finger we were tracking is no longer on the glass
       // (its end/cancel never reached us), release so THIS touch can steer
@@ -9815,16 +9827,22 @@ export default function DragonGardenQuest() {
         for (const t of e.touches) if (t.identifier === joy.id) { alive = true; break; }
         if (!alive) releaseJoy();
       }
+      // Dual-zone touch (AAA layout): LEFT half = floating movement stick,
+      // RIGHT half = camera orbit — each works alone, so you can look
+      // around while standing still. Portrait biases the split toward
+      // movement (58%) so a centered thumb still walks. Interiors have no
+      // orbit camera, so there the whole screen steers as it always did.
+      // Taps stay global: a quick touch in either zone still acts.
+      const zoned = ORBIT_MAPS[G.map];
+      const splitX = W() * (H() > W() ? 0.58 : 0.5);
       for (const t of e.changedTouches) {
-        // floating joystick anywhere on the 3D view (edge to edge). UI
-        // buttons are separate DOM elements, so touches on them don't reach
-        // the canvas; a quick tap here still registers ~0 drag and lets
-        // tap-to-act fire on release.
-        if (!joy.active) {
+        const wantsCam = zoned && t.clientX >= splitX;
+        if (!wantsCam && !joy.active) {
           joy.active = true; joy.id = t.identifier; joy.ox = t.clientX; joy.oy = t.clientY; joy.dx = 0; joy.dy = 0;
-        } else if (t.identifier !== joy.id && camCtl.touchId === null) {
-          // second thumb = the camera: grab it for the 360° orbit
+          zoneHint();
+        } else if (wantsCam && camCtl.touchId === null) {
           camCtl.touchId = t.identifier; camCtl.lx = t.clientX; camCtl.ly = t.clientY;
+          zoneHint();
         }
       }
     };
