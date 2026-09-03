@@ -7270,6 +7270,164 @@ export default function DragonGardenQuest() {
       [[-9.5, -8, 1.3], [12, -10, 1.1], [-9, 15.5, 1.4], [14, 12, 1.2], [-19, 6.5, 1.0], [18, -3, 1.3], [9, 16, 1.1], [-20.5, -14, 1.4], [20, 15, 1.2], [-19, 18, 1.1], [16, 18, 1.3], [24, 6, 1.0], [-21, -4, 1.2]]
         .forEach(([x, z, s]) => { if (!inGarden(x, z, 1.3)) worldGroup.add(makeTree(x, z, s)); });
       addPetals([[12, -10], [9, 16], [20, 15], [-9, 15.5]], [0x8fbe62, 0xd8c05a], 14, 3.6);
+
+      // ---- The east passage: the road to Meadow Town runs a tree-walled
+      // corridor, and the world beyond the treeline falls into blackness —
+      // matching the town's dark west mouth so the transition reads as one
+      // continuous walk into the gloom. Trees are the usual pine/oak mix and
+      // self-collide, so the flanks genuinely can't be walked (or seen) through.
+      {
+        const rand = (a, b) => a + Math.random() * (b - a);
+        for (let cx = 16; cx <= 32.5; cx += 2.3) {
+          for (const [z0, z1, rows] of [[-7.5, 1.1, 4], [4.9, 13.5, 4]]) {
+            for (let r = 0; r < rows; r++) {
+              const zz = z0 + ((z1 - z0) / rows) * (r + 0.5) + rand(-0.7, 0.7);
+              const xx = cx + rand(-0.9, 0.9);
+              if (inGarden(xx, zz, 1.3)) continue;
+              if (Math.abs(zz - 3) < 1.9) continue;            // never pinch the road
+              if (Math.hypot(xx - 24, zz - 6) < 1.8) continue;  // wayside sign tree stays clear
+              worldGroup.add(makeTree(xx, zz, rand(1.0, 1.55) + (xx > 26 ? 0.25 : 0)));
+            }
+          }
+        }
+        // full-length east forest: the corridor grove continues to both
+        // corners, so the black east wall always sits behind trees
+        for (const [zA, zB] of [[-34.5, -7.5], [13.5, 34.5]]) {
+          for (let zz = zA; zz <= zB; zz += 2.6) {
+            for (const xx of [27.5, 30.2, 32.8]) {
+              worldGroup.add(makeTree(xx + rand(-0.9, 0.9), zz + rand(-0.9, 0.9), rand(1.15, 1.7)));
+            }
+          }
+        }
+        // slim screens along the north + south boundaries so the ground
+        // plane's edge never reads — planted just past the walk clamp so
+        // their trunks can't snag anyone
+        // south gets a real woodland (3 staggered ranks — its long open
+        // sightline showed horizon between single trunks), north a double
+        for (const [zEdge, rows] of [[-34.2, 2], [34.2, 3]]) {
+          const dir = zEdge > 0 ? 1 : -1;
+          for (let r = 0; r < rows; r++) {
+            for (let xx = -34; xx <= 26; xx += 2.7) {
+              const jx = xx + rand(-1.0, 1.0) + (r % 2 ? 1.35 : 0);
+              const jz = zEdge + dir * r * 2.2 + rand(-0.7, 0.7);
+              if (Math.abs(jx - RIVER_X(jz)) < 2.6) continue; // the river runs on through
+              worldGroup.add(makeTree(jx, jz, rand(1.05, 1.6) + r * 0.08));
+            }
+          }
+        }
+        // packed corner groves: the NE + SE corners are where the east wall
+        // meets the boundary screens — diagonal sightlines sneak between the
+        // two lines there, so bury the seam under proper woods
+        for (const zSign of [-1, 1]) {
+          for (let i = 0; i < 16; i++) {
+            const jx = rand(23.5, 34.5);
+            const jz = zSign * rand(24, 35.5);
+            worldGroup.add(makeTree(jx, jz, rand(1.2, 1.75)));
+          }
+        }
+        // ---- west passage: the road over the bridge to the community
+        // garden gets the same treatment — flanking woods from the far bank
+        // to the exit, keeping the riverbank and the wayside sign clear
+        for (let cx = -17.8; cx >= -27; cx -= 2.3) {
+          for (const [z0, z1] of [[-9.5, 0.8], [5.2, 15]]) {
+            for (let r = 0; r < 4; r++) {
+              const zz = z0 + ((z1 - z0) / 4) * (r + 0.5) + rand(-0.7, 0.7);
+              const xx = cx + rand(-0.9, 0.9);
+              if (Math.abs(xx - RIVER_X(zz)) < 2.8) continue; // stay off the water
+              if (Math.hypot(xx + 20, zz - 1.4) < 2.0) continue; // the wayside sign
+              worldGroup.add(makeTree(xx, zz, rand(1.0, 1.55) + (xx < -23 ? 0.25 : 0)));
+            }
+          }
+        }
+        // full west wall: the first rank leaves the road a mouth, the deeper
+        // ranks close behind it so the way onward vanishes into forest
+        for (const xx of [-28.5, -31, -33.5]) {
+          for (let zz = -34.5; zz <= 34.5; zz += 2.6) {
+            if (xx === -28.5 && Math.abs(zz - 3) < 3.2) continue;
+            worldGroup.add(makeTree(xx + rand(-0.9, 0.9), zz + rand(-0.9, 0.9), rand(1.15, 1.7)));
+          }
+        }
+        // NW/SW corner packs
+        for (const zSign of [-1, 1]) {
+          for (let i = 0; i < 10; i++) {
+            worldGroup.add(makeTree(-rand(26, 35), zSign * rand(22, 34), rand(1.2, 1.7)));
+          }
+        }
+        // ---- the west sky burns sunset: the community garden lies that
+        // way, and its golden hour bleeds over the treeline. A warm gradient
+        // wall behind the west woods — bright at the horizon, dissolving
+        // upward so orange melts into the blue instead of meeting it
+        const scv = document.createElement("canvas");
+        scv.width = 256; scv.height = 256;
+        const sc2 = scv.getContext("2d");
+        const sunset = sc2.createLinearGradient(0, 256, 0, 0);
+        sunset.addColorStop(0, "rgba(255,217,160,0.95)");
+        sunset.addColorStop(0.35, "rgba(240,166,112,0.85)");
+        sunset.addColorStop(0.68, "rgba(255,154,76,0.38)");
+        sunset.addColorStop(1, "rgba(255,154,76,0)");
+        sc2.fillStyle = sunset; sc2.fillRect(0, 0, 256, 256);
+        sc2.globalCompositeOperation = "destination-out";
+        const swL = sc2.createLinearGradient(0, 0, 46, 0);
+        swL.addColorStop(0, "rgba(0,0,0,1)"); swL.addColorStop(1, "rgba(0,0,0,0)");
+        sc2.fillStyle = swL; sc2.fillRect(0, 0, 46, 256);
+        const swR = sc2.createLinearGradient(256, 0, 210, 0);
+        swR.addColorStop(0, "rgba(0,0,0,1)"); swR.addColorStop(1, "rgba(0,0,0,0)");
+        sc2.fillStyle = swR; sc2.fillRect(210, 0, 46, 256);
+        sc2.globalCompositeOperation = "source-over";
+        const sunsetWall = new THREE.Mesh(new THREE.PlaneGeometry(150, 30),
+          new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(scv), transparent: true, fog: false, depthWrite: false }));
+        sunsetWall.rotation.y = Math.PI / 2; // faces east, toward the meadow
+        sunsetWall.position.set(-37, 13.4, 3);
+        worldGroup.add(sunsetWall);
+        // beyond the treeline: black. A gradient curtain — solid at the
+        // ground, fading up into sky — plus a black apron under the far
+        // road. Both unlit and fog-free so haze can never wash the dark out.
+        const gcv = document.createElement("canvas");
+        gcv.width = 256; gcv.height = 256;
+        const gc = gcv.getContext("2d");
+        const grd = gc.createLinearGradient(0, 256, 0, 0);
+        grd.addColorStop(0, "rgba(2,2,6,1)");
+        grd.addColorStop(0.62, "rgba(2,2,6,1)");
+        grd.addColorStop(1, "rgba(2,2,6,0)");
+        gc.fillStyle = grd; gc.fillRect(0, 0, 256, 256);
+        // and soften BOTH wings into the sky — a hard vertical edge where
+        // the darkness stops reads as a wall of the world
+        gc.globalCompositeOperation = "destination-out";
+        const wingL = gc.createLinearGradient(0, 0, 46, 0);
+        wingL.addColorStop(0, "rgba(0,0,0,1)"); wingL.addColorStop(1, "rgba(0,0,0,0)");
+        gc.fillStyle = wingL; gc.fillRect(0, 0, 46, 256);
+        const wingR = gc.createLinearGradient(256, 0, 210, 0);
+        wingR.addColorStop(0, "rgba(0,0,0,1)"); wingR.addColorStop(1, "rgba(0,0,0,0)");
+        gc.fillStyle = wingR; gc.fillRect(210, 0, 46, 256);
+        gc.globalCompositeOperation = "source-over";
+        const curtain = new THREE.Mesh(new THREE.PlaneGeometry(150, 30),
+          new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(gcv), transparent: true, fog: false, depthWrite: false }));
+        curtain.rotation.y = -Math.PI / 2;
+        curtain.position.set(36.5, 13.4, 3);
+        worldGroup.add(curtain);
+        const acv = document.createElement("canvas");
+        acv.width = 256; acv.height = 256;
+        const ac = acv.getContext("2d");
+        const agrd = ac.createLinearGradient(0, 0, 256, 0);
+        agrd.addColorStop(0, "rgba(2,2,6,0)");
+        agrd.addColorStop(0.45, "rgba(2,2,6,1)");
+        agrd.addColorStop(1, "rgba(2,2,6,1)");
+        ac.fillStyle = agrd; ac.fillRect(0, 0, 256, 256);
+        // matching soft ends on the ground darkness
+        ac.globalCompositeOperation = "destination-out";
+        const capT = ac.createLinearGradient(0, 0, 0, 40);
+        capT.addColorStop(0, "rgba(0,0,0,1)"); capT.addColorStop(1, "rgba(0,0,0,0)");
+        ac.fillStyle = capT; ac.fillRect(0, 0, 256, 40);
+        const capB = ac.createLinearGradient(0, 256, 0, 216);
+        capB.addColorStop(0, "rgba(0,0,0,1)"); capB.addColorStop(1, "rgba(0,0,0,0)");
+        ac.fillStyle = capB; ac.fillRect(0, 216, 256, 40);
+        ac.globalCompositeOperation = "source-over";
+        const apron = new THREE.Mesh(new THREE.PlaneGeometry(16, 150),
+          new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(acv), transparent: true, fog: false, depthWrite: false }));
+        apron.rotation.x = -Math.PI / 2;
+        apron.position.set(30, 0.045, 3);
+        worldGroup.add(apron);
+      }
       // 3 size classes: pebble-cluster smalls, mids, plus half-buried boulders with grass skirts
       [[-8, 0, 0.8, false], [7, 7, 0.7, false], [-3, -6, 0.85, false], [11, 5, 0.6, false], [-9.4, -2.5, 0.65, true],
        [13.5, 17.5, 0.42, false], [-6.2, 8.6, 0.38, false], [19.5, 12.5, 0.45, false], [8.5, -3.2, 0.4, true]]
@@ -7729,6 +7887,63 @@ export default function DragonGardenQuest() {
         .forEach(([x, z, s2]) => worldGroup.add(makeOak(x, z, s2)));
       [[-18.2, -13.5, 1.25], [17.2, 15.0, 1.1]]
         .forEach(([x, z, s2]) => worldGroup.add(makeTree(x, z, s2)));
+
+      // ---- The west passage: a deep mixed forest walls the road back to
+      // the Home Meadow — the mirror image of home's east treeline, so the
+      // two maps read as one continuous wood with the road threading
+      // through. The corridor along z≈0 stays clear all the way out.
+      {
+        const rand = (a, b) => a + Math.random() * (b - a);
+        // never drop a tree onto the west-mouth shops (Berry Market and
+        // Rosie's) — the flank bands brush right past their walls
+        const AVOID = [[-13.4, -4.6, 4.4], [-8.6, -10.4, 4.2]];
+        const clearOf = (x, z) => AVOID.every(([ax, az, ar]) => Math.hypot(x - ax, z - az) > ar);
+        const plant = (x, z, s) => { if (clearOf(x, z)) worldGroup.add(makeTree(x, z, s)); };
+        // road flanks — start behind the mouth's buildings, thicken westward
+        for (let cx = -16.2; cx >= -25.8; cx -= 2.3) {
+          for (const [z0, z1] of [[-10, -2.3], [2.3, 10]]) {
+            for (let r = 0; r < 4; r++) {
+              const zz = z0 + ((z1 - z0) / 4) * (r + 0.5) + rand(-0.7, 0.7);
+              const xx = cx + rand(-0.9, 0.9);
+              plant(xx, zz, rand(1.0, 1.55) + (xx < -21 ? 0.25 : 0));
+            }
+          }
+        }
+        // the wall runs the whole west edge to both corners
+        for (const [zA, zB] of [[-35, -10], [10, 35]]) {
+          for (let zz = zA; zz <= zB; zz += 2.6) {
+            for (const xx of [-21.5, -24.2, -26.6]) {
+              plant(xx + rand(-0.9, 0.9), zz + rand(-0.9, 0.9), rand(1.15, 1.7));
+            }
+          }
+        }
+        // packed NW/SW corner groves against diagonal sightlines
+        for (const zSign of [-1, 1]) {
+          for (let i = 0; i < 12; i++) {
+            plant(-rand(17.5, 27.5), zSign * rand(11, 30), rand(1.2, 1.7));
+          }
+        }
+        // ---- and the rest of the rim: three staggered ranks of woods along
+        // the north, south and east boundaries, so no angle finds the edge
+        // of the world. The east gate corridor (the road out, z≈3) stays
+        // open for the Glowlands East Road.
+        for (const [zEdge, dir] of [[-27.2, -1], [27.2, 1]]) {
+          for (let r = 0; r < 3; r++) {
+            for (let xx = -31; xx <= 31; xx += 2.7) {
+              plant(xx + rand(-1.0, 1.0) + (r % 2 ? 1.35 : 0),
+                    zEdge + dir * r * 2.2 + rand(-0.7, 0.7),
+                    rand(1.1, 1.65) + r * 0.08);
+            }
+          }
+        }
+        for (let r = 0; r < 3; r++) {
+          for (let zz = -27; zz <= 27; zz += 2.7) {
+            const jz = zz + rand(-1.0, 1.0) + (r % 2 ? 1.35 : 0);
+            if (Math.abs(jz - 3) < 3.2) continue; // the East Road runs through
+            plant(27.2 + r * 2.2 + rand(-0.7, 0.7), jz, rand(1.1, 1.65) + r * 0.08);
+          }
+        }
+      }
       [[4.9, -5.8, 0.55, true], [-6.4, -5.0, 0.5, true], [16.2, -9.4, 0.7, false], [-16.2, 9.2, 0.65, true]]
         .forEach(([x, z, s2, dk]) => worldGroup.add(makeRock(x, z, s2, dk)));
 
@@ -8925,6 +9140,30 @@ export default function DragonGardenQuest() {
           if (!churchAvoid(fx, fz)) worldGroup.add(mixFlower(fx, fz));
         }
       }
+
+      // ---- perimeter forest: the garden sits in the same encircling woods
+      // as the Home Meadow — three staggered ranks on every side, with the
+      // east road mouth left open where home lies beyond the trees
+      {
+        const rand = (a, b) => a + Math.random() * (b - a);
+        for (const [zEdge, dir] of [[-35, -1], [35, 1]]) { // north + south
+          for (let r = 0; r < 3; r++) {
+            for (let xx = -39; xx <= 39; xx += 2.7) {
+              const jx = xx + rand(-1.0, 1.0) + (r % 2 ? 1.35 : 0);
+              worldGroup.add(makeTree(jx, zEdge + dir * r * 2.2 + rand(-0.7, 0.7), rand(1.1, 1.65) + r * 0.08));
+            }
+          }
+        }
+        for (const [xEdge, dir] of [[-35, -1], [35, 1]]) { // west + east
+          for (let r = 0; r < 3; r++) {
+            for (let zz = -33; zz <= 33; zz += 2.7) {
+              const jz = zz + rand(-1.0, 1.0) + (r % 2 ? 1.35 : 0);
+              if (xEdge > 0 && r === 0 && Math.abs(jz) < 3.4) continue; // the road home runs out east
+              worldGroup.add(makeTree(xEdge + dir * r * 2.2 + rand(-0.7, 0.7), jz, rand(1.1, 1.65) + r * 0.08));
+            }
+          }
+        }
+      }
       [[-19, 10.5, 1], [19, 10.5, 1], [-19, -10.5, 1], [19, -10.5, 0.9], [7, 15, 0.9], [-7, 15, 0.9], [-7, -10, 0.8], [25, 4.5, 0.9]]
         .forEach(([x, z, bs]) => worldGroup.add(makeBush(x, z, bs)));
       addSprouts(470, 74, churchAvoid);
@@ -9492,6 +9731,7 @@ export default function DragonGardenQuest() {
       if (!GLOW_ENABLED && name === "EASTROAD") name = "TOWN";
       if (G.clearMarketCue) { marketArrow = null; G.marketCueT = 0; }
       G.__fenceIn = null; // fence auto-select re-evaluates on the new map
+      camCtl.yaw = 0; camCtl.pitch = 0; camCtl.touchId = null; camCtl.mouse = false; // every map opens on its designed framing
       G.map = name;
       SFX.whoosh();
       if (name === "HOME") buildHome(); // buildHome calls buildGlowHome itself
@@ -9533,6 +9773,20 @@ export default function DragonGardenQuest() {
       camera.position.set(playerPos.x, 7.8, playerPos.z + 9.6);
       G.exitLatch = true; // don't re-trigger a doorway we just spawned beside
     }
+    // Free-orbit camera (AAA dual-thumb): the SECOND finger drags the view
+    // through a full 360° around the player (mouse-drag on desktop). Yaw 0 =
+    // the classic framing; movement input is rotated to stay camera-relative.
+    // Outdoor maps only — interiors keep their tuned fixed cameras so the
+    // orbit can never clip through chapel/shop walls. Declared BEFORE the
+    // first loadMap below, which resets it per map.
+    const camCtl = { yaw: 0, pitch: 0, touchId: null, lx: 0, ly: 0, mouse: false };
+    const ORBIT_MAPS = { HOME: 1, TOWN: 1, CHURCH: 1, EASTROAD: 1, TRAIL: 1, CLOUDS: 1 };
+    const orbitYaw = () => (ORBIT_MAPS[G.map] ? camCtl.yaw : 0);
+    const camDrag = (dxPx, dyPx) => {
+      if (!ORBIT_MAPS[G.map]) return;
+      camCtl.yaw -= dxPx * 0.0075;
+      camCtl.pitch = Math.max(-0.4, Math.min(0.5, camCtl.pitch + dyPx * 0.004));
+    };
     loadMap("HOME");
 
     // ================= INPUT =================
@@ -9568,6 +9822,9 @@ export default function DragonGardenQuest() {
         // tap-to-act fire on release.
         if (!joy.active) {
           joy.active = true; joy.id = t.identifier; joy.ox = t.clientX; joy.oy = t.clientY; joy.dx = 0; joy.dy = 0;
+        } else if (t.identifier !== joy.id && camCtl.touchId === null) {
+          // second thumb = the camera: grab it for the 360° orbit
+          camCtl.touchId = t.identifier; camCtl.lx = t.clientX; camCtl.ly = t.clientY;
         }
       }
     };
@@ -9576,12 +9833,17 @@ export default function DragonGardenQuest() {
         if (joy.active && t.identifier === joy.id) {
           joy.dx = Math.max(-1, Math.min(1, (t.clientX - joy.ox) / 55));
           joy.dy = Math.max(-1, Math.min(1, (t.clientY - joy.oy) / 55));
+        } else if (t.identifier === camCtl.touchId) {
+          camDrag(t.clientX - camCtl.lx, t.clientY - camCtl.ly);
+          camCtl.lx = t.clientX; camCtl.ly = t.clientY;
         }
       }
     };
     const onTouchEnd = (e) => {
-      for (const t of e.changedTouches)
+      for (const t of e.changedTouches) {
         if (joy.active && t.identifier === joy.id) releaseJoy();
+        if (t.identifier === camCtl.touchId) camCtl.touchId = null;
+      }
     };
     mount.addEventListener("touchstart", onTouchStart, { passive: true });
     mount.addEventListener("touchmove", onTouchMove, { passive: true });
@@ -9590,6 +9852,7 @@ export default function DragonGardenQuest() {
     // app-switching or tab-hiding strands touches AND held keys: clear both
     const clearAllInput = () => {
       releaseJoy();
+      camCtl.touchId = null; camCtl.mouse = false;
       for (const k in keys) keys[k] = false;
       rushHold = null;
     };
@@ -9609,6 +9872,10 @@ export default function DragonGardenQuest() {
       tap.t = performance.now(); tap.x = e.clientX; tap.y = e.clientY;
       tap.moved = false;
       rushHold = null;
+      // desktop: dragging the mouse orbits the camera (a still click stays a tap)
+      if (e.pointerType === "mouse" && e.target && e.target.tagName === "CANVAS") {
+        camCtl.mouse = true; camCtl.lx = e.clientX; camCtl.ly = e.clientY;
+      }
       if (e.target && e.target.tagName === "CANVAS" && !shopOpenRef.current && !G.quizActive) {
         const sx = e.clientX, sy = e.clientY;
         const R = Math.max(34, Math.min(64, Math.min(W(), H()) * 0.085));
@@ -9629,6 +9896,10 @@ export default function DragonGardenQuest() {
     const onTapMove = (e) => {
       if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 18) tap.moved = true;
       if (rushHold && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 26) rushHold = null;
+      if (camCtl.mouse && tap.moved) {
+        camDrag(e.clientX - camCtl.lx, e.clientY - camCtl.ly);
+      }
+      if (camCtl.mouse) { camCtl.lx = e.clientX; camCtl.ly = e.clientY; }
     };
     // How far a tapped plot may be from the player. Generous enough to work
     // anywhere in your own garden / the quadrant you're standing in, but not
@@ -9647,6 +9918,7 @@ export default function DragonGardenQuest() {
     };
 
     const onTapUp = (e) => {
+      camCtl.mouse = false;
       rushHold = null; // lifted before the hold completed — just a tap
       if (tap.moved || performance.now() - tap.t > 500) return;
       if (!(e.target && e.target.tagName === "CANVAS")) return; // UI buttons handle themselves
@@ -9757,7 +10029,7 @@ export default function DragonGardenQuest() {
       if (!ns.behind && Math.hypot(sx - ns.x, sy - ns.y) < R * 1.6) doAction();
     };
 
-    const onPointerCancel = () => { rushHold = null; tap.moved = true; };
+    const onPointerCancel = () => { rushHold = null; tap.moved = true; camCtl.mouse = false; };
     mount.addEventListener("pointerdown", onTapDown);
     mount.addEventListener("pointercancel", onPointerCancel);
     mount.addEventListener("pointermove", onTapMove);
@@ -11048,6 +11320,14 @@ export default function DragonGardenQuest() {
       if (keys["a"] || keys["arrowleft"]) mx -= 1;
       if (keys["d"] || keys["arrowright"]) mx += 1;
       mx += joy.dx; mz += joy.dy;
+      // camera-relative steering: with the view orbited, "up" on the stick
+      // still means "away from the camera"
+      const oy = orbitYaw();
+      if (oy) {
+        const oc = Math.cos(oy), os = Math.sin(oy);
+        const rmx = mx * oc + mz * os, rmz = -mx * os + mz * oc;
+        mx = rmx; mz = rmz;
+      }
       const mLen = Math.hypot(mx, mz);
       const speed = 6.2;
       const moving = mLen > 0.08 && !shopOpenRef.current && !G.introLock && !G.turtleSeq;
@@ -12020,7 +12300,16 @@ export default function DragonGardenQuest() {
         // backdrop mountains, and a band of sky enter the top of every shot.
         // With the old 1.75 the top frustum edge sat 9° BELOW horizontal — the
         // backdrop could mathematically never appear on screen.
-        camTarget = new THREE.Vector3(playerPos.x, (7.8 + groundY * 0.55) * zoomK, playerPos.z + 9.6 * zoomK);
+        // free-orbit: the second thumb / mouse drag swings this offset a
+        // full 360° around the player; pitch nudges the height band
+        const oy2 = orbitYaw();
+        const pitchK = ORBIT_MAPS[G.map] ? Math.max(0.55, Math.min(1.5, 1 + camCtl.pitch)) : 1;
+        const camDist = 9.6 * zoomK;
+        camTarget = new THREE.Vector3(
+          playerPos.x + Math.sin(oy2) * camDist,
+          (7.8 + groundY * 0.55) * zoomK * pitchK,
+          playerPos.z + Math.cos(oy2) * camDist
+        );
         lookX = playerPos.x; lookZ = playerPos.z; lookY = groundY + 3.55;
       }
       camera.position.lerp(camTarget, G.splashActive || G.quizActive || G.styleActive || G.counterActive || G.introFocus ? 0.06 : 0.08);
