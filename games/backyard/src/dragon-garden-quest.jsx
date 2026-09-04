@@ -662,7 +662,7 @@ export default function DragonGardenQuest() {
     mount.appendChild(renderer.domElement);
 
     // ================= AUDIO: generative ambient score + synthesized SFX =================
-    let AC = null, audioOut = null, musicBus = null, sfxBus = null, fountainGain = null, snoreGain = null, eatBuf = null, winBuf = null, levelBuf = null, boomBuf = null;
+    let AC = null, audioOut = null, musicBus = null, sfxBus = null, fountainGain = null, snoreGain = null, eatBuf = null, winBuf = null, levelBuf = null, boomBuf = null, screamBuf = null, gloomPopBuf = null;
     let voiceBufs = [], voiceSrc = null, voiceGain = null, voiceDuckOrig = null;
     const AUDIO = { muted: false };
     // Recorded music loops (public/music/) — the ONLY music source; maps
@@ -752,6 +752,16 @@ export default function DragonGardenQuest() {
         .then((r) => r.arrayBuffer())
         .then((ab) => AC.decodeAudioData(ab))
         .then((buf) => { boomBuf = buf; })
+        .catch(() => {});
+      fetch("/sfx/gloom-scream.mp3?v=1")
+        .then((r) => r.arrayBuffer())
+        .then((ab) => AC.decodeAudioData(ab))
+        .then((buf) => { screamBuf = buf; })
+        .catch(() => {});
+      fetch("/sfx/gloom-pop.m4a?v=1")
+        .then((r) => r.arrayBuffer())
+        .then((ab) => AC.decodeAudioData(ab))
+        .then((buf) => { gloomPopBuf = buf; })
         .catch(() => {});
       playTrack(trackWanted || (typeof G !== "undefined" && G && G.map) || "HOME");
     }
@@ -992,6 +1002,25 @@ export default function DragonGardenQuest() {
           const g = AC.createGain(); g.gain.value = 0.95;
           src.connect(g); g.connect(sfxBus); src.start();
         } else sq((t) => { noiseBurst(t, 0.9, 0.5, 700, 0.6, "lowpass", 80); tone(72, t, 0.8, 0.3, "sine", 36); });
+      },
+      // the doomed Gloomling's cartoon shriek — recorded scream, pitch
+      // wobbled per kill so 84 of them never sound like a sample loop
+      gloomScream: () => {
+        if (AC && !AUDIO.muted && screamBuf) {
+          const src = AC.createBufferSource(); src.buffer = screamBuf;
+          src.playbackRate.value = 0.94 + Math.random() * 0.16;
+          const g = AC.createGain(); g.gain.value = 0.9;
+          src.connect(g); g.connect(sfxBus); src.start();
+        } else sq((t) => { tone(880, t, 0.5, 0.18, "sawtooth", 1700); tone(1240, t + 0.12, 0.8, 0.12, "square", 2300); });
+      },
+      // the pop itself — recorded burst, whoosh-and-sparkle synth fallback
+      gloomPop: () => {
+        if (AC && !AUDIO.muted && gloomPopBuf) {
+          const src = AC.createBufferSource(); src.buffer = gloomPopBuf;
+          src.playbackRate.value = 0.92 + Math.random() * 0.18;
+          const g = AC.createGain(); g.gain.value = 0.95;
+          src.connect(g); g.connect(sfxBus); src.start();
+        } else sq((t) => { noiseBurst(t, 0.4, 0.16, 300, 0.8, "bandpass", 2400); tone(1568, t, 0.28, 0.1, "sine", 2349); });
       },
       sleep: () => sq((t) => { tone(392, t, 0.5, 0.08, "sine", 262); }),
       wake: () => sq((t) => { tone(262, t, 0.4, 0.1, "sine", 440); }),
@@ -4693,6 +4722,7 @@ export default function DragonGardenQuest() {
     let trailRefs = []; // the five refugees' rigs + encounter state
     let trailFoams = []; // drifting foam flecks on the trail stream
     let cloudCity = null; // Cloudtop challenge arena (chest, lanes, plates, turtle pad)
+    let gloomShards = []; // detonated-Gloomling debris tumbling on the ground
     let gardener = null, gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }, bursts = [], timerSprite = null, winsSprite = null, water = null, foams = [], riverFoam = null, swayers = [], petals = [], fountainFx = null, townKitHandle = null, libraryRiver = null, libLight = null, townLightRing = null, libSeasonPlate = null;
     let buildCells = [], ghostMesh = null, buildMarkers = null, counterKeeper = null;
     // Glowlands per-map handles live further down (glowHomeHandle /
@@ -5754,7 +5784,7 @@ export default function DragonGardenQuest() {
       scene.add(worldGroup);
       plotNodes = []; exits = []; hotspots = []; dragon = null;
       butterflies = []; glowNodes = []; clouds = []; embers = []; smokes = []; sparkles = null; caveLight = null; npcs = []; zzz = [];
-      babies = []; boomFx = []; trailRefs = []; trailFoams = []; cloudCity = null;
+      babies = []; boomFx = []; trailRefs = []; trailFoams = []; cloudCity = null; gloomShards = [];
       gardener = null; gardenerCtl = { mode: "post", t: 0, post: [0, 0], postRot: 0 }; bursts = []; floaties = []; timerSprite = null; lastTimerSec = -1; winsSprite = null; lastWinsDrawn = -1; water = null; foams = []; riverFoam = null; swayers = []; petals = []; fountainFx = null; townKitHandle = null; G.townLights = null; libraryRiver = null; libLight = null; townLightRing = null; libSeasonPlate = null; G.flyLight = null; G.flyLightQueue = []; G.flyLightGapT = 0; G.__eastGloomK = -1; goldBag = null; redBagMeshes = {}; shopWords = []; emberBar = null; turtle = null; G.turtleSeq = null;
       throwns.forEach((t) => worldGroup.remove(t.m)); throwns = [];
       buildCells = []; ghostMesh = null; buildMarkers = null; counterKeeper = null;
@@ -7652,6 +7682,9 @@ export default function DragonGardenQuest() {
         THREE, worldGroup, flat, SRGB, addBoxCol, addCircleCol,
         makeTextPlate, glowNodes, PAL,
         gloomFree: s1Won(),
+        // The occupation force: 100 strong, minus one for every light already
+        // delivered - each landing light detonates a Gloomling on the spot.
+        gloomCount: Math.max(10, 100 - (G.litShownN || 0)),
         // Gloomling steal hooks: the module decides WHEN, this decides WHAT.
         // Commons only - rare fruit glows, and Gloomlings are afraid of light.
         gloomHooks: {
@@ -7668,6 +7701,12 @@ export default function DragonGardenQuest() {
           // as every other character, and thumps hard enough to feel
           bark: (file) => playVoiceFile(file),
           rumble: () => { G.shakeT = Math.max(G.shakeT || 0, 0.22); },
+          // the doomed one's windup just ended — paint the debris and kick
+          detonate: (gx, gz, gs) => {
+            spawnGloomShards(gx, gz, gs);
+            SFX.gloomPop();
+            G.shakeT = Math.max(G.shakeT || 0, 0.2);
+          },
           steal: (gx, gz) => {
             const commons = ["strawberry", "blueberry", "sunfruit"].filter((fk) => G.inv.fruit[fk] > 0);
             if (commons.length) {
@@ -9498,6 +9537,37 @@ export default function DragonGardenQuest() {
         });
       }
     }
+    // ---- a Gloomling DETONATES: a delivered light blows the nearest one
+    // into a cloud of dark shards that arc, tumble, bounce once and melt
+    // into the ground. Shared geometry, per-shard transforms — phone-cheap.
+    let gloomShardGeo = null, gloomShardMats = null, gloomShardEyeMat = null;
+    function spawnGloomShards(x, z, s = 1) {
+      if (!gloomShardGeo) {
+        gloomShardGeo = new THREE.TetrahedronGeometry(0.075);
+        gloomShardMats = [0x4e4959, 0x44404f, 0x232030, 0x5a5468].map((c) => flat(c));
+        gloomShardEyeMat = new THREE.MeshBasicMaterial({ color: SRGB(0xc887ff) });
+      }
+      for (let i = 0; i < 46; i++) {
+        if (gloomShards.length > 340) break; // pile-up cap for rapid-fire deliveries
+        const eye = i >= 44; // two glowing eye-chips ride the blast
+        const m = new THREE.Mesh(gloomShardGeo, eye ? gloomShardEyeMat : gloomShardMats[(Math.random() * gloomShardMats.length) | 0]);
+        const s0 = (0.55 + Math.random() * 0.85) * s * (eye ? 0.8 : 1);
+        m.scale.setScalar(s0);
+        m.position.set(x + (Math.random() - 0.5) * 0.5, 0.35 + Math.random() * 0.85, z + (Math.random() - 0.5) * 0.5);
+        m.rotation.set(Math.random() * 9, Math.random() * 9, Math.random() * 9);
+        worldGroup.add(m);
+        const a = Math.random() * Math.PI * 2, v = 1.2 + Math.random() * 3.2;
+        gloomShards.push({
+          m, s0,
+          vx: Math.cos(a) * v, vz: Math.sin(a) * v, vy: 1.2 + Math.random() * 3.4,
+          rx: (Math.random() - 0.5) * 28, rz: (Math.random() - 0.5) * 28,
+          bounced: false, ttl: 1.7 + Math.random() * 1.1,
+        });
+      }
+      // the flash and the smoke: a purple flare plus a puff of gloom-dust
+      spawnBurst(x, z, 0xc887ff, 12, { glow: true, vy: 2.4, vs: 1.6, ttl: 0.7, y0: 0.8, size: 0.12 });
+      spawnBurst(x, z, 0x3f3852, 8, { vy: 1.2, vs: 1.0, ttl: 0.9, y0: 0.6, size: 0.16 });
+    }
     G.__chest = () => startChestFete(); // staging preview hook (?chest=1)
     function buildClouds() {
       clearWorld();
@@ -11058,6 +11128,11 @@ export default function DragonGardenQuest() {
           if (townKitHandle) {
             townKitHandle.lights.setLit(f.n);
             spawnBurst(f.to.x, f.to.z, 0xffd98a, 12, { glow: true, vy: 1.6, y0: f.to.y });
+            // and the light HITS BACK: the nearest Gloomling flushes red,
+            // screams and swells — the pop lands via the detonate hook
+            if (townKitHandle.gloomlings) {
+              if (townKitHandle.gloomlings.explodeNearest(f.to.x, f.to.z)) SFX.gloomScream();
+            }
           }
           SFX.pass();
           worldGroup.remove(f.grp);
@@ -11101,6 +11176,31 @@ export default function DragonGardenQuest() {
       if (G.cloudFlashT > 0) {
         G.cloudFlashT -= dt;
         if (G.setFlash) G.setFlash(Math.max(0, Math.min(1, G.cloudFlashT / 1.2)));
+      }
+      // Gloomling debris: gravity, one bounce, a skid, then melt away
+      if (gloomShards.length) {
+        for (let si = gloomShards.length - 1; si >= 0; si--) {
+          const sh = gloomShards[si];
+          sh.ttl -= dt;
+          sh.vy -= dt * 7.5;
+          sh.m.position.x += sh.vx * dt;
+          sh.m.position.y += sh.vy * dt;
+          sh.m.position.z += sh.vz * dt;
+          sh.m.rotation.x += sh.rx * dt;
+          sh.m.rotation.z += sh.rz * dt;
+          if (sh.m.position.y < 0.045) {
+            sh.m.position.y = 0.045;
+            if (!sh.bounced && Math.abs(sh.vy) > 0.8) {
+              sh.bounced = true;
+              sh.vy *= -0.35; sh.vx *= 0.6; sh.vz *= 0.6;
+            } else {
+              sh.vy = 0; sh.vx *= 0.82; sh.vz *= 0.82;
+              sh.rx *= 0.8; sh.rz *= 0.8;
+            }
+          }
+          if (sh.ttl < 0.5) sh.m.scale.setScalar(Math.max(0.01, sh.ttl / 0.5) * sh.s0);
+          if (sh.ttl <= 0) { worldGroup.remove(sh.m); gloomShards.splice(si, 1); }
+        }
       }
       // ---- THE CLOUDTOP: ambience, the ride home, and the chest fete ----
       if (G.map === "CLOUDS" && cloudCity) {

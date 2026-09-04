@@ -612,7 +612,7 @@ export default function buildMeadowTownKit(ctx) {
 
   const gloomlings = (ctx.gloomHooks && !ctx.gloomFree) ? spawnGloomlings({
     THREE, worldGroup, flat, SRGB, fogTex, forgePos,
-    pads: gloomPads, hooks: ctx.gloomHooks,
+    pads: gloomPads, hooks: ctx.gloomHooks, count: ctx.gloomCount,
   }) : null;
   const gloomBoss = (ctx.gloomHooks && !ctx.gloomFree) ? spawnGloomBoss({
     THREE, worldGroup, flat, SRGB, fogTex,

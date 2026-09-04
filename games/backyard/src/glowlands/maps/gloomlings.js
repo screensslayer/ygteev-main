@@ -21,7 +21,12 @@
 
 export default function spawnGloomlings(ctx) {
   const { THREE, worldGroup, flat, SRGB, fogTex, forgePos, pads, hooks } = ctx;
-  const COUNT = 12;
+  // Population is driven by the game (100 minus lights delivered — every
+  // light detonates one). The first ACTOR_N are full rigs with limbs,
+  // muggings and colliders; the rest are crowd EXTRAS — body, eyes, smudge
+  // and wisp only — so a hundred of them stay phone-friendly.
+  const COUNT = Math.max(6, Math.min(100, ctx.count || 12));
+  const ACTOR_N = 14;
 
   // shared materials/geometry — per-gloom animation uses transforms only
   const bodyMat = flat(0x4e4959);
@@ -29,6 +34,11 @@ export default function spawnGloomlings(ctx) {
   const darkMat = flat(0x232030);
   const socketMat = flat(0x1b1826);    // eye pits the glow sits inside
   const eyeMat = new THREE.MeshBasicMaterial({ color: SRGB(0xc887ff) });
+  // the doom windup: how long a light-struck Gloomling screams and cooks
+  // red before popping, and the colors it cooks toward
+  const DOOM_T = 1.35;
+  const doomRed = new THREE.Color(SRGB(0xff2a14));
+  const doomEyeHot = new THREE.Color(SRGB(0xfff0d8));
   const smudgeMat = new THREE.MeshBasicMaterial({ color: SRGB(0x120f1c), transparent: true, opacity: 0.38, depthWrite: false });
   const wispMat = () => new THREE.SpriteMaterial({ map: fogTex, color: SRGB(0x3f3852), transparent: true, opacity: 0.26, depthWrite: false });
 
@@ -68,9 +78,10 @@ export default function spawnGloomlings(ctx) {
 
   const glooms = [];
   for (let i = 0; i < COUNT; i++) {
+    const actor = i < ACTOR_N;
     const g = new THREE.Group();
     const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.castShadow = true;
+    body.castShadow = actor; // a hundred shadow casters would melt phones
     // eyes recessed in dark pits, like the concept
     const mkEye = (sx) => {
       const socket = new THREE.Mesh(socketGeo, socketMat);
@@ -81,38 +92,42 @@ export default function spawnGloomlings(ctx) {
     };
     const [sockL, eL] = mkEye(-0.155);
     const [sockR, eR] = mkEye(0.155);
-    const frown = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.02, 0.02), darkMat);
-    frown.position.set(0, 0.76, 0.4);
-    // arms with paws, hinged at the shoulder so they can swing OR reach
-    const mkArm = (sx) => {
-      const pivot = new THREE.Group();
-      pivot.position.set(sx * 0.4, 0.82, 0);
-      const arm = new THREE.Mesh(armGeo, limbMat);
-      const hand = new THREE.Mesh(handGeo, limbMat);
-      hand.position.set(0, -0.46, 0.02);
-      pivot.add(arm, hand);
-      pivot.rotation.z = sx * 0.14;
-      return pivot;
-    };
-    const armL = mkArm(-1), armR = mkArm(1);
-    // legs that actually step: ankle pivots carrying leg + foot
-    const mkLeg = (sx) => {
-      const pivot = new THREE.Group();
-      pivot.position.set(sx * 0.15, 0, 0);
-      pivot.add(new THREE.Mesh(legGeo, limbMat), new THREE.Mesh(footGeo, limbMat));
-      return pivot;
-    };
-    const legL = mkLeg(-1), legR = mkLeg(1);
+    let armL = null, armR = null, legL = null, legR = null;
+    if (actor) {
+      const frown = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.02, 0.02), darkMat);
+      frown.position.set(0, 0.76, 0.4);
+      // arms with paws, hinged at the shoulder so they can swing OR reach
+      const mkArm = (sx) => {
+        const pivot = new THREE.Group();
+        pivot.position.set(sx * 0.4, 0.82, 0);
+        const arm = new THREE.Mesh(armGeo, limbMat);
+        const hand = new THREE.Mesh(handGeo, limbMat);
+        hand.position.set(0, -0.46, 0.02);
+        pivot.add(arm, hand);
+        pivot.rotation.z = sx * 0.14;
+        return pivot;
+      };
+      armL = mkArm(-1); armR = mkArm(1);
+      // legs that actually step: ankle pivots carrying leg + foot
+      const mkLeg = (sx) => {
+        const pivot = new THREE.Group();
+        pivot.position.set(sx * 0.15, 0, 0);
+        pivot.add(new THREE.Mesh(legGeo, limbMat), new THREE.Mesh(footGeo, limbMat));
+        return pivot;
+      };
+      legL = mkLeg(-1); legR = mkLeg(1);
+      const trail = new THREE.Sprite(wispMat());   // the smoke it drags behind
+      trail.material.opacity = 0.16;
+      trail.position.set(0, 0.16, -0.34);
+      trail.scale.set(0.66, 0.4, 1);
+      g.add(frown, armL, armR, legL, legR, trail);
+    }
     const smudge = new THREE.Mesh(smudgeGeo, smudgeMat);
     smudge.position.y = 0.02;
     const wisp = new THREE.Sprite(wispMat());
     wisp.position.set(0.06, 1.42, 0);
     wisp.scale.set(0.5, 0.5, 1);
-    const trail = new THREE.Sprite(wispMat());   // the smoke it drags behind
-    trail.material.opacity = 0.16;
-    trail.position.set(0, 0.16, -0.34);
-    trail.scale.set(0.66, 0.4, 1);
-    g.add(body, sockL, sockR, eL, eR, frown, armL, armR, legL, legR, smudge, wisp, trail);
+    g.add(body, sockL, sockR, eL, eR, smudge, wisp);
 
     const baseScale = 0.86 + Math.random() * 0.08; // siblings, not clones
     g.scale.setScalar(baseScale);
@@ -122,7 +137,7 @@ export default function spawnGloomlings(ctx) {
     worldGroup.add(g);
     glooms.push({
       g, eL, eR, armL, armR, legL, legR, wisp, baseScale,
-      col: hooks.colliderFor ? hooks.colliderFor(home.x, home.z, 0.32) : null,
+      col: actor && hooks.colliderFor ? hooks.colliderFor(home.x, home.z, 0.32) : null,
       reach: 0,           // 0 = arms hang, 1 = full grabby reach
       mode: "wander",     // wander | pause | creep | flee
       tgt: pickSpot(4.5, 15),
@@ -137,6 +152,7 @@ export default function spawnGloomlings(ctx) {
 
   function scatterFrom(x, z, radius = 6, dur = 2.2) {
     for (const gl of glooms) {
+      if (gl.mode === "gone" || gl.mode === "leave" || gl.mode === "doomed") continue;
       if (Math.hypot(gl.g.position.x - x, gl.g.position.z - z) < radius) {
         gl.mode = "flee";
         gl.timer = dur + Math.random();
@@ -153,6 +169,47 @@ export default function spawnGloomlings(ctx) {
       ud.cd -= dt;
 
       if (ud.mode === "gone") continue;
+      if (ud.mode === "doomed") {
+        // the windup: rooted to the spot, vibrating, swelling, cooking red
+        // from the inside while it screams — then the pop
+        ud.timer -= dt;
+        const k = Math.max(0, Math.min(1, 1 - ud.timer / DOOM_T));
+        const vib = 0.015 + k * 0.05;
+        gl.g.rotation.y = ud.rot + Math.sin(t * 58) * vib * 5;
+        gl.g.rotation.x = 0.05 + Math.sin(t * 47) * vib * 3;
+        gl.g.rotation.z = Math.sin(t * 51) * vib * 3;
+        P.y = Math.abs(Math.sin(t * 34)) * vib;
+        gl.g.scale.setScalar(gl.baseScale * (1 + k * 0.45));
+        if (ud.doom) {
+          for (const m of ud.doom.mats) {
+            m.color.lerpColors(m.userData.c0, doomRed, k);
+            if (m.emissive) m.emissive.setRGB(k * 0.9, k * 0.1, k * 0.05);
+          }
+          ud.doom.eye.color.lerpColors(ud.doom.eye.userData.c0, doomEyeHot, k);
+        }
+        // arms straight up, flailing — full cartoon panic (actors only)
+        if (gl.armL) {
+          gl.armL.rotation.x = -2.5 + Math.sin(t * 26) * 0.45;
+          gl.armR.rotation.x = -2.5 + Math.cos(t * 24) * 0.45;
+          gl.armL.rotation.z = -0.3; gl.armR.rotation.z = 0.3;
+        }
+        gl.eL.scale.setScalar(1.5 + k * 0.9);
+        gl.eR.scale.setScalar(1.5 + k * 0.9);
+        if (ud.timer <= 0) {
+          ud.mode = "gone";
+          if (ud.col) ud.col.r = 0;
+          worldGroup.remove(gl.g);
+          if (ud.doom) {
+            for (const m of ud.doom.mats) m.dispose();
+            ud.doom.eye.dispose();
+            ud.doom = null;
+          }
+          scatterFrom(P.x, P.z, 5.5, 1.6); // the neighbours saw that
+          try { if (hooks.detonate) hooks.detonate(P.x, P.z, gl.baseScale * 1.35); }
+          catch (e) { console.error("[gloomling] detonate hook failed", e); }
+        }
+        continue;
+      }
       if (ud.mode === "leave") {
         // the exodus: a beat of hesitation, then a straight sprint out past
         // the tree wall, legs churning; removed once the fog has them
@@ -172,10 +229,12 @@ export default function spawnGloomlings(ctx) {
           ud.rot += turn * Math.min(1, dt * 8);
           gl.g.rotation.y = ud.rot;
           const stride = t * 9 + ud.ph;
-          gl.legL.rotation.x = Math.cos(stride) * 0.6;
-          gl.legR.rotation.x = Math.cos(stride + Math.PI) * 0.6;
-          gl.armL.rotation.x = Math.sin(stride + Math.PI) * 0.35;
-          gl.armR.rotation.x = Math.sin(stride) * 0.35;
+          if (gl.legL) {
+            gl.legL.rotation.x = Math.cos(stride) * 0.6;
+            gl.legR.rotation.x = Math.cos(stride + Math.PI) * 0.6;
+            gl.armL.rotation.x = Math.sin(stride + Math.PI) * 0.35;
+            gl.armR.rotation.x = Math.sin(stride) * 0.35;
+          }
           P.y = Math.abs(Math.sin(stride)) * 0.05;
           if (ud.col) { ud.col.x = P.x; ud.col.z = P.z; }
           if (Math.hypot(P.x, P.z) > 24) {
@@ -208,8 +267,9 @@ export default function spawnGloomlings(ctx) {
       }
 
       if (ud.mode === "wander" || ud.mode === "pause") {
-        // the mugging: player lingering close, cooldowns clear, no UI open
-        if (dPlayer < 2.3 && ud.cd <= 0 && t - lastStealT > 7 && !hooks.uiOpen()) {
+        // the mugging: player lingering close, cooldowns clear, no UI open.
+        // Extras never mug — they have no arms to reach with.
+        if (gl.armL && dPlayer < 2.3 && ud.cd <= 0 && t - lastStealT > 7 && !hooks.uiOpen()) {
           ud.mode = "creep"; ud.timer = 1.6;
         }
       }
@@ -281,24 +341,27 @@ export default function spawnGloomlings(ctx) {
       P.y = moving ? Math.abs(Math.sin(stride)) * 0.05 : 0.005;
 
       // the little feet: alternate step — lift, swing through, plant
+      // (extras glide on their smudge; only actors carry the full rig)
       const step = moving ? 1 : 0.15;
-      gl.legL.position.y = Math.max(0, Math.sin(stride)) * 0.09 * step;
-      gl.legL.position.z = Math.cos(stride) * 0.1 * step;
-      gl.legL.rotation.x = Math.cos(stride) * 0.55 * step;
-      gl.legR.position.y = Math.max(0, Math.sin(stride + Math.PI)) * 0.09 * step;
-      gl.legR.position.z = Math.cos(stride + Math.PI) * 0.1 * step;
-      gl.legR.rotation.x = Math.cos(stride + Math.PI) * 0.55 * step;
+      if (gl.legL) {
+        gl.legL.position.y = Math.max(0, Math.sin(stride)) * 0.09 * step;
+        gl.legL.position.z = Math.cos(stride) * 0.1 * step;
+        gl.legL.rotation.x = Math.cos(stride) * 0.55 * step;
+        gl.legR.position.y = Math.max(0, Math.sin(stride + Math.PI)) * 0.09 * step;
+        gl.legR.position.z = Math.cos(stride + Math.PI) * 0.1 * step;
+        gl.legR.rotation.x = Math.cos(stride + Math.PI) * 0.55 * step;
 
-      // arms: hang and swing while walking, come UP and OUT when it wants
-      // what you're carrying (and stay half-raised while it flees with it)
-      const reachTgt = ud.mode === "creep" ? 1 : ud.mode === "flee" ? 0.45 : 0;
-      ud.reach += (reachTgt - ud.reach) * Math.min(1, dt * 6);
-      const swingL = Math.sin(stride + Math.PI) * 0.3 * step;
-      const swingR = Math.sin(stride) * 0.3 * step;
-      gl.armL.rotation.x = swingL * (1 - ud.reach) + (-1.3 - Math.sin(t * 9) * 0.06) * ud.reach;
-      gl.armR.rotation.x = swingR * (1 - ud.reach) + (-1.3 + Math.sin(t * 9.4) * 0.06) * ud.reach;
-      gl.armL.rotation.z = 0.14 * (1 - ud.reach) - 0.1 * ud.reach;   // paws close in
-      gl.armR.rotation.z = -0.14 * (1 - ud.reach) + 0.1 * ud.reach;
+        // arms: hang and swing while walking, come UP and OUT when it wants
+        // what you're carrying (and stay half-raised while it flees with it)
+        const reachTgt = ud.mode === "creep" ? 1 : ud.mode === "flee" ? 0.45 : 0;
+        ud.reach += (reachTgt - ud.reach) * Math.min(1, dt * 6);
+        const swingL = Math.sin(stride + Math.PI) * 0.3 * step;
+        const swingR = Math.sin(stride) * 0.3 * step;
+        gl.armL.rotation.x = swingL * (1 - ud.reach) + (-1.3 - Math.sin(t * 9) * 0.06) * ud.reach;
+        gl.armR.rotation.x = swingR * (1 - ud.reach) + (-1.3 + Math.sin(t * 9.4) * 0.06) * ud.reach;
+        gl.armL.rotation.z = 0.14 * (1 - ud.reach) - 0.1 * ud.reach;   // paws close in
+        gl.armR.rotation.z = -0.14 * (1 - ud.reach) + 0.1 * ud.reach;
+      }
 
       // eyes flare while creeping; wisp curls always
       const flare = ud.mode === "creep" ? 1.55 : ud.mode === "flee" ? 1.25 : 1;
@@ -314,7 +377,8 @@ export default function spawnGloomlings(ctx) {
   // staggered so the square empties as a fleeing crowd, not a formation.
   function retreatAll(hurry) {
     for (const gl of glooms) {
-      if (gl.mode === "gone") continue;
+      // a doomed one is already dead — it stays put and pops mid-stampede
+      if (gl.mode === "gone" || gl.mode === "doomed") continue;
       gl.mode = "leave";
       gl.leaveSpd = hurry ? 5.2 : 2.1;   // the liberation flash is a stampede
       gl.timer = Math.random() * (hurry ? 0.35 : 1.2); // stagger the panic
@@ -323,9 +387,43 @@ export default function spawnGloomlings(ctx) {
     }
   }
 
+  // A delivered light picks its victim: the nearest Gloomling is DOOMED —
+  // it freezes, flushes bright red, swells and screams for DOOM_T seconds
+  // (the game plays the audio), then pops. The pop itself happens in
+  // update(): body removed, neighbours panicked, hooks.detonate() told
+  // where to paint the debris. Returns where the windup started (play the
+  // scream), or null if the square is already empty.
+  function explodeNearest(x, z) {
+    let best = null, bd = Infinity;
+    for (const gl of glooms) {
+      if (gl.mode === "gone" || gl.mode === "leave" || gl.mode === "doomed") continue;
+      const d = Math.hypot(gl.g.position.x - x, gl.g.position.z - z);
+      if (d < bd) { bd = d; best = gl; }
+    }
+    if (!best) return null;
+    best.mode = "doomed";
+    best.timer = DOOM_T;
+    // the red ramp needs its OWN materials — body and limbs share mats
+    // across the whole horde, so clone just this one's before cooking them
+    const mats = [];
+    best.g.traverse((o) => {
+      if (o.isMesh && (o.material === bodyMat || o.material === limbMat)) {
+        o.material = o.material.clone();
+        o.material.userData.c0 = o.material.color.clone();
+        mats.push(o.material);
+      }
+    });
+    const em = eyeMat.clone();
+    em.userData.c0 = em.color.clone();
+    best.eL.material = em; best.eR.material = em;
+    best.doom = { mats, eye: em };
+    return { x: best.g.position.x, z: best.g.position.z };
+  }
+
   return {
     update,
     retreatAll,
+    explodeNearest,
     setLitCount: (n) => { litCount = n; },
     scatterFrom,
     // read-only peek for dev tooling and future quest logic
